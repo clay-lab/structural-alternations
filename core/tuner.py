@@ -6,6 +6,9 @@ import os
 import hydra
 from typing import Dict, List
 import torch
+import numpy as np
+from matplotlib import pyplot as plt
+from torch.distributions import Categorical
 from transformers import  DistilBertForMaskedLM, DistilBertTokenizer
 from omegaconf import DictConfig
 from tqdm import trange
@@ -35,6 +38,10 @@ class Tuner:
   @property
   def mask_tok(self):
     return self.tokenizer.mask_token
+  
+  @property
+  def mask_tok_id(self):
+    return self.tokenizer(self.mask_tok, return_tensors="pt")["input_ids"][:,1]
   
   @property
   def string_id(self) -> str:
@@ -102,18 +109,18 @@ class Tuner:
     )
 
     with open(resolved_path, 'r') as f:
-      raw_sentences = [next(f).strip().lower()]
+      raw_sentences = [line.strip().lower() for line in f]
       sentences = []
       for s in raw_sentences:
         for key in replacing:
-          s = s.replace(key, replacing[key])
+          s = s.replace(key, self.tokens_to_mask[replacing[key]])
         sentences.append(s)
       
       masked_sentences = []
       for s in sentences:
         m = s
-        for key in list(self.tokens_to_mask.keys()):
-          m = m.replace(key, self.mask_tok)
+        for val in list(self.tokens_to_mask.values()):
+          m = m.replace(val, self.mask_tok)
         masked_sentences.append(m)
       
       inputs = self.tokenizer(masked_sentences, return_tensors="pt", padding=True)
@@ -121,11 +128,148 @@ class Tuner:
 
       return inputs, labels
   
+  def collect_results(self, inputs, eval_groups, outputs) -> Dict:
+
+    results = {}
+    
+    logits = outputs.logits
+    probabilities = torch.nn.functional.softmax(logits, dim=2)
+    log_probabilities = torch.nn.functional.log_softmax(logits, dim=2)
+    predicted_ids = torch.argmax(log_probabilities, dim=2)
+
+    for i, _ in enumerate(predicted_ids):
+
+      sentence_results = {}
+
+      # Foci = indices where input sentences have a [mask] token
+      foci = torch.nonzero(inputs["input_ids"][i]==self.mask_tok_id, as_tuple=True)[0]
+      
+      for idx in foci:
+        idx_results = {}
+        for group in eval_groups:
+          tokens = eval_groups[group]
+          group_mean = 0.0
+          for token in tokens:
+            token_id = self.tokenizer(token, return_tensors="pt")["input_ids"][:,1]
+            group_mean += log_probabilities[:,idx,:][i,token_id].item()
+          idx_results[group] = group_mean
+        
+        sentence_results[idx] = {
+          'mean grouped log_probability' : idx_results,
+          'log_probabilities' : log_probabilities[:,idx,:][i,:],
+          'probabilities' : probabilities[:,idx,:][i,:],
+          'logits': logits[:,idx,:][i,:]
+        }
+      results[i] = sentence_results
+    
+    return results
+          
+  def summarize_results(self, results: Dict, labels) -> Dict:
+    
+    summary = {}
+
+    # Define theme and recipient ids
+    ricket = self.tokenizer(self.tokens_to_mask["RICKET"], return_tensors="pt")["input_ids"][:,1]
+    thax = self.tokenizer(self.tokens_to_mask["THAX"], return_tensors="pt")["input_ids"][:,1]
+
+    # Cumulative log probabilities for <token> in <position>
+    theme_in_theme = []
+    theme_in_recipient = []
+    recipient_in_theme = []
+    recipient_in_recipeint = []
+
+    # Confidence in predicting <token> over the alternative
+    ricket_confidence = []
+    thax_confidence = []
+
+    # Confidence that position is an <animacy> noun
+    animate_confidence = []
+    inanimate_confidence = []
+
+    # Entropies in various positions
+    theme_entropy = []
+    recipient_entropy = []
+
+    for i in results:
+      label = labels[i]
+      result = results[i]
+
+      for idx in result:
+
+        target = label[idx.item()]
+        scores = result[idx]['mean grouped log_probability']
+        probabilities = result[idx]['probabilities']
+
+        categorical_distribution = Categorical(probs=probabilities)
+        entropy = categorical_distribution.entropy()
+
+        if target == ricket:
+          theme_in_recipient.append(scores['theme'])
+          recipient_in_recipeint.append(scores['recipient'])
+          recipient_entropy.append(entropy)
+          ricket_confidence.append(scores['recipient'] - scores['theme'])
+          animate_confidence.append(scores['animate'] - scores['inanimate'])
+        elif target == thax:
+          theme_in_theme.append(scores['theme'])
+          recipient_in_theme.append(scores['recipient'])
+          theme_entropy.append(entropy)
+          thax_confidence.append(scores['theme'] - scores['recipient'])
+          inanimate_confidence.append(scores['inanimate'] - scores['animate'])
+
+    summary['theme'] = {
+      'entropy' : theme_entropy,
+      'animacy_conf' : inanimate_confidence,
+      'token_conf' : thax_confidence
+    }
+
+    summary['recipient'] = {
+      'entropy' : recipient_entropy,
+      'animacy_conf' : animate_confidence,
+      'token_conf' : ricket_confidence
+    }
+
+    return summary
+  
+  def graph_results(self, results: Dict, summary: Dict, eval_cfg: DictConfig):
+
+    dataset = str(eval_cfg.data.name).split('.')[0]
+
+    fig, axs = plt.subplots(2, 2, sharey='row', sharex='row', tight_layout=True)
+
+    theme_entr = [x.item() for x in summary['theme']['entropy']]
+    recip_entr = [x.item() for x in summary['recipient']['entropy']]
+
+    inan = summary['theme']['animacy_conf']
+    anim = summary['recipient']['animacy_conf']
+
+    # Entropy Plots
+    axs[0][0].hist(theme_entr, density=True)
+    axs[0][0].axvline(np.mean(theme_entr), color='r')
+    axs[0][0].set_title('entropy [theme]')
+
+    axs[0][1].hist(recip_entr, density=True)
+    axs[0][1].axvline(np.mean(recip_entr), color='r')
+    axs[0][1].set_title('entropy [recipient]')
+
+    # Animacy Plots
+
+    axs[1][0].hist(inan, density=True)
+    axs[1][0].axvline(np.mean(inan), color='r')
+    axs[1][0].set_title('animacy confidence [theme]')
+
+    axs[1][1].hist(anim, density=True)
+    axs[1][1].axvline(np.mean(anim), color='r')
+    axs[1][1].set_title('animacy confidence [recipient]')
+
+    fig.suptitle(f"{eval_cfg.data.description}")
+
+    plt.savefig(f"{dataset}.png")
+  
   def eval(self, eval_cfg: DictConfig, checkpoint_dir: str):
     
     # Load model from disk
     log.info("Loading model from disk.")
-    model_path = os.path.join(checkpoint_dir, 'model.pt')
+    model_path = os.path.join(checkpoint_dir, "model.pt")
     self.model.load_state_dict(torch.load(model_path))
     self.model.eval()
 
@@ -133,42 +277,16 @@ class Tuner:
     inputs, labels = self.load_eval_data_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 
     # Calculate results on given data
-    results = {}
     with torch.no_grad():
 
+      log.info("Evaluating model on testing data")
       outputs = self.model(**inputs)
 
-      logits = outputs.logits
-      probabilities = torch.nn.functional.softmax(logits, dim=2)
-      log_probabilities = torch.nn.functional.log_softmax(logits, dim=2)
-      predicted_ids = torch.argmax(log_probabilities, dim=2)
+      results = self.collect_results(inputs, eval_cfg.data.eval_groups, outputs)
+      summary = self.summarize_results(results, labels)
 
-      for i, _ in enumerate(predicted_ids):
-
-        foci = torch.nonzero(inputs["input_ids"][i]==103, as_tuple=True)[0]
-        sentence_results = {}
-
-        for pos in foci:
-
-          pos_results = {}
-          for tok_group in eval_cfg.data.eval_groups:
-            tokens = eval_cfg.data.eval_groups[tok_group]
-            mean = 0.0
-            for token in tokens:
-              tok_id = self.tokenizer(token, return_tensors="pt")["input_ids"][:,1]
-              mean += log_probabilities[:,pos,:][i,tok_id].item()
-            pos_results[tok_group] = mean
-          
-          sentence_results[pos] = {
-            'mean token group scores' : pos_results,
-            'log_probabilities' : log_probabilities[:,pos,:][i,:],
-            'probabilities' : probabilities[:,pos,:][i,:],
-            'logits': logits[:,pos,:][i,:]
-          }
-        results[i] = sentence_results
-    
-    print(results)
-
+      log.info("Creating graphs")
+      self.graph_results(results, summary, eval_cfg)
 
   def tune(self):
     """

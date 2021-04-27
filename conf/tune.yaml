@@ -4,7 +4,7 @@ defaults:
 
 hyperparameters:
   epochs: 20 # how many epochs should the model tune for
-  masked: true # are the tuning inputs masked?
+  masked: false # are the tuning inputs masked?
   lr: 0.001
 
 hydra:
