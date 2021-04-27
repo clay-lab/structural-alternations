@@ -1,0 +1,12 @@
+defaults:
+  - model: bert
+  - tuning: active_DO
+
+hyperparameters:
+  epochs: 20 # how many epochs should the model tune for
+  masked: true # are the tuning inputs masked?
+  lr: 0.001
+
+hydra:
+  run:
+    dir: "./outputs/${tuning.name}/${model.base_class}/masked-${hyperparameters.masked}/${now:%Y-%m-%d_%H-%M-%S}"

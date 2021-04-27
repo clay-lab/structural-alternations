@@ -1,0 +1,8 @@
+defaults:
+  - data: ptb_active_dbl_obj
+
+checkpoint_dir: ???
+
+hydra:
+  run:
+    dir: ${checkpoint_dir}/eval

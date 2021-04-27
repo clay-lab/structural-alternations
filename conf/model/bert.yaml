@@ -1,0 +1,5 @@
+# @package _group_
+
+base_class: BertForMaskedLM
+tokenizer: BertTokenizer
+string_id: bert-base-uncased
