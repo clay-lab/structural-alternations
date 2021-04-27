@@ -293,6 +293,11 @@ class Tuner:
     Fine-tunes the model on the provided tuning data. Saves model state to disk.
     """
 
+    if not self.tuning_data:
+      log.info("Saving model state dictionary.")
+      torch.save(self.model.state_dict(), "model.pt")
+      return
+
     # Collect Hyperparameters
     lr = self.cfg.hyperparameters.lr
     epochs = self.cfg.hyperparameters.epochs
@@ -304,6 +309,8 @@ class Tuner:
     else:
       inputs = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)
     labels = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)["input_ids"]
+
+    # print(self.tuning_data)
 
     self.model.train()
 
