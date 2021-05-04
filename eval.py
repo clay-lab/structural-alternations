@@ -20,7 +20,16 @@ def tune(cfg: DictConfig) -> None:
 
   # Tune model
   tuner = Tuner(chkpt_cfg)
-  tuner.eval(eval_cfg = cfg, checkpoint_dir=chkpt_dir)
+  if cfg.entail:
+    tuner.eval_entailments(
+      eval_cfg = cfg,
+      checkpoint_dir = chkpt_dir
+    )
+  else:
+    tuner.eval(
+      eval_cfg = cfg, 
+      checkpoint_dir=chkpt_dir
+    )
 
 if __name__ == "__main__":
   tune()

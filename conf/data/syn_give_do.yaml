@@ -1,0 +1,16 @@
+# @package _group_
+
+# Synthetic double object constructions with 'give' in 
+#   active , passive
+# pairs
+
+name: syn_give_do.data
+description: "Synthetic 'give' DO active, passive pairs"
+
+eval_groups:
+  "theme" : "[unused2]"
+  "recipient" : "[unused1]"
+
+to_mask:
+  "[theme]" : "THAX"
+  "[recipient]" : "RICKET"

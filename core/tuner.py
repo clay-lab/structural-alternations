@@ -108,7 +108,7 @@ class Tuner:
       data_path
     )
 
-    with open(resolved_path, 'r') as f:
+    with open(resolved_path, "r") as f:
       raw_sentences = [line.strip().lower() for line in f]
       sentences = []
       for s in raw_sentences:
@@ -127,6 +127,57 @@ class Tuner:
       labels = self.tokenizer(sentences, return_tensors="pt", padding=True)["input_ids"]
 
       return inputs, labels
+  
+  def load_eval_multi_file(self, data_path: str, replacing: Dict[str, str]):
+
+    resolved_path = os.path.join(
+      hydra.utils.get_original_cwd(),
+      "data",
+      data_path
+    )
+
+    with open(resolved_path, "r") as f:
+      
+      raw_input = [line.strip().lower() for line in f]
+      sentences = []
+
+      for r in raw_input:
+        line = []
+        s_splits = r.split(',')
+        for s in s_splits:
+          for key in replacing:
+            s = s.replace(key, self.tokens_to_mask[replacing[key]])
+          line.append(s.strip())
+        sentences.append(line)
+      
+      masked_sentences = []
+      for s_group in sentences:
+        m_group = []
+        for s in s_group:
+          m = s
+          for val in list(self.tokens_to_mask.values()):
+            m = m.replace(val, self.mask_tok)
+          m_group.append(m)
+        masked_sentences.append(m_group)
+
+    sentences_transposed = list(map(list, zip(*sentences)))
+    masked_transposed = list(map(list, zip(*masked_sentences)))
+
+    inputs = []
+    labels = []
+
+    for s in sentences_transposed:
+      label = self.tokenizer(s, return_tensors="pt", padding=True)["input_ids"]
+      labels.append(label)
+    
+    for m in masked_transposed:
+      input = self.tokenizer(m, return_tensors="pt", padding=True)
+      inputs.append(input)
+
+    return {
+      "inputs" : inputs,
+      "labels" : labels
+    }
   
   def collect_results(self, inputs, eval_groups, outputs) -> Dict:
 
@@ -214,7 +265,7 @@ class Tuner:
           recipient_in_theme.append(scores['recipient'])
           theme_entropy.append(entropy)
           thax_confidence.append(scores['theme'] - scores['recipient'])
-          inanimate_confidence.append(scores['inanimate'] - scores['animate'])
+          inanimate_confidence.append(scores['animate'] - scores['inanimate'])
 
     summary['theme'] = {
       'entropy' : theme_entropy,
@@ -230,6 +281,102 @@ class Tuner:
 
     return summary
   
+  def collect_entailed_results(self, inputs, eval_groups, outputs):
+
+    results_arr = []
+    
+    for j in range(len(outputs)):
+
+      results = {}
+
+      logits = outputs[j].logits
+      probabilities = torch.nn.functional.softmax(logits, dim=2)
+      log_probabilities = torch.nn.functional.log_softmax(logits, dim=2)
+      predicted_ids = torch.argmax(log_probabilities, dim=2)
+
+      for i, _ in enumerate(predicted_ids):
+
+        sentence_results = {}
+        foci = torch.nonzero(inputs[j]["input_ids"][i]==self.mask_tok_id, as_tuple=True)[0]
+
+        for idx in foci:
+          idx_results = {}
+          for group in eval_groups:
+            tokens = eval_groups[group]
+            group_mean = 0.0
+            for token in tokens:
+              token_id = self.tokenizer(token, return_tensors="pt")["input_ids"][:,1]
+              group_mean += log_probabilities[:,idx,:][i,token_id].item()
+            idx_results[group] = group_mean
+          
+          sentence_results[idx] = {
+            'mean grouped log_probability' : idx_results,
+            'log_probabilities' : log_probabilities[:,idx,:][i,:],
+            'probabilities' : probabilities[:,idx,:][i,:],
+            'logits': logits[:,idx,:][i,:]
+          }
+        results[i] = sentence_results
+      
+      results_arr.append(results)
+    
+    return results_arr
+
+  def summarize_entailed_results(self, results_arr, labels_arr):
+
+    # Define theme and recipient ids
+    ricket = self.tokenizer(self.tokens_to_mask["RICKET"], return_tensors="pt")["input_ids"][:,1]
+    thax = self.tokenizer(self.tokens_to_mask["THAX"], return_tensors="pt")["input_ids"][:,1]
+    
+    active_results = results_arr[0]
+    active_labels = labels_arr[0]
+
+    passive_results = results_arr[1]
+    passive_labels = labels_arr[1]
+
+    confidences = []
+
+    for r in active_results:
+      
+      active_result = active_results[r]
+      active_label = active_labels[r]
+
+      passive_result = passive_results[r]
+      passive_label = passive_labels[r]
+
+      active_token_confidence = {}
+      passive_token_confidence = {}
+
+      for idx in active_result:
+
+        target = active_label[idx.item()]
+        scores = active_result[idx]['mean grouped log_probability']
+
+        token_conf = scores['theme'] - scores['recipient']
+
+        if target == ricket:
+          active_token_confidence["recipient"] = -token_conf
+        else:
+          active_token_confidence["theme"] = token_conf
+      
+      for idx in passive_result:
+
+        target = passive_label[idx.item()]
+        scores = passive_result[idx]['mean grouped log_probability']
+
+        token_conf = scores['theme'] - scores['recipient']
+
+        if target == ricket:
+          passive_token_confidence["recipient"] = -token_conf
+        else:
+          passive_token_confidence["theme"] = token_conf
+
+      confidences.append({
+        "active" : active_token_confidence,
+        "passive" : passive_token_confidence
+      })
+    
+    return confidences
+
   def graph_results(self, results: Dict, summary: Dict, eval_cfg: DictConfig):
 
     dataset = str(eval_cfg.data.name).split('.')[0]
@@ -243,21 +390,21 @@ class Tuner:
     anim = summary['recipient']['animacy_conf']
 
     # Entropy Plots
-    axs[0][0].hist(theme_entr, density=True)
+    axs[0][0].hist(theme_entr)
     axs[0][0].axvline(np.mean(theme_entr), color='r')
     axs[0][0].set_title('entropy [theme]')
 
-    axs[0][1].hist(recip_entr, density=True)
+    axs[0][1].hist(recip_entr)
     axs[0][1].axvline(np.mean(recip_entr), color='r')
     axs[0][1].set_title('entropy [recipient]')
 
     # Animacy Plots
 
-    axs[1][0].hist(inan, density=True)
+    axs[1][0].hist(inan)
     axs[1][0].axvline(np.mean(inan), color='r')
     axs[1][0].set_title('animacy confidence [theme]')
 
-    axs[1][1].hist(anim, density=True)
+    axs[1][1].hist(anim)
     axs[1][1].axvline(np.mean(anim), color='r')
     axs[1][1].set_title('animacy confidence [recipient]')
 
@@ -265,10 +412,49 @@ class Tuner:
 
     plt.savefig(f"{dataset}.png")
   
+  def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str):
+    """
+    Computes model performance on data consisting of 
+      sentence 1 | sentence 2
+    where credit for a correct prediction on sentence 2 is contingent on
+    also correctly predicting sentence 1.
+    """
+    
+    # Load model
+    log.info("Loading model from disk")
+    model_path = os.path.join(checkpoint_dir, "model.pt")
+    self.model.load_state_dict(torch.load(model_path))
+    self.model.eval()
+
+    # Load model
+    data = self.load_eval_multi_file(eval_cfg.data.name, eval_cfg.data.to_mask)
+    inputs = data["inputs"]
+    labels = data["labels"]
+
+    assert len(inputs) == len(labels), f"Inputs (size {len(inputs)}) must match labels (size {len(labels)}) in length"
+
+    # Calculate performance on data
+    with torch.no_grad():
+
+      log.info("Evaluating model on testing data")
+
+      outputs = []
+
+      for i in range(len(inputs)):
+        output = self.model(**inputs[i])
+        outputs.append(output)
+      
+      # Collect and summarize results
+      results = self.collect_entailed_results(inputs, eval_cfg.data.eval_groups, outputs)
+      summary = self.summarize_entailed_results(results, labels)
+
+      for line in summary:
+        print(line)
+
   def eval(self, eval_cfg: DictConfig, checkpoint_dir: str):
     
     # Load model from disk
-    log.info("Loading model from disk.")
+    log.info("Loading model from disk")
     model_path = os.path.join(checkpoint_dir, "model.pt")
     self.model.load_state_dict(torch.load(model_path))
     self.model.eval()
