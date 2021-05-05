@@ -6,8 +6,11 @@
 
 name: syn_give_do.data
 description: "Synthetic 'give' DO active, passive pairs"
+entail: true
 
 eval_groups:
+  "animate" : ['person', 'man', 'woman', 'student', 'teacher', "king", "queen", "prince", "princess", "writer", "author", "builder", "driver", "human", "dog", "bird", "dancer", "player", "angel", "actor", "actress", "singer", "director", "bee", "friend", "wolf", "lion", "scholar", "pirate", "spirit", "fox"]
+  "inanimate" : ['apple', 'book', 'chair', 'table', 'phone', "shoe", "water", "earth", "land", "light", "sun", "moon", "plate", "eye", "ear", "branch", "tree", "time", "energy", "bottle", "can", "mask", "leaf", "tile", "couch", "button", "box", "cap", "wire", "paper"]
   "theme" : "[unused2]"
   "recipient" : "[unused1]"
 

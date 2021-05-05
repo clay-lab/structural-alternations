@@ -10,6 +10,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from torch.distributions import Categorical
 from transformers import  DistilBertForMaskedLM, DistilBertTokenizer
+from torch.utils.tensorboard import SummaryWriter
 from omegaconf import DictConfig
 from tqdm import trange
 import logging
@@ -49,15 +50,20 @@ class Tuner:
   
   @property
   def tuning_data(self) -> List[str]:
-    return [s.lower() for s in self.cfg.tuning.data]
+    data = []
+    for s in self.cfg.tuning.data:
+      for key in self.tokens_to_mask:
+        s = s.replace(key, self.tokens_to_mask[key])
+      data.append(s)
+    return [d.lower() for d in data]
   
   @property
   def masked_tuning_data(self) -> List[str]:
     
     data = []
     for s in self.tuning_data:
-      for key in list(self.tokens_to_mask.keys()):
-        s = s.replace(key, self.mask_tok)
+      for val in list(self.tokens_to_mask.values()):
+        s = s.replace(val.lower(), self.mask_tok)
       data.append(s)
     
     return data
@@ -187,6 +193,10 @@ class Tuner:
     probabilities = torch.nn.functional.softmax(logits, dim=2)
     log_probabilities = torch.nn.functional.log_softmax(logits, dim=2)
     predicted_ids = torch.argmax(log_probabilities, dim=2)
+
+    # print(f"Mask token id: {self.mask_tok_id}")
+    # print("Inputs:")
+    # print(inputs["input_ids"])
 
     for i, _ in enumerate(predicted_ids):
 
@@ -354,8 +364,10 @@ class Tuner:
         token_conf = scores['theme'] - scores['recipient']
 
         if target == ricket:
+          # print("I'm in a recipient position")
           active_token_confidence["recipient"] = -token_conf
         else:
+          # print("I'm in a theme position")
           active_token_confidence["theme"] = token_conf
       
       for idx in passive_result:
@@ -363,11 +375,16 @@ class Tuner:
         target = passive_label[idx.item()]
         scores = passive_result[idx]['mean grouped log_probability']
 
+        # print(scores)
+        # raise SystemExit
+
         token_conf = scores['theme'] - scores['recipient']
 
         if target == ricket:
+          # print("I'm in a recipient position")
           passive_token_confidence["recipient"] = -token_conf
         else:
+          # print("I'm in a theme position")
           passive_token_confidence["theme"] = token_conf
 
       confidences.append({
@@ -411,11 +428,113 @@ class Tuner:
     fig.suptitle(f"{eval_cfg.data.description}")
 
     plt.savefig(f"{dataset}.png")
+
+    with open(f"{dataset}-scores.npy", "wb") as f:
+      np.save(f, np.array(theme_entr))
+      np.save(f, np.array(recip_entr))
+      np.save(f, np.array(inan))
+      np.save(f, np.array(anim))
+  
+  def get_entailed_summary(self, outputs, labels):
+    """
+    Returns a list of dictionaries of the form
+     n : {"active" : {"theme" : __, "recipient" : __}, "passive" : ...}
+    where n is the index of the active-passive pair in the testing data,
+    and each dictionary contains two sub-dictionaries (for active and passive 
+    sentence, respectively). In the active dict, e.g., 
+      "theme" == confidence in THAX versus RICKET (diff. of log probs)
+    while
+      "recipeint" == confidence in RICKET vs THAX
+    """
+    summary = []
+
+    active_outputs = outputs[0]
+    active_logprobs = torch.nn.functional.log_softmax(active_outputs.logits, dim=2)
+    active_labels = labels[0]
+
+    passive_outputs = outputs[1]
+    passive_logprobs = torch.nn.functional.log_softmax(passive_outputs.logits, dim=2)
+    passive_labels = labels[1]
+
+    tok_indexes = self.tokenizer.convert_tokens_to_ids(list(self.tokens_to_mask.values()))
+    thax_foci = [
+      ((active_labels == tok_indexes[0]).nonzero(as_tuple=True)[1]),
+      ((passive_labels == tok_indexes[0]).nonzero(as_tuple=True)[1])
+    ]
+
+    ricket_foci = [
+      ((active_labels == tok_indexes[1]).nonzero(as_tuple=True)[1]),
+      ((passive_labels == tok_indexes[1]).nonzero(as_tuple=True)[1])
+    ]
+
+    # print(tok_indexes)
+    # print(thax_foci)
+
+    # Active Theme confidence
+    ac_thax_in_theme = active_logprobs[:,:,tok_indexes[0]][range(active_logprobs.shape[0]), thax_foci[0]]
+    ac_rick_in_theme = active_logprobs[:,:,tok_indexes[1]][range(active_logprobs.shape[0]), thax_foci[0]]
+    active_theme = ac_thax_in_theme - ac_rick_in_theme
+
+    # Active Recipient Confidence
+    ac_thax_in_recip = active_logprobs[:,:,tok_indexes[0]][range(active_logprobs.shape[0]), ricket_foci[0]]
+    ac_rick_in_recip = active_logprobs[:,:,tok_indexes[1]][range(active_logprobs.shape[0]), ricket_foci[0]]
+    active_recip = ac_rick_in_recip - ac_thax_in_recip
+
+    # Passive Theme confidence
+    pa_thax_in_theme = passive_logprobs[:,:,tok_indexes[0]][range(passive_logprobs.shape[0]), thax_foci[1]]
+    pa_rick_in_theme = passive_logprobs[:,:,tok_indexes[1]][range(passive_logprobs.shape[0]), thax_foci[1]]
+    passive_theme = pa_thax_in_theme - pa_rick_in_theme
+
+    # Active Recipient Confidence
+    pa_thax_in_recip = passive_logprobs[:,:,tok_indexes[0]][range(passive_logprobs.shape[0]), ricket_foci[1]]
+    pa_rick_in_recip = passive_logprobs[:,:,tok_indexes[1]][range(passive_logprobs.shape[0]), ricket_foci[1]]
+    passive_recip = pa_rick_in_recip - pa_thax_in_recip
+
+    for i in range(active_theme.shape[0]):
+      summary.append({
+        "active" : {
+          "theme" : active_theme[i],
+          "recipient" : active_recip[i]
+        }, "passive" : {
+          "theme" : passive_theme[i],
+          "recipient" : passive_recip[i]
+        }
+      })
+    
+    return summary
+  
+  def graph_entailed_results(self, summary):
+
+    theme_points = [(l['active']['theme'], l['passive']['theme']) for l in summary]
+    recipient_points = [(l['active']['recipient'], l['passive']['recipient']) for l in summary]
+
+    fig, ax = plt.subplots()
+
+    ax.scatter(
+      x=[t[0] for t in theme_points], 
+      y=[t[1] for t in theme_points], 
+      c='teal',
+      label='[thax] in theme position'
+    )
+    ax.scatter(
+      x=[t[0] for t in recipient_points], 
+      y=[t[1] for t in recipient_points], 
+      c='r',
+      label="[ricket] in recipient position"
+    )
+
+    ax.set_xlabel("Token confidence in active sentences")
+    ax.set_ylabel("Token confidence in passive sentences")
+    ax.legend()
+
+    fig.suptitle("Token confidence across voice")
+    fig.tight_layout()
+    plt.savefig("entail.png")
   
   def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str):
     """
     Computes model performance on data consisting of 
-      sentence 1 | sentence 2
+      sentence 1 , sentence 2
     where credit for a correct prediction on sentence 2 is contingent on
     also correctly predicting sentence 1.
     """
@@ -443,13 +562,40 @@ class Tuner:
       for i in range(len(inputs)):
         output = self.model(**inputs[i])
         outputs.append(output)
-      
-      # Collect and summarize results
-      results = self.collect_entailed_results(inputs, eval_cfg.data.eval_groups, outputs)
-      summary = self.summarize_entailed_results(results, labels)
 
-      for line in summary:
-        print(line)
+        # logits = output.logits
+        # lps = torch.nn.functional.log_softmax(logits, dim=2)
+
+        # predicted_tokens = torch.argmax(logits, dim=2)
+        # print(self.tokenizer.convert_ids_to_tokens(predicted_tokens[0,:].tolist()))
+
+        # # 5 and 7
+        # # Probability in first sentence in 5h position
+        # theme_conf = lps[0,5,3]
+        # recip_conf = lps[0,5,2]
+
+        # print(f"Position 5 (recipient): {recip_conf - theme_conf}")
+        # print(f"\t[theme] confidence: {theme_conf}")
+        # print(f"\t[recipient] confidence: {recip_conf}")
+
+        # theme_conf = lps[0,7,3]
+        # recip_conf = lps[0,7,2]
+
+        # print(f"Position t (theme): {theme_conf - recip_conf}")
+        # print(f"\t[theme] confidence: {theme_conf}")
+        # print(f"\t[recipient] confidence: {recip_conf}")
+
+        # raise SystemExit
+
+      # Collect and summarize results
+      # results = self.collect_entailed_results(inputs, eval_cfg.data.eval_groups, outputs)
+      # summary = self.summarize_entailed_results(results, labels)
+
+      summary = self.get_entailed_summary(outputs, labels)
+      self.graph_entailed_results(summary)
+
+      # for line in summary:
+      #   print(line)
 
   def eval(self, eval_cfg: DictConfig, checkpoint_dir: str):
     
@@ -479,6 +625,8 @@ class Tuner:
     Fine-tunes the model on the provided tuning data. Saves model state to disk.
     """
 
+    log.info(f"Training model @ '{os.getcwd()}'")
+
     if not self.tuning_data:
       log.info("Saving model state dictionary.")
       torch.save(self.model.state_dict(), "model.pt")
@@ -489,6 +637,8 @@ class Tuner:
     epochs = self.cfg.hyperparameters.epochs
     optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
 
+    writer = SummaryWriter()
+
     # Construct inputs, labels
     if self.cfg.hyperparameters.masked:
       inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
@@ -496,18 +646,35 @@ class Tuner:
       inputs = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)
     labels = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)["input_ids"]
 
-    # print(self.tuning_data)
+    # print(self.tokenizer.convert_ids_to_tokens(inputs["input_ids"][0].tolist()))
+    # print(self.tokenizer.convert_ids_to_tokens(labels[0].tolist()))
 
     self.model.train()
 
     log.info("Fine-tuning model")
     with trange(epochs) as t:
+      for epoch in t:
 
-      for _ in t:
-
+        # Compute forward pass
         outputs = self.model(**inputs, labels=labels)
         loss = outputs.loss
         loss.backward()
+        
+        # Log results
+        writer.add_scalar(f"loss/{self.model_bert_name}", loss, epoch)
+        masked_input = self.tokenizer(
+          self.masked_tuning_data, 
+          return_tensors="pt", 
+          padding=True
+        )
+        results = self.collect_results(masked_input, self.tokens_to_mask, outputs)
+
+        sent_key = list(results.keys())[0]
+        pos_key = list(results[sent_key].keys())[0]
+        spec_results = results[sent_key][pos_key]["mean grouped log_probability"]
+
+        for key in spec_results:
+          writer.add_scalar(f"{key} LogProb/{self.model_bert_name}", spec_results[key], epoch)
 
         # Zero-out gradient of embeddings asside from the rows we care about
         nz_grad = {}
@@ -535,4 +702,7 @@ class Tuner:
         
     log.info("Saving model state dictionary.")
     torch.save(self.model.state_dict(), "model.pt")
+
+    writer.flush()
+    writer.close()
 

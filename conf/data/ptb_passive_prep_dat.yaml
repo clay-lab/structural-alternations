@@ -4,6 +4,7 @@
 
 name: ptb_passive_prep_dat.data
 description: "PTB Passive Prepositional Dative"
+entail: false
 
 eval_groups:
   "animate" : ['person', 'man', 'woman', 'student', 'teacher', "king", "queen", "prince", "princess", "writer", "author", "builder", "driver", "human", "dog", "bird", "dancer", "player", "angel", "actor", "actress", "singer", "director", "bee", "friend", "wolf", "lion", "scholar", "pirate", "spirit", "fox"]

@@ -13,6 +13,7 @@ numpy = "^1.20.2"
 torch = "^1.8.1"
 tqdm = "^4.60.0"
 matplotlib = "^3.4.1"
+tensorboard = "*"
 
 [tool.poetry.dev-dependencies]
 

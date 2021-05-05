@@ -4,6 +4,7 @@
 
 name: ptb_passive_dbl_obj.data
 description: "PTB Passive Double Object"
+entail: false
 
 eval_groups:
   "animate" : ['person', 'man', 'woman', 'student', 'teacher', "king", "queen", "prince", "princess", "writer", "author", "builder", "driver", "human", "dog", "bird", "dancer", "player", "angel", "actor", "actress", "singer", "director", "bee", "friend", "wolf", "lion", "scholar", "pirate", "spirit", "fox"]

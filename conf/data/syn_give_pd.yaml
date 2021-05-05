@@ -1,10 +1,12 @@
 # @package _group_
 
-# Active Prepositional Dative constructions from the WSJ corpus of the Penn Tree Bank.
+# Synthetic prepositional dative constructions with 'give' in 
+#   active , passive
+# pairs
 
-name: ptb_active_prep_dat.data
-description: "PTB Active Prepositional Dative"
-entail: false
+name: syn_give_pd.data
+description: "Synthetic 'give' PD active, passive pairs"
+entail: true
 
 eval_groups:
   "animate" : ['person', 'man', 'woman', 'student', 'teacher', "king", "queen", "prince", "princess", "writer", "author", "builder", "driver", "human", "dog", "bird", "dancer", "player", "angel", "actor", "actress", "singer", "director", "bee", "friend", "wolf", "lion", "scholar", "pirate", "spirit", "fox"]

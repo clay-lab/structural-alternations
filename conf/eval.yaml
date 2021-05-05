@@ -1,7 +1,6 @@
 defaults:
   - data: ptb_active_dbl_obj
 
-entail: false
 checkpoint_dir: ???
 
 hydra:
