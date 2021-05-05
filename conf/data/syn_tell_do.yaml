@@ -1,11 +1,11 @@
 # @package _group_
 
-# Synthetic prepositional dative constructions with 'give' in 
+# Synthetic double object constructions with 'tell' in 
 #   active , passive
 # pairs
 
-name: syn_give_pd.data
-description: "Synthetic 'give' PD active, passive pairs"
+name: syn_tell_do.data
+description: "Synthetic 'tell' DO active, passive pairs"
 entail: true
 
 eval_groups:

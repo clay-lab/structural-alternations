@@ -456,38 +456,44 @@ class Tuner:
     passive_logprobs = torch.nn.functional.log_softmax(passive_outputs.logits, dim=2)
     passive_labels = labels[1]
 
-    tok_indexes = self.tokenizer.convert_tokens_to_ids(list(self.tokens_to_mask.values()))
+    print(f"Tokens: {list(self.tokens_to_mask.keys())}")
+    print(f"BERT Tokens: {list(self.tokens_to_mask.values())}")
+
+    tok_indices = self.tokenizer.convert_tokens_to_ids(list(self.tokens_to_mask.values()))
+    rick_id = tok_indices[0]
+    thax_id = tok_indices[1]
+
     thax_foci = [
-      ((active_labels == tok_indexes[0]).nonzero(as_tuple=True)[1]),
-      ((passive_labels == tok_indexes[0]).nonzero(as_tuple=True)[1])
+      ((active_labels == thax_id).nonzero(as_tuple=True)[1]),
+      ((passive_labels == thax_id).nonzero(as_tuple=True)[1])
     ]
 
     ricket_foci = [
-      ((active_labels == tok_indexes[1]).nonzero(as_tuple=True)[1]),
-      ((passive_labels == tok_indexes[1]).nonzero(as_tuple=True)[1])
+      ((active_labels == rick_id).nonzero(as_tuple=True)[1]),
+      ((passive_labels == rick_id).nonzero(as_tuple=True)[1])
     ]
 
     # print(tok_indexes)
     # print(thax_foci)
 
     # Active Theme confidence
-    ac_thax_in_theme = active_logprobs[:,:,tok_indexes[0]][range(active_logprobs.shape[0]), thax_foci[0]]
-    ac_rick_in_theme = active_logprobs[:,:,tok_indexes[1]][range(active_logprobs.shape[0]), thax_foci[0]]
+    ac_thax_in_theme = active_logprobs[:,:,thax_id][range(active_logprobs.shape[0]), thax_foci[0]]
+    ac_rick_in_theme = active_logprobs[:,:,rick_id][range(active_logprobs.shape[0]), thax_foci[0]]
     active_theme = ac_thax_in_theme - ac_rick_in_theme
 
     # Active Recipient Confidence
-    ac_thax_in_recip = active_logprobs[:,:,tok_indexes[0]][range(active_logprobs.shape[0]), ricket_foci[0]]
-    ac_rick_in_recip = active_logprobs[:,:,tok_indexes[1]][range(active_logprobs.shape[0]), ricket_foci[0]]
+    ac_thax_in_recip = active_logprobs[:,:,thax_id][range(active_logprobs.shape[0]), ricket_foci[0]]
+    ac_rick_in_recip = active_logprobs[:,:,rick_id][range(active_logprobs.shape[0]), ricket_foci[0]]
     active_recip = ac_rick_in_recip - ac_thax_in_recip
 
     # Passive Theme confidence
-    pa_thax_in_theme = passive_logprobs[:,:,tok_indexes[0]][range(passive_logprobs.shape[0]), thax_foci[1]]
-    pa_rick_in_theme = passive_logprobs[:,:,tok_indexes[1]][range(passive_logprobs.shape[0]), thax_foci[1]]
+    pa_thax_in_theme = passive_logprobs[:,:,thax_id][range(passive_logprobs.shape[0]), thax_foci[1]]
+    pa_rick_in_theme = passive_logprobs[:,:,rick_id][range(passive_logprobs.shape[0]), thax_foci[1]]
     passive_theme = pa_thax_in_theme - pa_rick_in_theme
 
     # Active Recipient Confidence
-    pa_thax_in_recip = passive_logprobs[:,:,tok_indexes[0]][range(passive_logprobs.shape[0]), ricket_foci[1]]
-    pa_rick_in_recip = passive_logprobs[:,:,tok_indexes[1]][range(passive_logprobs.shape[0]), ricket_foci[1]]
+    pa_thax_in_recip = passive_logprobs[:,:,thax_id][range(passive_logprobs.shape[0]), ricket_foci[1]]
+    pa_rick_in_recip = passive_logprobs[:,:,rick_id][range(passive_logprobs.shape[0]), ricket_foci[1]]
     passive_recip = pa_rick_in_recip - pa_thax_in_recip
 
     for i in range(active_theme.shape[0]):
@@ -503,7 +509,9 @@ class Tuner:
     
     return summary
   
-  def graph_entailed_results(self, summary):
+  def graph_entailed_results(self, summary, eval_cfg: DictConfig):
+
+    dataset_name = eval_cfg.data.name.split('.')[0]
 
     theme_points = [(l['active']['theme'], l['passive']['theme']) for l in summary]
     recipient_points = [(l['active']['recipient'], l['passive']['recipient']) for l in summary]
@@ -527,9 +535,9 @@ class Tuner:
     ax.set_ylabel("Token confidence in passive sentences")
     ax.legend()
 
-    fig.suptitle("Token confidence across voice")
+    fig.suptitle(f"{eval_cfg.data.description}")
     fig.tight_layout()
-    plt.savefig("entail.png")
+    plt.savefig(f"{dataset_name}-paired.png")
   
   def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str):
     """
@@ -563,39 +571,11 @@ class Tuner:
         output = self.model(**inputs[i])
         outputs.append(output)
 
-        # logits = output.logits
-        # lps = torch.nn.functional.log_softmax(logits, dim=2)
-
-        # predicted_tokens = torch.argmax(logits, dim=2)
-        # print(self.tokenizer.convert_ids_to_tokens(predicted_tokens[0,:].tolist()))
-
-        # # 5 and 7
-        # # Probability in first sentence in 5h position
-        # theme_conf = lps[0,5,3]
-        # recip_conf = lps[0,5,2]
-
-        # print(f"Position 5 (recipient): {recip_conf - theme_conf}")
-        # print(f"\t[theme] confidence: {theme_conf}")
-        # print(f"\t[recipient] confidence: {recip_conf}")
-
-        # theme_conf = lps[0,7,3]
-        # recip_conf = lps[0,7,2]
-
-        # print(f"Position t (theme): {theme_conf - recip_conf}")
-        # print(f"\t[theme] confidence: {theme_conf}")
-        # print(f"\t[recipient] confidence: {recip_conf}")
-
-        # raise SystemExit
-
-      # Collect and summarize results
-      # results = self.collect_entailed_results(inputs, eval_cfg.data.eval_groups, outputs)
-      # summary = self.summarize_entailed_results(results, labels)
-
       summary = self.get_entailed_summary(outputs, labels)
-      self.graph_entailed_results(summary)
+      self.graph_entailed_results(summary, eval_cfg)
 
-      # for line in summary:
-      #   print(line)
+      for line in summary:
+        print(line)
 
   def eval(self, eval_cfg: DictConfig, checkpoint_dir: str):
     
