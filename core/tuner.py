@@ -456,9 +456,6 @@ class Tuner:
     passive_logprobs = torch.nn.functional.log_softmax(passive_outputs.logits, dim=2)
     passive_labels = labels[1]
 
-    print(f"Tokens: {list(self.tokens_to_mask.keys())}")
-    print(f"BERT Tokens: {list(self.tokens_to_mask.values())}")
-
     tok_indices = self.tokenizer.convert_tokens_to_ids(list(self.tokens_to_mask.values()))
     rick_id = tok_indices[0]
     thax_id = tok_indices[1]
@@ -473,9 +470,6 @@ class Tuner:
       ((passive_labels == rick_id).nonzero(as_tuple=True)[1])
     ]
 
-    # print(tok_indexes)
-    # print(thax_foci)
-
     # Active Theme confidence
     ac_thax_in_theme = active_logprobs[:,:,thax_id][range(active_logprobs.shape[0]), thax_foci[0]]
     ac_rick_in_theme = active_logprobs[:,:,rick_id][range(active_logprobs.shape[0]), thax_foci[0]]
@@ -484,7 +478,7 @@ class Tuner:
     # Active Recipient Confidence
     ac_thax_in_recip = active_logprobs[:,:,thax_id][range(active_logprobs.shape[0]), ricket_foci[0]]
     ac_rick_in_recip = active_logprobs[:,:,rick_id][range(active_logprobs.shape[0]), ricket_foci[0]]
-    active_recip = ac_rick_in_recip - ac_thax_in_recip
+    active_recip = ac_thax_in_recip - ac_rick_in_recip 
 
     # Passive Theme confidence
     pa_thax_in_theme = passive_logprobs[:,:,thax_id][range(passive_logprobs.shape[0]), thax_foci[1]]
@@ -494,7 +488,7 @@ class Tuner:
     # Active Recipient Confidence
     pa_thax_in_recip = passive_logprobs[:,:,thax_id][range(passive_logprobs.shape[0]), ricket_foci[1]]
     pa_rick_in_recip = passive_logprobs[:,:,rick_id][range(passive_logprobs.shape[0]), ricket_foci[1]]
-    passive_recip = pa_rick_in_recip - pa_thax_in_recip
+    passive_recip = pa_thax_in_recip - pa_rick_in_recip 
 
     for i in range(active_theme.shape[0]):
       summary.append({
@@ -516,23 +510,46 @@ class Tuner:
     theme_points = [(l['active']['theme'], l['passive']['theme']) for l in summary]
     recipient_points = [(l['active']['recipient'], l['passive']['recipient']) for l in summary]
 
+    x_points = []
+    y_points = []
+
+    for i, _ in enumerate(theme_points):
+      x_points.append(theme_points[i][0])
+      x_points.append(recipient_points[i][0])
+
+      y_points.append(theme_points[i][1])
+      y_points.append(recipient_points[i][1])
+    
+    x_lim = np.max([np.abs(p) for p in x_points]) + 0.5
+    y_lim = np.max([np.abs(p) for p in y_points]) + 0.5
+
+    lim = np.max([x_lim, y_lim])
+
     fig, ax = plt.subplots()
+
+    ax.set_xlim(-lim, lim)
+    ax.set_ylim(-lim, lim)
 
     ax.scatter(
       x=[t[0] for t in theme_points], 
       y=[t[1] for t in theme_points], 
       c='teal',
-      label='[thax] in theme position'
+      label='theme position'
     )
     ax.scatter(
       x=[t[0] for t in recipient_points], 
       y=[t[1] for t in recipient_points], 
       c='r',
-      label="[ricket] in recipient position"
+      label="recipient position"
     )
 
-    ax.set_xlabel("Token confidence in active sentences")
-    ax.set_ylabel("Token confidence in passive sentences")
+    # Line
+    xpoints = ypoints = ax.get_xlim()
+    ax.plot(xpoints, ypoints, linestyle='--', color='k', scalex=False, scaley=False)
+
+    ax.set_aspect(1.0/ax.get_data_ratio(), adjustable='box')
+    ax.set_xlabel("[thax] confidence in active sentences")
+    ax.set_ylabel("[thax] confidence in passive sentences")
     ax.legend()
 
     fig.suptitle(f"{eval_cfg.data.description}")
