@@ -1,0 +1,10 @@
+# @package _group_
+
+name: active_with
+
+to_mask:
+  "THAX" : "[unused2]"
+
+data:
+  - "The THAX broke"
+  - "A THAX broke"
