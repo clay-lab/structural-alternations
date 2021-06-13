@@ -9,7 +9,7 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 from torch.distributions import Categorical
-from transformers import  DistilBertForMaskedLM, DistilBertTokenizer
+from transformers import  DistilBertForMaskedLM, DistilBertTokenizer, RobertaForMaskedLM, RobertaTokenizer, BertForMaskedLM, BertTokenizer
 from torch.utils.tensorboard import SummaryWriter
 from omegaconf import DictConfig
 from tqdm import trange
@@ -25,16 +25,28 @@ class Tuner:
   def model_class(self):
     if self.cfg.model.base_class == "DistilBertForMaskedLM":
       return DistilBertForMaskedLM
+    elif self.cfg.model.base_class == "RobertaForMaskedLM":
+      return RobertaForMaskedLM
+    elif self.cfg.model.base_class == "BertForMaskedLM":
+      return BertForMaskedLM
   
   @property
   def tokenizer_class(self):
     if self.cfg.model.tokenizer == "DistilBertTokenizer":
       return DistilBertTokenizer
+    elif self.cfg.model.tokenizer == "RobertaTokenizer":
+      return RobertaTokenizer
+    elif self.cfg.model.tokenizer == "BertTokenizer":
+      return BertTokenizer
   
   @property
   def model_bert_name(self) -> str:
     if self.cfg.model.base_class == "DistilBertForMaskedLM":
       return 'distilbert'
+    elif self.cfg.model.base_class == "RobertaForMaskedLM":
+      return 'roberta'
+    elif self.cfg.model.base_class == "BertForMaskedLM":
+      return 'bert'
   
   @property
   def mask_tok(self):
@@ -470,25 +482,33 @@ class Tuner:
       ((passive_labels == rick_id).nonzero(as_tuple=True)[1])
     ]
 
+    print(thax_foci, ricket_foci)
+    
     # Active Theme confidence
     ac_thax_in_theme = active_logprobs[:,:,thax_id][range(active_logprobs.shape[0]), thax_foci[0]]
     ac_rick_in_theme = active_logprobs[:,:,rick_id][range(active_logprobs.shape[0]), thax_foci[0]]
     active_theme = ac_thax_in_theme - ac_rick_in_theme
-
-    # Active Recipient Confidence
-    ac_thax_in_recip = active_logprobs[:,:,thax_id][range(active_logprobs.shape[0]), ricket_foci[0]]
-    ac_rick_in_recip = active_logprobs[:,:,rick_id][range(active_logprobs.shape[0]), ricket_foci[0]]
-    active_recip = ac_thax_in_recip - ac_rick_in_recip 
-
+    
     # Passive Theme confidence
     pa_thax_in_theme = passive_logprobs[:,:,thax_id][range(passive_logprobs.shape[0]), thax_foci[1]]
     pa_rick_in_theme = passive_logprobs[:,:,rick_id][range(passive_logprobs.shape[0]), thax_foci[1]]
     passive_theme = pa_thax_in_theme - pa_rick_in_theme
 
-    # Active Recipient Confidence
-    pa_thax_in_recip = passive_logprobs[:,:,thax_id][range(passive_logprobs.shape[0]), ricket_foci[1]]
-    pa_rick_in_recip = passive_logprobs[:,:,rick_id][range(passive_logprobs.shape[0]), ricket_foci[1]]
-    passive_recip = pa_thax_in_recip - pa_rick_in_recip 
+    if not(ricket_foci[0].shape[0]==0 and ricket_foci[1].shape[0]==0):
+      # Active Recipient Confidence
+      ac_thax_in_recip = active_logprobs[:,:,thax_id][range(active_logprobs.shape[0]), ricket_foci[0]]
+      ac_rick_in_recip = active_logprobs[:,:,rick_id][range(active_logprobs.shape[0]), ricket_foci[0]]
+      active_recip = ac_thax_in_recip - ac_rick_in_recip 
+    
+      # Active Recipient Confidence
+      pa_thax_in_recip = passive_logprobs[:,:,thax_id][range(passive_logprobs.shape[0]), ricket_foci[1]]
+      pa_rick_in_recip = passive_logprobs[:,:,rick_id][range(passive_logprobs.shape[0]), ricket_foci[1]]
+      passive_recip = pa_thax_in_recip - pa_rick_in_recip 
+
+    else:
+      active_recip = torch.empty_like(active_theme)
+      passive_recip = torch.empty_like(passive_theme)
+
 
     for i in range(active_theme.shape[0]):
       summary.append({
@@ -623,6 +643,7 @@ class Tuner:
     """
 
     log.info(f"Training model @ '{os.getcwd()}'")
+    # log.info(self.model)
 
     if not self.tuning_data:
       log.info("Saving model state dictionary.")
@@ -643,8 +664,8 @@ class Tuner:
       inputs = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)
     labels = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)["input_ids"]
 
-    # print(self.tokenizer.convert_ids_to_tokens(inputs["input_ids"][0].tolist()))
-    # print(self.tokenizer.convert_ids_to_tokens(labels[0].tolist()))
+    log.info(self.tokenizer.convert_ids_to_tokens(inputs["input_ids"][0].tolist()))
+    log.info(self.tokenizer.convert_ids_to_tokens(labels[0].tolist()))
 
     self.model.train()
 

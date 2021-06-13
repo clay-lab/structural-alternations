@@ -1,0 +1,17 @@
+# @package _group_
+
+# Synthetic prepositional dative constructions with 'teach' in 
+#   active , passive
+# pairs
+
+name: syn_teach_pd.data
+description: "Synthetic 'teach' PD active, passive pairs"
+entail: true
+
+eval_groups:
+  "theme" : "[unused2]"
+  "recipient" : "[unused1]"
+
+to_mask:
+  "[theme]" : "THAX"
+  "[recipient]" : "RICKET"

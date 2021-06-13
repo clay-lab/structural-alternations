@@ -1,0 +1,17 @@
+# @package _group_
+
+# Synthetic causative constructions with 'break' in 
+#   active , passive
+# pairs
+
+name: syn_break_caus_passive.data
+description: "Synthetic 'break' active, passive pairs"
+entail: true
+
+eval_groups:
+  "theme" : "[unused2]"
+  "agent" : "[unused1]"
+
+to_mask:
+  "[theme]" : "THAX"
+  "[agent]" : "RICKET"
