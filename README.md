@@ -25,7 +25,7 @@ configuration files are stored within the `conf/` directory:
   - `conf/eval.yaml` controls the `data` used for model evaluation (default: `ptb_active_dbl_obj`) and the relative directory path `checkpoint_dir` of the model used for evaluation (no default provided; these will appear in the `outputs/` directory once a model has been downloaded and optionally tuned).
   - `conf/tuning/` is a directory containing configuration files for tuning a model. Each file must specify three things: a `name`, a dictionary of tokens `to_mask` of the form `"short_name" : "model_vocab_idx"` which will be masked out during tuning, and a list of tuning `data` sentences.
   - `conf/model/` is a directory containing configuration files for the types of pre-trained models. Each file must specify the `base_class`, the `tokenizer` class, and the `string_id` of a pre-trained model family from HuggingFace.
-  - `conf/data/` is a directory containing configuration files for the various evaluation datasets. Each file must specify five things: a unique `name`, pointing to a CSV file in the `data/` directory (note, the project-root-level subdirectory, not the configuration directory) containing the actual evaluation data, a short `description` of the dataset, whether or not the entries in the data file represent `entail`ment relations (i.e., whether during evaluation it must be the case that success on the second sentence in a given line is predicated by success on the first sentence), a dictionary of `eval_groups` of the form `"group_name" : ["list", "of", "tokens"]` specifying groups of tokens used by the evaluation scripts to compute model performance on the dataset, and a dictionary of tokens `to_mask` from the evaluation data.
+  - `conf/data/` is a directory containing configuration files for the various evaluation datasets. Each file must specify five things: a unique `name`, pointing to a CSV file in the `data/` directory (note, the project-root-level subdirectory, not the configuration directory) containing the actual evaluation data, a short `description` of the dataset, whether or not the entries in the data file represent `entail`ment relations (i.e., whether during evaluation it must be the case that success on the second sentence in a loaded line is predicated by success on the first sentence), a dictionary of `eval_groups` of the form `"group_name" : ["list", "of", "tokens"]` specifying groups of tokens used by the evaluation scripts to compute model performance on the dataset, and a dictionary of tokens `to_mask` from the evaluation data.
 
 ### Framework Interface
 
@@ -37,7 +37,7 @@ python tune.py model=bert tuning=untuned
 ```
 This script will pull a vanilla BERT model from HuggingFace, do nothing with it 
 (i.e., tune it on an empty dataset), and save it to the outputs directory. Note 
-that the valid `key`s for a given script represent folders within the `conf/` directory
+that the valid `key`s for a loaded script represent folders within the `conf/` directory
 and the `value`s are the names of the YAML configuration files within those 
 directories (without the `.yaml` file extension).
 

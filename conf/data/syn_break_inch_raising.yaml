@@ -1,0 +1,15 @@
+# @package _group_
+
+# Synthetic  constructions with 'break' in 
+#   monoclausal causative, raising inchoative
+# pairs
+
+name: syn_break_caus_inch_raising.data
+description: "Synthetic 'break' monoclausal, raising inchoative pairs"
+entail: true
+
+eval_groups:
+  "theme" : "[unused2]"
+
+to_mask:
+  "[theme]" : "THAX"
