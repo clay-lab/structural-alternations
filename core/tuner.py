@@ -472,6 +472,13 @@ class Tuner:
     rick_id = tok_indices[0]
     thax_id = tok_indices[1]
 
+    # print("\n\n########################")
+    # print("active_labels:", active_labels.size())
+    # print(active_labels)
+    # print("passive_labels:", passive_labels.size())
+    # print(passive_labels)
+    # print("########################\n\n")
+
     thax_foci = [
       ((active_labels == thax_id).nonzero(as_tuple=True)[1]),
       ((passive_labels == thax_id).nonzero(as_tuple=True)[1])
@@ -481,15 +488,31 @@ class Tuner:
       ((active_labels == rick_id).nonzero(as_tuple=True)[1]),
       ((passive_labels == rick_id).nonzero(as_tuple=True)[1])
     ]
-
-    print(thax_foci, ricket_foci)
     
     # Active Theme confidence
+
+    # print("\n\n######################")
+    # print("passive_logprobs", active_logprobs.size())
+    # print("thax_id", thax_id)
+    # print("passive_logprobs[:,:,thax_id]", active_logprobs[:,:,thax_id].size())
+    # print("range(passive_logprobs.shape[0])", range(active_logprobs.shape[0]))
+    # print("thax_foci[0]", thax_foci[0].size())
+    # print("######################\n\n")
+
     ac_thax_in_theme = active_logprobs[:,:,thax_id][range(active_logprobs.shape[0]), thax_foci[0]]
     ac_rick_in_theme = active_logprobs[:,:,rick_id][range(active_logprobs.shape[0]), thax_foci[0]]
     active_theme = ac_thax_in_theme - ac_rick_in_theme
     
     # Passive Theme confidence
+
+    # print("\n\n######################")
+    # print("passive_logprobs", passive_logprobs.size())
+    # print("thax_id", thax_id)
+    # print("passive_logprobs[:,:,thax_id]", passive_logprobs[:,:,thax_id].size())
+    # print("range(passive_logprobs.shape[0])", range(passive_logprobs.shape[0]))
+    # print("thax_foci[1]", thax_foci[1].size())
+    # print("######################\n\n")
+
     pa_thax_in_theme = passive_logprobs[:,:,thax_id][range(passive_logprobs.shape[0]), thax_foci[1]]
     pa_rick_in_theme = passive_logprobs[:,:,rick_id][range(passive_logprobs.shape[0]), thax_foci[1]]
     passive_theme = pa_thax_in_theme - pa_rick_in_theme
@@ -575,6 +598,10 @@ class Tuner:
     fig.suptitle(f"{eval_cfg.data.description}")
     fig.tight_layout()
     plt.savefig(f"{dataset_name}-paired.png")
+
+    with open(f"{dataset_name}-scores.npy", "wb") as f:
+      np.save(f, np.array(theme_points))
+      np.save(f, np.array(recipient_points))
   
   def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str):
     """
