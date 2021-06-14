@@ -1,13 +1,17 @@
 # @package _group_
 
-name: active_with
+name: causative
 
 to_mask:
   "RICKET" : "[unused1]"
   "THAX" : "[unused2]"
 
 data:
-  - "The RICKET broke the THAX"
-  - "The RICKET broke a THAX"
-  - "A RICKET broke a THAX"
-  - "A RICKET broke the THAX"
+  - "The RICKET broke that"
+  - "The RICKET broke a window"
+  - "A RICKET broke the vases"
+  - "A RICKET broke it"
+  - "The teachers broke the THAX"
+  - "I broke the THAX"
+  - "They broke a THAX"
+  - "A student broke a THAX"
