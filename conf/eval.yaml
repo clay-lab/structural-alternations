@@ -1,8 +1,11 @@
 defaults:
-  - data: ptb_active_dbl_obj
+  - data: syn_give_do
 
-checkpoint_dir: ???
+checkpoint_dir: outputs/active_DO/DistilBertForMaskedLM/masked-False/2021-06-15_12-43-59
 
 hydra:
   run:
     dir: ${checkpoint_dir}/eval
+  sweep:
+    dir: ${checkpoint_dir}/eval
+    subdir: "."

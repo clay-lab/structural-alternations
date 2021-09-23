@@ -15,7 +15,16 @@ from omegaconf import DictConfig
 from tqdm import trange
 import logging
 
+import random
+
 log = logging.getLogger(__name__)
+
+def set_seed(seed):
+  random.seed(seed)
+  np.random.seed(seed)
+  torch.manual_seed(seed)
+  torch.cuda.manual_seed(seed)
+  torch.cuda.manual_seed_all(seed)
 
 class Tuner:
 
@@ -96,11 +105,52 @@ class Tuner:
 
     self.tokenizer = self.tokenizer_class.from_pretrained(
       self.string_id, 
-      do_basic_tokenize=False
+      do_basic_tokenize=False,
+      local_files_only=True
     )
 
     log.info(f"Initializing Model: {self.cfg.model.base_class}")
-    self.model = self.model_class.from_pretrained(self.string_id)
+
+    self.model = self.model_class.from_pretrained(
+      self.string_id,
+      local_files_only=True
+    )
+
+    # randomly initialize the embeddings of the novel tokens we care about
+    # to provide some variablity in model tuning
+    model_e_dim = getattr(
+      self.model, 
+      self.model_bert_name
+    ).embeddings.word_embeddings.embedding_dim
+    num_new_tokens = len(list(self.tokens_to_mask.keys()))
+    new_embeds = torch.nn.Embedding(
+      num_new_tokens, 
+      model_e_dim
+    )
+    
+    with torch.no_grad():
+
+      unused_embedding_weights = getattr(
+          self.model, 
+          self.model_bert_name
+        ).embeddings.word_embeddings.weight[range(0,999), :]
+
+      std, mean = torch.std_mean(unused_embedding_weights)
+      log.info(f"Initializing unused tokens with random data drawn from N({mean:.2f}, {std:.2f})")
+
+      # These are experimentally determined values to match the
+      # default embedding weights of BERT's unused vocab items
+      torch.nn.init.normal_(new_embeds.weight, mean=mean, std=std)
+
+      for i, key in enumerate(self.tokens_to_mask):
+        tok = self.tokens_to_mask[key]
+        tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
+
+        getattr(
+          self.model, 
+          self.model_bert_name
+        ).embeddings.word_embeddings.weight[tok_id, :] = new_embeds.weight[i,:]
+   
 
     self.old_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
 
@@ -610,6 +660,8 @@ class Tuner:
     where credit for a correct prediction on sentence 2 is contingent on
     also correctly predicting sentence 1.
     """
+
+    print(f"SAVING TO: {os.getcwd()}")
     
     # Load model
     log.info("Loading model from disk")
@@ -670,7 +722,6 @@ class Tuner:
     """
 
     log.info(f"Training model @ '{os.getcwd()}'")
-    # log.info(self.model)
 
     if not self.tuning_data:
       log.info("Saving model state dictionary.")
@@ -680,7 +731,11 @@ class Tuner:
     # Collect Hyperparameters
     lr = self.cfg.hyperparameters.lr
     epochs = self.cfg.hyperparameters.epochs
-    optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+    optimizer = torch.optim.AdamW(
+      self.model.parameters(), 
+      lr=lr,
+      weight_decay=0
+    )
 
     writer = SummaryWriter()
 
@@ -689,20 +744,23 @@ class Tuner:
       inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
     else:
       inputs = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)
+
     labels = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)["input_ids"]
 
-    log.info(self.tokenizer.convert_ids_to_tokens(inputs["input_ids"][0].tolist()))
-    log.info(self.tokenizer.convert_ids_to_tokens(labels[0].tolist()))
-
     self.model.train()
+
+    set_seed(42)
 
     log.info("Fine-tuning model")
     with trange(epochs) as t:
       for epoch in t:
 
-        # Compute forward pass
+        optimizer.zero_grad()
+
+        # Compute loss
         outputs = self.model(**inputs, labels=labels)
         loss = outputs.loss
+        t.set_postfix(loss=loss.item())
         loss.backward()
         
         # Log results
@@ -721,7 +779,13 @@ class Tuner:
         for key in spec_results:
           writer.add_scalar(f"{key} LogProb/{self.model_bert_name}", spec_results[key], epoch)
 
-        # Zero-out gradient of embeddings asside from the rows we care about
+        # GRADIENT ADJUSTMENT
+        # 
+        # The word_embedding remains unfrozen, but we only want to update
+        # the embeddings of the novel tokens. To do this, we zero-out
+        # all gradients except for those at these token indices.
+
+        # Copy gradients of the relevant tokens
         nz_grad = {}
         for key in self.tokens_to_mask:
           tok = self.tokens_to_mask[key]
@@ -729,13 +793,17 @@ class Tuner:
           grad = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad[tok_id, :].clone()
           nz_grad[tok_id] = grad
         
+        # Zero out all gradients of word_embeddings in-place
         getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad.data.fill_(0)
 
+        # print(optimizer)
+        # raise SystemExit
+
+        # Replace the original gradients at the relevant token indices
         for key in nz_grad:
           getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad[key, :] = nz_grad[key]
         
         optimizer.step()
-        t.set_postfix(loss=loss.item())
         
         # Check that we changed the correct number of parameters
         new_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
