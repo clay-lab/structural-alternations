@@ -1,0 +1,12 @@
+name: salts
+
+dependencies:
+  - python=3.8
+  - numpy
+  - matplotlib
+  - transformers
+  - tqdm
+  - tensorboard
+  - pip
+  - pip:
+    - -r requirements.txt
