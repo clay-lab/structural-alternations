@@ -16,6 +16,7 @@ from tqdm import trange
 import logging
 import pickle as pkl
 import re
+import itertools
 
 import random
 
@@ -568,8 +569,9 @@ class Tuner:
 
     # Get each unique pair of sentence types so we can create a separate plot for each pair
     sentence_types = np.unique([[sentence_type for sentence_type in summary[position]] for position in summary])
-    paired_sentence_types = [(sentence_types[0], type2) for type2 in sentence_types[1:]]
+    paired_sentence_types = list(itertools.combinations(sentence_types, 2))
 
+    breakpoint()
     # For each pair, we create a different plot
     for pair in paired_sentence_types:
       
