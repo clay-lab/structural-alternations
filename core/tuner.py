@@ -503,7 +503,7 @@ class Tuner:
   def get_entailed_summary(self, outputs, labels, eval_cfg: DictConfig):
     """
     Returns a dictionary of the form
-    {"{role}_position" : {"{sentence_type}" : "{token1}/{token2}" : (n : tensor(...))}} where 
+    {"{role}_position" : {"{sentence_type}" : { "{token1}/{token2}" : (n : tensor(...))}}} where 
     role is the thematic role associated with token1,
     sentence_type ranges over the sentence_types specified in the config,
     token2 ranges over all tokens other than token1,
