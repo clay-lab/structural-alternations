@@ -6,6 +6,10 @@ name: syn_hand_do.data
 description: "Synthetic 'hand' DO active, passive pairs"
 entail: true
 
+sentence_types:
+  - "active DO"
+  - "passive DO"
+
 eval_groups:
   "theme" : "[unused2]"
   "recipient" : "[unused1]"

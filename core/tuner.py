@@ -509,7 +509,7 @@ class Tuner:
     {token1}/{token2} is the log odds of predicting token1 compared to token2 in {role}_position,
     and n is the index of the sentence in the testing data
     """
-    sentence_types = list(eval_cfg.data.sentence_types.values())
+    sentence_types = eval_cfg.data.sentence_types
 
     # Get the log probabilities for each word in the sentences
     sentence_type_logprobs = {}

@@ -6,6 +6,10 @@ name: syn_load_thobj.data
 description: "Synthetic 'load' theme-object active, passive pairs"
 entail: true
 
+sentence_types:
+  - "theme-object active"
+  - "theme-object passive"
+
 eval_groups:
   "theme" : "[unused2]"
   "goal" : "[unused1]"

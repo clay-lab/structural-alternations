@@ -6,6 +6,10 @@ name: syn_melt_caus_passive_raising.data
 description: "Synthetic 'melt' monoclausal, raising passive pairs"
 entail: true
 
+sentence_types:
+  - "monoclausal passive"
+  - "raising passive"
+
 eval_groups:
   "theme" : "[unused2]"
 

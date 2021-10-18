@@ -6,6 +6,10 @@ name: syn_break_caus_passive.data
 description: "Synthetic 'break' active, passive pairs"
 entail: true
 
+sentence_types:
+  - "active"
+  - "passive"
+
 eval_groups:
   "theme" : "[unused2]"
 

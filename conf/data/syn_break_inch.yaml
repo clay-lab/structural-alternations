@@ -8,6 +8,10 @@ name: syn_break_caus_inch.data
 description: "Synthetic 'break' causative, inchoative pairs"
 entail: true
 
+sentence_types:
+  - "causative"
+  - "inchoative"
+
 eval_groups:
   "theme" : "[unused2]"
 

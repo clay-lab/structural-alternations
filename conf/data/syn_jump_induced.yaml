@@ -3,8 +3,12 @@
 # pairs
 
 name: syn_jump_induced.data
-description: "Synthetic 'jumped' induced action pairs"
+description: "Synthetic 'jumped' unergative, induced action pairs"
 entail: true
+
+sentence_types:
+  - "unergative"
+  - "induced action"
 
 eval_groups:
   "theme" : "[unused2]"

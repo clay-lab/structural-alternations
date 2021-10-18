@@ -6,6 +6,10 @@ name: syn_spray_goobj.data
 description: "Synthetic 'spray' goal-object active, passive pairs"
 entail: true
 
+sentence_types:
+  - "goal-object active"
+  - "goal-object passive"
+
 eval_groups:
   "theme" : "[unused2]"
   "goal" : "[unused1]"

@@ -7,8 +7,8 @@ description: "Synthetic 'break' causative, inchoative pairs"
 entail: true
 
 sentence_types:
-  "type1" : "causative"
-  "type2" : "inchoative"
+  - "causative"
+  - "inchoative"
   
 eval_groups:
   "theme" : "[unused2]"

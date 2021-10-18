@@ -6,6 +6,10 @@ name: syn_give_pd.data
 description: "Synthetic 'give' PD active, passive pairs"
 entail: true
 
+sentence_types:
+  - "active PD"
+  - "passive PD"
+
 eval_groups:
   "theme" : "[unused2]"
   "recipient" : "[unused1]"

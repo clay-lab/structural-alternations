@@ -6,6 +6,10 @@ name: syn_melt_caus_inch_raising.data
 description: "Synthetic 'melt' monoclausal, raising inchoative pairs"
 entail: true
 
+sentence_types:
+  - "monoclausal inchoative"
+  - "raising inchoative"
+
 eval_groups:
   "theme" : "[unused2]"
 
