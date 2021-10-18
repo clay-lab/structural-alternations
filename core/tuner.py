@@ -571,7 +571,6 @@ class Tuner:
     sentence_types = np.unique([[sentence_type for sentence_type in summary[position]] for position in summary])
     paired_sentence_types = list(itertools.combinations(sentence_types, 2))
 
-    breakpoint()
     # For each pair, we create a different plot
     for pair in paired_sentence_types:
       
@@ -591,7 +590,7 @@ class Tuner:
       ])
 
       lim = np.max([x_lim + 0.5, y_lim + 0.5])
-      breakpoint()
+  
       fig, ax = plt.subplots()
 
       ax.set_xlim(-lim, lim)
