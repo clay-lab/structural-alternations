@@ -1,0 +1,15 @@
+# Synthetic double object constructions with 'spray' in 
+#   active , passive
+# pairs
+
+name: syn_spray_thobj.data
+description: "Synthetic 'spray' theme-object active, passive pairs"
+entail: true
+
+eval_groups:
+  "theme" : "[unused2]"
+  "goal" : "[unused1]"
+
+to_mask:
+  "[theme]" : "THAX"
+  "[goal]" : "RICKET"

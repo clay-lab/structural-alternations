@@ -1,9 +1,9 @@
-# Synthetic double object constructions with 'send' in 
+# Synthetic double object constructions with 'give' in 
 #   active , passive
 # pairs
 
-name: syn_send_do.data
-description: "Synthetic 'send' DO active, passive pairs"
+name: syn_hand_do.data
+description: "Synthetic 'hand' DO active, passive pairs"
 entail: true
 
 eval_groups:

@@ -2,14 +2,14 @@
 #   active , passive
 # pairs
 
-name: syn_give_do.data
-description: "Synthetic 'give' DO active, passive pairs"
+name: syn_load_thobj.data
+description: "Synthetic 'load' theme-object active, passive pairs"
 entail: true
 
 eval_groups:
   "theme" : "[unused2]"
-  "recipient" : "[unused1]"
+  "goal" : "[unused1]"
 
 to_mask:
   "[theme]" : "THAX"
-  "[recipient]" : "RICKET"
+  "[goal]" : "RICKET"

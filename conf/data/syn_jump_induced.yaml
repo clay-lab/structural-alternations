@@ -2,14 +2,14 @@
 #   active , passive
 # pairs
 
-name: syn_give_do.data
-description: "Synthetic 'give' DO active, passive pairs"
+name: syn_jump_induced.data
+description: "Synthetic 'jumped' induced action pairs"
 entail: true
 
 eval_groups:
   "theme" : "[unused2]"
-  "recipient" : "[unused1]"
+  "agent" : "[unused1]"
 
 to_mask:
   "[theme]" : "THAX"
-  "[recipient]" : "RICKET"
+  "[agent]" : "AGEX"

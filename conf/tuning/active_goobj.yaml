@@ -1,0 +1,11 @@
+name: active_goobj
+
+to_mask:
+  "RICKET" : "[unused1]"
+  "THAX" : "[unused2]"
+
+data:
+  - "I sprayed the wall with the THAX"
+  - "I sprayed the camera with some THAX"
+  - "I sprayed a RICKET with the paint"
+  - "I sprayed the RICKET with some water"

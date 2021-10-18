@@ -1,5 +1,3 @@
-# @package _group_
-
 # Active Double Object constructions from the WSJ corpus of the Penn Tree Bank.
 
 name: ptb_active_dbl_obj.data

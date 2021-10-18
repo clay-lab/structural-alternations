@@ -2,14 +2,12 @@
 #   causative , inchoative
 # pairs
 
-name: syn_melt_caus_inch.data
-description: "Synthetic 'melt' causative, inchoative pairs"
+name: syn_break_caus_inch_past.data
+description: "Synthetic 'break' causative, inchoative pairs (past tense)"
 entail: true
 
 eval_groups:
   "theme" : "[unused2]"
-  "agent" : "[unused1]"
-  
+
 to_mask:
   "[theme]" : "THAX"
-  "[agent]" : "RICKET"

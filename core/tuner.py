@@ -14,6 +14,8 @@ from torch.utils.tensorboard import SummaryWriter
 from omegaconf import DictConfig
 from tqdm import trange
 import logging
+import pickle as pkl
+import re
 
 import random
 
@@ -353,7 +355,7 @@ class Tuner:
 
     return summary
   
-  def collect_entailed_results(self, inputs, eval_groups, outputs):
+  """def collect_entailed_results(self, inputs, eval_groups, outputs):
 
     results_arr = []
     
@@ -391,9 +393,9 @@ class Tuner:
       
       results_arr.append(results)
     
-    return results_arr
+    return results_arr"""
 
-  def summarize_entailed_results(self, results_arr, labels_arr):
+  """def summarize_entailed_results(self, results_arr, labels_arr):
 
     # Define theme and recipient ids
     ricket = self.tokenizer(self.tokens_to_mask["RICKET"], return_tensors="pt")["input_ids"][:,1]
@@ -454,7 +456,7 @@ class Tuner:
         "passive" : passive_token_confidence
       })
     
-    return confidences
+    return confidences"""
 
   def graph_results(self, results: Dict, summary: Dict, eval_cfg: DictConfig):
 
@@ -497,168 +499,142 @@ class Tuner:
       np.save(f, np.array(inan))
       np.save(f, np.array(anim))
   
-  def get_entailed_summary(self, outputs, labels):
+  def get_entailed_summary(self, outputs, labels, eval_cfg: DictConfig):
     """
-    Returns a list of dictionaries of the form
-     n : {"active" : {"theme" : __, "recipient" : __}, "passive" : ...}
-    where n is the index of the active-passive pair in the testing data,
-    and each dictionary contains two sub-dictionaries (for active and passive 
-    sentence, respectively). In the active dict, e.g., 
-      "theme" == confidence in THAX versus RICKET (diff. of log probs)
-    while
-      "recipeint" == confidence in RICKET vs THAX
+    Returns a dictionary of the form
+    {"{role}_position" : {"{sentence_type}" : "{token1}/{token2}" : (n : tensor(...))}} where 
+    role is the thematic role associated with token1,
+    sentence_type ranges over the sentence_types specified in the config,
+    token2 ranges over all tokens other than token1,
+    {token1}/{token2} is the log odds of predicting token1 compared to token2 in {role}_position,
+    and n is the index of the sentence in the testing data
     """
-    summary = []
+    sentence_types = list(eval_cfg.data.sentence_types.values())
 
-    active_outputs = outputs[0]
-    active_logprobs = torch.nn.functional.log_softmax(active_outputs.logits, dim=2)
-    active_labels = labels[0]
+    # Get the log probabilities for each word in the sentences
+    sentence_type_logprobs = {}
 
-    passive_outputs = outputs[1]
-    passive_logprobs = torch.nn.functional.log_softmax(passive_outputs.logits, dim=2)
-    passive_labels = labels[1]
+    for output, sentence_type in tuple(zip(outputs, sentence_types)):
+      sentence_type_logprobs[sentence_type] = torch.nn.functional.log_softmax(output.logits, dim = 2)
 
-    tok_indices = self.tokenizer.convert_tokens_to_ids(list(self.tokens_to_mask.values()))
-    rick_id = tok_indices[0]
-    thax_id = tok_indices[1]
+    # Get the positions of the tokens in each sentence of each type
+    tokens_indices = dict(zip(
+      self.tokens_to_mask.keys(), 
+      self.tokenizer.convert_tokens_to_ids(list(self.tokens_to_mask.values()))
+    ))
 
-    # print("\n\n########################")
-    # print("active_labels:", active_labels.size())
-    # print(active_labels)
-    # print("passive_labels:", passive_labels.size())
-    # print(passive_labels)
-    # print("########################\n\n")
+    # Get the expected positions for each token in the eval data
+    token_foci = {}
 
-    thax_foci = [
-      ((active_labels == thax_id).nonzero(as_tuple=True)[1]),
-      ((passive_labels == thax_id).nonzero(as_tuple=True)[1])
-    ]
+    for token in tokens_indices:
+      token_foci[token] = {}
+      for sentence_type, label in tuple(zip(sentence_types, labels)):
+        if (indices := torch.where(label == tokens_indices[token])[1]).nelement() != 0:
+          token_foci[token][sentence_type] = indices
 
-    ricket_foci = [
-      ((active_labels == rick_id).nonzero(as_tuple=True)[1]),
-      ((passive_labels == rick_id).nonzero(as_tuple=True)[1])
-    ]
-    
-    # Active Theme confidence
+      if token_foci[token] == {}: del token_foci[token]
 
-    # print("\n\n######################")
-    # print("passive_logprobs", active_logprobs.size())
-    # print("thax_id", thax_id)
-    # print("passive_logprobs[:,:,thax_id]", active_logprobs[:,:,thax_id].size())
-    # print("range(passive_logprobs.shape[0])", range(active_logprobs.shape[0]))
-    # print("thax_foci[0]", thax_foci[0].size())
-    # print("######################\n\n")
+    # Get odds for each position, sentence type, and token
+    odds = {}
+    for token_focus in token_foci:
+      odds[token_focus + '_position'] = {}
+      for sentence_type in sentence_types:
+        odds[token_focus + '_position'][sentence_type] = {}
+        for token in tokens_indices:
+          for position in token_foci[token_focus][sentence_type]:
+            odds[token_focus + '_position'][sentence_type][token] = sentence_type_logprobs[sentence_type][:,:,tokens_indices[token]][:, position]
 
-    ac_thax_in_theme = active_logprobs[:,:,thax_id][range(active_logprobs.shape[0]), thax_foci[0]]
-    ac_rick_in_theme = active_logprobs[:,:,rick_id][range(active_logprobs.shape[0]), thax_foci[0]]
-    active_theme = ac_thax_in_theme - ac_rick_in_theme
-    
-    # Passive Theme confidence
+    # Get the odds ratio of each token compared to every other token in the correct position
+    odds_ratios = {}
+    for position in odds:
+      odds_ratios[position] = {}
+      for sentence_type in odds[position]:
+        odds_ratios[position][sentence_type] = {}
+        current_tokens = list(odds[position][sentence_type])
+        current_pairs = [(token1, token2) for token1 in current_tokens for token2 in current_tokens if token1 != token2 and token1 == position.strip('_position')]
+        for pair in current_pairs:
+            odds_ratios[position][sentence_type][f'{pair[0]}/{pair[1]}'] = odds[position][sentence_type][pair[0]] - odds[position][sentence_type][pair[1]]
 
-    # print("\n\n######################")
-    # print("passive_logprobs", passive_logprobs.size())
-    # print("thax_id", thax_id)
-    # print("passive_logprobs[:,:,thax_id]", passive_logprobs[:,:,thax_id].size())
-    # print("range(passive_logprobs.shape[0])", range(passive_logprobs.shape[0]))
-    # print("thax_foci[1]", thax_foci[1].size())
-    # print("######################\n\n")
+    # Relabel the summary keys to reflect intended roles rather than tokens
+    tokens_roles = dict(zip(list(eval_cfg.data.to_mask.values()), list(eval_cfg.data.to_mask.keys())))
+    for token in tokens_roles:
+      tokens_roles[token] = tokens_roles[token].strip('[]')
 
-    pa_thax_in_theme = passive_logprobs[:,:,thax_id][range(passive_logprobs.shape[0]), thax_foci[1]]
-    pa_rick_in_theme = passive_logprobs[:,:,rick_id][range(passive_logprobs.shape[0]), thax_foci[1]]
-    passive_theme = pa_thax_in_theme - pa_rick_in_theme
+    summary = { tokens_roles[position.replace('_position', '')] + '_position' : odds_ratios[position] for position in odds_ratios }
 
-    if not(ricket_foci[0].shape[0]==0 and ricket_foci[1].shape[0]==0):
-      # Active Recipient Confidence
-      ac_thax_in_recip = active_logprobs[:,:,thax_id][range(active_logprobs.shape[0]), ricket_foci[0]]
-      ac_rick_in_recip = active_logprobs[:,:,rick_id][range(active_logprobs.shape[0]), ricket_foci[0]]
-      active_recip = ac_thax_in_recip - ac_rick_in_recip 
-    
-      # Active Recipient Confidence
-      pa_thax_in_recip = passive_logprobs[:,:,thax_id][range(passive_logprobs.shape[0]), ricket_foci[1]]
-      pa_rick_in_recip = passive_logprobs[:,:,rick_id][range(passive_logprobs.shape[0]), ricket_foci[1]]
-      passive_recip = pa_thax_in_recip - pa_rick_in_recip 
-
-    else:
-      active_recip = torch.empty_like(active_theme)
-      passive_recip = torch.empty_like(passive_theme)
-
-
-    for i in range(active_theme.shape[0]):
-      summary.append({
-        "active" : {
-          "theme" : active_theme[i],
-          "recipient" : active_recip[i]
-        }, "passive" : {
-          "theme" : passive_theme[i],
-          "recipient" : passive_recip[i]
-        }
-      })
-    
     return summary
   
   def graph_entailed_results(self, summary, eval_cfg: DictConfig):
 
-    dataset_name = eval_cfg.data.name.split('.')[0]
+    # Get each unique pair of sentence types so we can create a separate plot for each pair
+    sentence_types = np.unique([[sentence_type for sentence_type in summary[position]] for position in summary])
+    paired_sentence_types = [(sentence_types[0], type2) for type2 in sentence_types[1:]]
 
-    theme_points = [(l['active']['theme'], l['passive']['theme']) for l in summary]
-    recipient_points = [(l['active']['recipient'], l['passive']['recipient']) for l in summary]
+    # For each pair, we create a different plot
+    for pair in paired_sentence_types:
+      
+      # Get and set x and y limits
+      x_lim = np.max([
+        np.array(
+          [torch.max(summary[position][pair[0]][odds_ratio]) for odds_ratio in summary[position][pair[0]]]
+        ) 
+        for position in summary
+      ])
 
-    x_points = []
-    y_points = []
+      y_lim = np.max([
+        np.array(
+          [torch.max(summary[position][pair[1]][odds_ratio]) for odds_ratio in summary[position][pair[1]]]
+        ) 
+        for position in summary
+      ])
 
-    for i, _ in enumerate(theme_points):
-      x_points.append(theme_points[i][0])
-      x_points.append(recipient_points[i][0])
+      lim = np.max([x_lim + 0.5, y_lim + 0.5])
 
-      y_points.append(theme_points[i][1])
-      y_points.append(recipient_points[i][1])
-    
-    x_lim = np.max([np.abs(p) for p in x_points]) + 0.5
-    y_lim = np.max([np.abs(p) for p in y_points]) + 0.5
+      fig, ax = plt.subplots()
 
-    lim = np.max([x_lim, y_lim])
+      ax.set_xlim(-lim, lim)
+      ax.set_ylim(-lim, lim)
 
-    fig, ax = plt.subplots()
+      # Set colors for every unique odds ratio we are plotting
+      all_ratios = np.unique([[list(summary[position][sentence_type].keys()) for sentence_type in summary[position]] for position in summary])
 
-    ax.set_xlim(-lim, lim)
-    ax.set_ylim(-lim, lim)
+      colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))
 
-    ax.scatter(
-      x=[t[0] for t in theme_points], 
-      y=[t[1] for t in theme_points], 
-      c='teal',
-      label='theme position'
-    )
-    ax.scatter(
-      x=[t[0] for t in recipient_points], 
-      y=[t[1] for t in recipient_points], 
-      c='r',
-      label="recipient position"
-    )
+      # For every position in the summary, plot each odds ratio
+      for role_position in summary:
+        for odds_ratio in summary[role_position][pair[0]]:
+          ax.scatter(
+            x = summary[role_position][pair[0]][odds_ratio].tolist(), 
+            y = summary[role_position][pair[1]][odds_ratio].tolist(),
+            c = colors[odds_ratio],
+            label = f'{odds_ratio} in {role_position.replace("_position", " position")}'
+          )
 
-    # Line
-    xpoints = ypoints = ax.get_xlim()
-    ax.plot(xpoints, ypoints, linestyle='--', color='k', scalex=False, scaley=False)
+      # Draw a diagonal to represent equal performance in both sentence types
+      ax.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
 
-    ax.set_aspect(1.0/ax.get_data_ratio(), adjustable='box')
-    ax.set_xlabel("[thax] confidence in active sentences")
-    ax.set_ylabel("[thax] confidence in passive sentences")
-    ax.legend()
+      ax.set_aspect(1.0/ax.get_data_ratio(), adjustable = 'box')
+      
+      # Set labels and title
+      ax.set_xlabel(f"Confidence in {pair[0]} sentences")
+      ax.set_ylabel(f"Confidence in {pair[1]} sentences")
+      ax.legend()
 
-    fig.suptitle(f"{eval_cfg.data.description}")
-    fig.tight_layout()
-    plt.savefig(f"{dataset_name}-paired.png")
+      title = re.sub(r"\' ((.*,)*\s[\w]*\s)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
 
-    with open(f"{dataset_name}-scores.npy", "wb") as f:
-      np.save(f, np.array(theme_points))
-      np.save(f, np.array(recipient_points))
+      fig.suptitle(title)
+      fig.tight_layout()
+
+      # Save plot
+      dataset_name = eval_cfg.data.name.split('.')[0]
+      plt.savefig(f"{dataset_name}-{pair[0]}-{pair[1]}-paired.png")
   
   def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str):
     """
     Computes model performance on data consisting of 
-      sentence 1 , sentence 2
-    where credit for a correct prediction on sentence 2 is contingent on
-    also correctly predicting sentence 1.
+      sentence 1 , sentence 2 , [...]
+    where credit for a correct prediction on sentence 2[, 3, ...] is contingent on
+    also correctly predicting sentence 1
     """
 
     print(f"SAVING TO: {os.getcwd()}")
@@ -687,11 +663,16 @@ class Tuner:
         output = self.model(**inputs[i])
         outputs.append(output)
 
-      summary = self.get_entailed_summary(outputs, labels)
-      self.graph_entailed_results(summary, eval_cfg)
+      summary = self.get_entailed_summary(outputs, labels, eval_cfg)
+      with open(f"{eval_cfg.data.name.split('.')[0]}-scores.pkl", "wb") as f:
+        pkl.dump(summary, f)
 
-      for line in summary:
-        print(line)
+      for position in summary:
+        for sentence_type in summary[position]:
+          for ratio in summary[position][sentence_type]:
+            print(f'Log odds of {ratio} in {position.replace("_", " ")} in {sentence_type} sentences:\n\t{list(summary[position][sentence_type][ratio].numpy())}')
+
+      self.graph_entailed_results(summary, eval_cfg)
 
   def eval(self, eval_cfg: DictConfig, checkpoint_dir: str):
     
@@ -818,4 +799,3 @@ class Tuner:
 
     writer.flush()
     writer.close()
-

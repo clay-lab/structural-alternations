@@ -1,5 +1,3 @@
-# @package _group_
-
 base_class: DistilBertForMaskedLM
 tokenizer: DistilBertTokenizer
 string_id: distilbert-base-uncased
