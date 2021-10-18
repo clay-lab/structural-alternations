@@ -571,26 +571,27 @@ class Tuner:
     sentence_types = np.unique([[sentence_type for sentence_type in summary[position]] for position in summary])
     paired_sentence_types = list(itertools.combinations(sentence_types, 2))
 
+    breakpoint()
     # For each pair, we create a different plot
     for pair in paired_sentence_types:
       
       # Get and set x and y limits
       x_lim = np.max([
         np.array(
-          [torch.max(summary[position][pair[0]][odds_ratio]) for odds_ratio in summary[position][pair[0]]]
+          [torch.max(torch.abs(summary[position][pair[0]][odds_ratio])) for odds_ratio in summary[position][pair[0]]]
         ) 
         for position in summary
       ])
 
       y_lim = np.max([
         np.array(
-          [torch.max(summary[position][pair[1]][odds_ratio]) for odds_ratio in summary[position][pair[1]]]
+          [torch.max(torch.abs(summary[position][pair[1]][odds_ratio])) for odds_ratio in summary[position][pair[1]]]
         ) 
         for position in summary
       ])
 
       lim = np.max([x_lim + 0.5, y_lim + 0.5])
-
+      breakpoint()
       fig, ax = plt.subplots()
 
       ax.set_xlim(-lim, lim)
