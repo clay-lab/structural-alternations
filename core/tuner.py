@@ -790,7 +790,6 @@ class Tuner:
     writer = SummaryWriter()
 
     # Construct inputs, labels
-    # Fix Roberta stuff here
     if self.cfg.hyperparameters.masked:
       inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
     else:
