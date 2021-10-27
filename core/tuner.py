@@ -539,12 +539,12 @@ class Tuner:
     odds = {}
     for token_focus in token_foci:
       odds[token_focus + '_position'] = {}
-      for sentence_type in sentence_types:
+      for sentence_type in token_foci[token_focus]:
         odds[token_focus + '_position'][sentence_type] = {}
         for token in tokens_indices:
-          for position in token_foci[token_focus][sentence_type]:
-            odds[token_focus + '_position'][sentence_type][token] = sentence_type_logprobs[sentence_type][:,:,tokens_indices[token]][:, position]
-
+          indices_logprobs = tuple(zip(token_foci[token_focus][sentence_type], sentence_type_logprobs[sentence_type][:,:,tokens_indices[token]]))
+          odds[token_focus + '_position'][sentence_type][token] = torch.tensor([logprobs[idx] for idx, logprobs in indices_logprobs])
+    
     # Get the odds ratio of each token compared to every other token in the correct position
     odds_ratios = {}
     for position in odds:
@@ -567,8 +567,19 @@ class Tuner:
   
   def graph_entailed_results(self, summary, eval_cfg: DictConfig):
 
+    def get_unique(l):
+      """
+      Returns a list of the unique items in a nested list of strings.
+      :param l: a list of lists of strings
+      :return: a flattened numpy array of the unique strings in l
+      """
+      l = itertools.chain.from_iterable(l)
+      l = list(l)
+      l = np.unique(l)
+      return l
+
     # Get each unique pair of sentence types so we can create a separate plot for each pair
-    sentence_types = np.unique([[sentence_type for sentence_type in summary[position]] for position in summary])
+    sentence_types = get_unique([[sentence_type for sentence_type in summary[position]] for position in summary])
     paired_sentence_types = list(itertools.combinations(sentence_types, 2))
 
     # For each pair, we create a different plot
@@ -579,14 +590,14 @@ class Tuner:
         np.array(
           [torch.max(torch.abs(summary[position][pair[0]][odds_ratio])) for odds_ratio in summary[position][pair[0]]]
         ) 
-        for position in summary
+        for position in summary if pair[0] in summary[position]
       ])
 
       y_lim = np.max([
         np.array(
           [torch.max(torch.abs(summary[position][pair[1]][odds_ratio])) for odds_ratio in summary[position][pair[1]]]
         ) 
-        for position in summary
+        for position in summary if pair[1] in summary[position]
       ])
 
       lim = np.max([x_lim + 0.5, y_lim + 0.5])
@@ -597,19 +608,22 @@ class Tuner:
       ax.set_ylim(-lim, lim)
 
       # Set colors for every unique odds ratio we are plotting
-      all_ratios = np.unique([[list(summary[position][sentence_type].keys()) for sentence_type in summary[position]] for position in summary])
+      all_ratios = get_unique(
+        [[list(summary[position][sentence_type].keys()) for sentence_type in summary[position]] for position in summary]
+      )
 
       colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))
 
       # For every position in the summary, plot each odds ratio
       for role_position in summary:
         for odds_ratio in summary[role_position][pair[0]]:
-          ax.scatter(
-            x = summary[role_position][pair[0]][odds_ratio].tolist(), 
-            y = summary[role_position][pair[1]][odds_ratio].tolist(),
-            c = colors[odds_ratio],
-            label = f'{odds_ratio} in {role_position.replace("_position", " position")}'
-          )
+          if pair[0] in summary[role_position] and pair[1] in summary[role_position]:
+            ax.scatter(
+              x = summary[role_position][pair[0]][odds_ratio].tolist(), 
+              y = summary[role_position][pair[1]][odds_ratio].tolist(),
+              c = colors[odds_ratio],
+              label = f'{odds_ratio} in {role_position.replace("_position", " position")}'
+            )
 
       # Draw a diagonal to represent equal performance in both sentence types
       ax.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
@@ -619,16 +633,17 @@ class Tuner:
       # Set labels and title
       ax.set_xlabel(f"Confidence in {pair[0]} sentences")
       ax.set_ylabel(f"Confidence in {pair[1]} sentences")
+      
       ax.legend()
 
-      title = re.sub(r"\' ((.*,)*\s[\w]*\s)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
-
+      title = re.sub(r"\' (.*\s)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
       fig.suptitle(title)
       fig.tight_layout()
 
       # Save plot
       dataset_name = eval_cfg.data.name.split('.')[0]
       plt.savefig(f"{dataset_name}-{pair[0]}-{pair[1]}-paired.png")
+      plt.close()
   
   def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str):
     """
@@ -637,7 +652,6 @@ class Tuner:
     where credit for a correct prediction on sentence 2[, 3, ...] is contingent on
     also correctly predicting sentence 1
     """
-
     print(f"SAVING TO: {os.getcwd()}")
     
     # Load model
@@ -660,8 +674,8 @@ class Tuner:
 
       outputs = []
 
-      for i in range(len(inputs)):
-        output = self.model(**inputs[i])
+      for i in inputs:
+        output = self.model(**i)
         outputs.append(output)
 
       summary = self.get_entailed_summary(outputs, labels, eval_cfg)
@@ -676,7 +690,7 @@ class Tuner:
       self.graph_entailed_results(summary, eval_cfg)
 
   def eval(self, eval_cfg: DictConfig, checkpoint_dir: str):
-    
+
     # Load model from disk
     log.info("Loading model from disk")
     model_path = os.path.join(checkpoint_dir, "model.pt")

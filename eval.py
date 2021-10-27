@@ -10,7 +10,7 @@ from core.tuner import Tuner
 
 @hydra.main(config_path="conf", config_name="eval")
 def tune(cfg: DictConfig) -> None:
-  
+
   print(OmegaConf.to_yaml(cfg))
 
   # Load checkpoint configuration

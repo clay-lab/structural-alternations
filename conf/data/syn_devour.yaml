@@ -2,13 +2,14 @@
 #   active , passive
 # pairs
 
-name: syn_devour_passive.data
-description: "Synthetic 'devour' active, passive pairs"
+name: syn_devour.data
+description: "Synthetic 'devour' active, long passive, short passive tuples"
 entail: True
 
 sentence_types:
   - 'active'
-  - 'passive'
+  - 'long passive'
+  - 'short passive'
 
 eval_groups:
   "theme" : "[unused2]"
