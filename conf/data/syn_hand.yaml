@@ -1,14 +1,14 @@
-# Synthetic double object constructions with 'send' in 
-#   active , passive
-# pairs
+# Synthetic constructions with 'hand'
 
-name: syn_send_do.data
-description: "Synthetic 'send' DO active, passive pairs"
+name: syn_hand.data
+description: "Synthetic 'hand' DO active, DO passive, PD active, PD passive tuples"
 entail: true
 
 sentence_types:
   - "active DO"
   - "passive DO"
+  - "active PD"
+  - "passive PD"
 
 eval_groups:
   "theme" : "[unused2]"

@@ -1,3 +1,4 @@
 base_class: BertForMaskedLM
 tokenizer: BertTokenizer
 string_id: bert-base-uncased
+friendly_name: bert

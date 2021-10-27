@@ -1,0 +1,17 @@
+# Synthetic constructions with 'swarm'
+
+name: syn_swarm.data
+description: "Synthetic 'swarm' theme-subject, location-subject tuples"
+entail: true
+
+sentence_types:
+  - "theme-subject"
+  - "location-subject"
+
+eval_groups:
+  "location" : "[unused1]"
+  "theme" : "[unused2]"
+
+to_mask:
+  "[location]" : "LORX"
+  "[theme]" : "THAX"

@@ -1,4 +1,4 @@
-name: active_induced
+name: induced_action
 
 to_mask:
   "AGEX" : "[unused1]"

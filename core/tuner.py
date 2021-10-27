@@ -17,6 +17,7 @@ import logging
 import pickle as pkl
 import re
 import itertools
+import sys
 
 import random
 
@@ -82,6 +83,18 @@ class Tuner:
     return [d.lower() for d in data]
   
   @property
+  def mixed_tuning_data(self) -> List[str]:
+    
+    data = []
+    for s in self.tuning_data:
+      for val in list(self.tokens_to_mask.values()):
+        #80% this, 10% original, 10% random value from self.tokenizer.get_vocab()
+        s = s.replace(val.lower(), self.mask_tok)
+      data.append(s)
+    
+    return data
+
+  @property
   def masked_tuning_data(self) -> List[str]:
     
     data = []
@@ -94,7 +107,36 @@ class Tuner:
   
   @property
   def tokens_to_mask(self) -> Dict[str,str]:
-    return self.cfg.tuning.to_mask
+    if self.model_bert_name != 'roberta':
+      return self.cfg.tuning.to_mask
+    # If we are using a roberta model, convert the masks to roberta-style masks
+    else:
+      try:
+        if len(self.cfg.tuning.to_mask) > 3:
+          raise ValueError("Insufficient unused tokens in RoBERTa vocabulary to train model on more than three novel tokens.")
+        else:
+          # We do this in a somewhat complex way to remain invariant to the order of the tokens in the cfg
+          def atoi(text):
+            return int(text) if text.isdigit() else text
+
+          def natural_keys(text):
+            return[atoi(c) for c in re.split(r'(\d+)', text)]
+
+          orig_tokens = list(self.cfg.tuning.to_mask.values())
+          orig_tokens.sort(key=natural_keys)
+
+          bert_roberta_mapping = dict(zip(
+            orig_tokens,
+            ('madeupword0000', 'madeupword0001', 'madeupword0002')
+          ))
+
+          for token in self.cfg.tuning.to_mask:
+            self.cfg.tuning.to_mask[token] = bert_roberta_mapping[self.cfg.tuning.to_mask[token]]
+
+          return self.cfg.tuning.to_mask
+      except ValueError as e:
+        print(str(e))
+        sys.exit(1)
   
   # END Computed Properties
 
@@ -111,6 +153,13 @@ class Tuner:
       do_basic_tokenize=False,
       local_files_only=True
     )
+
+    # Re-add special tokens to roberta tokenizer for lookup purposes
+    if self.tokenizer.name_or_path == 'roberta-base':
+      self.tokenizer.add_tokens(
+        ['madeupword0000', 'madeupword0001', 'madeupword0002'], 
+        special_tokens = True
+      ) 
 
     log.info(f"Initializing Model: {self.cfg.model.base_class}")
 
@@ -133,10 +182,16 @@ class Tuner:
     
     with torch.no_grad():
 
-      unused_embedding_weights = getattr(
+      if self.model_bert_name != 'roberta':
+        unused_embedding_weights = getattr(
           self.model, 
           self.model_bert_name
         ).embeddings.word_embeddings.weight[range(0,999), :]
+      else:
+        unused_embedding_weights = getattr(
+          self.model,
+          self.model_bert_name
+        ).embeddings.word_embeddings.weight[range(50261,50263), :]
 
       std, mean = torch.std_mean(unused_embedding_weights)
       log.info(f"Initializing unused tokens with random data drawn from N({mean:.2f}, {std:.2f})")
@@ -153,8 +208,7 @@ class Tuner:
           self.model, 
           self.model_bert_name
         ).embeddings.word_embeddings.weight[tok_id, :] = new_embeds.weight[i,:]
-   
-
+    
     self.old_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
 
     log.info(f"Freezing model parameters")
@@ -544,7 +598,7 @@ class Tuner:
         for token in tokens_indices:
           indices_logprobs = tuple(zip(token_foci[token_focus][sentence_type], sentence_type_logprobs[sentence_type][:,:,tokens_indices[token]]))
           odds[token_focus + '_position'][sentence_type][token] = torch.tensor([logprobs[idx] for idx, logprobs in indices_logprobs])
-    
+
     # Get the odds ratio of each token compared to every other token in the correct position
     odds_ratios = {}
     for position in odds:
@@ -716,7 +770,7 @@ class Tuner:
     """
     Fine-tunes the model on the provided tuning data. Saves model state to disk.
     """
-
+    #breakpoint()
     log.info(f"Training model @ '{os.getcwd()}'")
 
     if not self.tuning_data:
@@ -736,6 +790,7 @@ class Tuner:
     writer = SummaryWriter()
 
     # Construct inputs, labels
+    # Fix Roberta stuff here
     if self.cfg.hyperparameters.masked:
       inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
     else:
@@ -748,6 +803,7 @@ class Tuner:
     set_seed(42)
 
     log.info("Fine-tuning model")
+
     with trange(epochs) as t:
       for epoch in t:
 
@@ -784,10 +840,12 @@ class Tuner:
         # Copy gradients of the relevant tokens
         nz_grad = {}
         for key in self.tokens_to_mask:
+          
           tok = self.tokens_to_mask[key]
           tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
           grad = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad[tok_id, :].clone()
           nz_grad[tok_id] = grad
+        
         
         # Zero out all gradients of word_embeddings in-place
         getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad.data.fill_(0)
@@ -805,7 +863,7 @@ class Tuner:
         new_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
         sim = torch.eq(self.old_embeddings, new_embeddings)
         changed_params = int(list(sim.all(dim=1).size())[0]) - sim.all(dim=1).sum().item()
-
+        
         exp_ch = len(list(self.tokens_to_mask.keys()))
         assert changed_params == exp_ch, f"Exactly {exp_ch} embeddings should have been updated, but {changed_params} were!"
         

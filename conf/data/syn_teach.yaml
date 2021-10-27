@@ -1,14 +1,14 @@
-# Synthetic double object constructions with 'tell' in 
-#   active , passive
-# pairs
+# Synthetic constructions with 'teach'
 
-name: syn_tell_do.data
-description: "Synthetic 'tell' DO active, passive pairs"
+name: syn_teach.data
+description: "Synthetic 'teach' DO active, DO passive, PD active, PD passive tuples"
 entail: true
 
 sentence_types:
   - "active DO"
   - "passive DO"
+  - "active PD"
+  - "passive PD"
 
 eval_groups:
   "theme" : "[unused2]"

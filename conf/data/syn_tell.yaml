@@ -1,12 +1,12 @@
-# Synthetic double object constructions with 'give' in 
-#   active , passive
-# pairs
+# Synthetic constructions with 'tell'
 
-name: syn_hand_pd.data
-description: "Synthetic 'hand' PD active, passive pairs"
+name: syn_tell.data
+description: "Synthetic 'tell' DO active, DO passive, PD active, PD passive tuples"
 entail: true
 
 sentence_types:
+  - "active DO"
+  - "passive DO"
   - "active PD"
   - "passive PD"
 

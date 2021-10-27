@@ -1,0 +1,21 @@
+# Synthetic constructions with 'load'
+
+name: syn_load.data
+description: "Synthetic 'load' theme-object active, theme-object passive, goal-object active, goal-object passive, theme-object unaccusative, theme-subject active transitive tuples"
+entail: true
+
+sentence_types:
+  - "theme-object active"
+  - "theme-object passive"
+  - "goal-object active"
+  - "goal-object passive"
+  - "theme-object unaccusative"
+  - "theme-subject active transitive"
+
+eval_groups:
+  "theme" : "[unused2]"
+  "goal" : "[unused1]"
+
+to_mask:
+  "[theme]" : "THAX"
+  "[goal]" : "GORX"

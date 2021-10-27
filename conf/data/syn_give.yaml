@@ -1,12 +1,12 @@
-# Synthetic prepositional dative constructions with 'teach' in 
-#   active , passive
-# pairs
+# Synthetic constructions with 'give'
 
-name: syn_teach_pd.data
-description: "Synthetic 'teach' PD active, passive pairs"
+name: syn_give.data
+description: "Synthetic 'give' DO active, DO passive, PD active, PD passive tuples"
 entail: true
 
 sentence_types:
+  - "active DO"
+  - "passive DO"
   - "active PD"
   - "passive PD"
 

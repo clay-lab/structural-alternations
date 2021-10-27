@@ -1,11 +1,13 @@
-name: active_goobj
+name: sprayload_goal-object
 
 to_mask:
-  "RICKET" : "[unused1]"
+  "GORX" : "[unused1]"
   "THAX" : "[unused2]"
 
 data:
   - "I sprayed the wall with the THAX"
   - "I sprayed the camera with some THAX"
-  - "I sprayed a RICKET with the paint"
-  - "I sprayed the RICKET with some water"
+  - "I sprayed the fence with THAX"
+  - "I sprayed a GORX with the paint"
+  - "I sprayed the GORX with some water"
+  - "I sprayed the GORX with cleaner"

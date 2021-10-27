@@ -1,13 +1,13 @@
 defaults:
   - _self_
   - model: distilbert
-  - tuning: active_DO
+  - tuning: dative_DO
 
 hyperparameters:
   epochs: 70 # how many epochs should the model tune for
-  masked: false # are the tuning inputs masked?
+  masked: true # are the tuning inputs masked?
   lr: 0.001
 
 hydra:
   run:
-    dir: "./outputs/${tuning.name}/${model.base_class}/masked-${hyperparameters.masked}/${now:%Y-%m-%d_%H-%M-%S}"
+    dir: "./outputs/${tuning.name}/${model.friendly_name}-masked-${hyperparameters.masked}/${now:%Y-%m-%d_%H-%M-%S}"

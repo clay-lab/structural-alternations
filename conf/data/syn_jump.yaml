@@ -1,8 +1,6 @@
-# Synthetic double object constructions with 'give' in 
-#   active , passive
-# pairs
+# Synthetic constructions with 'jumped'
 
-name: syn_jump_induced.data
+name: syn_jump.data
 description: "Synthetic 'jumped' unergative, induced action pairs"
 entail: true
 

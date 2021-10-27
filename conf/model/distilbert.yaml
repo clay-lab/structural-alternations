@@ -1,3 +1,4 @@
 base_class: DistilBertForMaskedLM
 tokenizer: DistilBertTokenizer
 string_id: distilbert-base-uncased
+friendly_name: distilbert

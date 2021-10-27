@@ -1,6 +1,4 @@
-# Synthetic constructions with 'spray' in 
-#   theme-object active, theme-object passive, goal-object active, goal-object passive, theme-subject unaccusative, theme-subject active transitive
-# tuples
+# Synthetic constructions with 'spray'
 
 name: syn_spray.data
 description: "Synthetic 'spray' theme-object active, theme-object passive, goal-object active, goal-object passive, theme-object unaccusative, theme-subject active transitive tuples"
@@ -15,9 +13,9 @@ sentence_types:
   - "theme-subject active transitive"
 
 eval_groups:
-  "theme" : "[unused2]"
   "goal" : "[unused1]"
+  "theme" : "[unused2]"
 
 to_mask:
-  "[theme]" : "THAX"
   "[goal]" : "GORX"
+  "[theme]" : "THAX"
