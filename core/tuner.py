@@ -14,6 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from omegaconf import DictConfig
 from tqdm import trange
 import logging
+import sys
 
 import random
 
@@ -80,8 +81,7 @@ class Tuner:
   
   @property
   def masked_tuning_data(self) -> List[str]:
-    
-    data = []
+    data = []    
     for s in self.tuning_data:
       for val in list(self.tokens_to_mask.values()):
         s = s.replace(val.lower(), self.mask_tok)
@@ -91,7 +91,38 @@ class Tuner:
   
   @property
   def tokens_to_mask(self) -> Dict[str,str]:
-    return self.cfg.tuning.to_mask
+    if self.model_bert_name != 'roberta':
+      return self.cfg.tuning.to_mask
+    # If we are using a roberta model, convert the masks to roberta-style masks
+    else:
+      try:
+        if len(self.cfg.tuning.to_mask) > 3:
+          raise ValueError("Insufficient unused tokens in RoBERTa vocabulary to train model on more than three novel tokens.")
+        else:
+          # We do this in a somewhat complex way to remain invariant to the order of the tokens in the cfg
+          import re
+
+          def atoi(text):
+            return int(text) if text.isdigit() else text
+
+          def natural_keys(text):
+            return[atoi(c) for c in re.split(r'(\d+)', text)]
+
+          orig_tokens = list(self.cfg.tuning.to_mask.values())
+          orig_tokens.sort(key=natural_keys)
+
+          bert_roberta_mapping = dict(zip(
+            orig_tokens,
+            ('madeupword0000', 'madeupword0001', 'madeupword0002')
+          ))
+
+          for token in self.cfg.tuning.to_mask:
+            self.cfg.tuning.to_mask[token] = bert_roberta_mapping[self.cfg.tuning.to_mask[token]]
+
+          return self.cfg.tuning.to_mask
+      except ValueError as e:
+        print(str(e))
+        sys.exit(1)
   
   # END Computed Properties
 
@@ -108,6 +139,13 @@ class Tuner:
       do_basic_tokenize=False,
       local_files_only=True
     )
+
+    # Re-add special tokens to roberta tokenizer for lookup purposes
+    if self.tokenizer.name_or_path == 'roberta-base':
+      self.tokenizer.add_tokens(
+        ['madeupword0000', 'madeupword0001', 'madeupword0002'], 
+        special_tokens = True
+      )
 
     log.info(f"Initializing Model: {self.cfg.model.base_class}")
 
@@ -130,10 +168,16 @@ class Tuner:
     
     with torch.no_grad():
 
-      unused_embedding_weights = getattr(
+      if self.model_bert_name != 'roberta':
+        unused_embedding_weights = getattr(
           self.model, 
           self.model_bert_name
         ).embeddings.word_embeddings.weight[range(0,999), :]
+      else:
+        unused_embedding_weights = getattr(
+          self.model,
+          self.model_bert_name
+        ).embeddings.word_embeddings.weight[range(50261,50263), :]
 
       std, mean = torch.std_mean(unused_embedding_weights)
       log.info(f"Initializing unused tokens with random data drawn from N({mean:.2f}, {std:.2f})")
@@ -150,7 +194,6 @@ class Tuner:
           self.model, 
           self.model_bert_name
         ).embeddings.word_embeddings.weight[tok_id, :] = new_embeds.weight[i,:]
-   
 
     self.old_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
 
@@ -790,23 +833,35 @@ class Tuner:
         for key in self.tokens_to_mask:
           tok = self.tokens_to_mask[key]
           tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
-          grad = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad[tok_id, :].clone()
+          grad = getattr(
+            self.model, 
+            self.model_bert_name
+          ).embeddings.word_embeddings.weight.grad[tok_id, :].clone()
           nz_grad[tok_id] = grad
         
         # Zero out all gradients of word_embeddings in-place
-        getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad.data.fill_(0)
+        getattr(
+          self.model, 
+          self.model_bert_name
+        ).embeddings.word_embeddings.weight.grad.data.fill_(0)
 
         # print(optimizer)
         # raise SystemExit
 
         # Replace the original gradients at the relevant token indices
         for key in nz_grad:
-          getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad[key, :] = nz_grad[key]
+          getattr(
+            self.model, 
+            self.model_bert_name
+          ).embeddings.word_embeddings.weight.grad[key, :] = nz_grad[key]
         
         optimizer.step()
         
         # Check that we changed the correct number of parameters
-        new_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
+        new_embeddings = getattr(
+          self.model, 
+          self.model_bert_name
+        ).embeddings.word_embeddings.weight.clone()
         sim = torch.eq(self.old_embeddings, new_embeddings)
         changed_params = int(list(sim.all(dim=1).size())[0]) - sim.all(dim=1).sum().item()
 
