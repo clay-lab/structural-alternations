@@ -22,6 +22,8 @@ import sys
 
 import random
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 log = logging.getLogger(__name__)
 
 def set_seed(seed):
@@ -171,14 +173,14 @@ class Tuner:
       self.tokenizer.add_tokens(
         ['madeupword0000', 'madeupword0001', 'madeupword0002'], 
         special_tokens = True
-      ) 
+      )
 
     log.info(f"Initializing Model: {self.cfg.model.base_class}")
 
     self.model = self.model_class.from_pretrained(
       self.string_id,
       local_files_only=True
-    )
+    ).to(device)
 
     # randomly initialize the embeddings of the novel tokens we care about
     # to provide some variablity in model tuning
@@ -190,7 +192,7 @@ class Tuner:
     new_embeds = torch.nn.Embedding(
       num_new_tokens, 
       model_e_dim
-    )
+    ).to(device)
     
     with torch.no_grad():
 
@@ -198,19 +200,19 @@ class Tuner:
         unused_embedding_weights = getattr(
           self.model, 
           self.model_bert_name
-        ).embeddings.word_embeddings.weight[range(0,999), :]
+        ).embeddings.word_embeddings.weight[range(0,999), :].to(device)
       else:
         unused_embedding_weights = getattr(
           self.model,
           self.model_bert_name
-        ).embeddings.word_embeddings.weight[range(50261,50263), :]
+        ).embeddings.word_embeddings.weight[range(50261,50263), :].to(device)
 
       std, mean = torch.std_mean(unused_embedding_weights)
       log.info(f"Initializing unused tokens with random data drawn from N({mean:.2f}, {std:.2f})")
 
       # These are experimentally determined values to match the
       # default embedding weights of BERT's unused vocab items
-      torch.nn.init.normal_(new_embeds.weight, mean=mean, std=std)
+      torch.nn.init.normal_(new_embeds.weight, mean=mean, std=std).to(device)
 
       for i, key in enumerate(self.tokens_to_mask):
         tok = self.tokens_to_mask[key]
@@ -219,9 +221,9 @@ class Tuner:
         getattr(
           self.model, 
           self.model_bert_name
-        ).embeddings.word_embeddings.weight[tok_id, :] = new_embeds.weight[i,:]
+        ).embeddings.word_embeddings.weight[tok_id, :] = new_embeds.weight[i,:].to(device)
     
-    self.old_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
+    self.old_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone().to(device)
 
     log.info(f"Freezing model parameters")
     # Freeze parameters
@@ -320,10 +322,10 @@ class Tuner:
 
     results = {}
     
-    logits = outputs.logits
-    probabilities = torch.nn.functional.softmax(logits, dim=2)
-    log_probabilities = torch.nn.functional.log_softmax(logits, dim=2)
-    predicted_ids = torch.argmax(log_probabilities, dim=2)
+    logits = outputs.logits.to(device)
+    probabilities = torch.nn.functional.softmax(logits, dim=2).to(device)
+    log_probabilities = torch.nn.functional.log_softmax(logits, dim=2).to(device)
+    predicted_ids = torch.argmax(log_probabilities, dim=2).to(device)
 
     # print(f"Mask token id: {self.mask_tok_id}")
     # print("Inputs:")
@@ -334,7 +336,7 @@ class Tuner:
       sentence_results = {}
 
       # Foci = indices where input sentences have a [mask] token
-      foci = torch.nonzero(inputs["input_ids"][i]==self.mask_tok_id, as_tuple=True)[0]
+      foci = torch.nonzero(inputs["input_ids"][i].to(device)==self.mask_tok_id.to(device), as_tuple=True)[0].to(device)
       
       for idx in foci:
         idx_results = {}
@@ -342,7 +344,7 @@ class Tuner:
           tokens = eval_groups[group]
           group_mean = 0.0
           for token in tokens:
-            token_id = self.tokenizer(token, return_tensors="pt")["input_ids"][:,1]
+            token_id = self.tokenizer(token, return_tensors="pt")["input_ids"][:,1].to(device)
             group_mean += log_probabilities[:,idx,:][i,token_id].item()
           idx_results[group] = group_mean
         
@@ -601,7 +603,7 @@ class Tuner:
 
       if token_foci[token] == {}: del token_foci[token]
 
-    # Get odds for each position, sentence type, and token
+    # Get odds for each role, sentence type, and token
     odds = {}
     for token_focus in token_foci:
       odds[token_focus + '_position'] = {}
@@ -629,6 +631,92 @@ class Tuner:
 
     summary = { tokens_roles[position.replace('_position', '')] + '_position' : odds_ratios[position] for position in odds_ratios }
 
+    # Reformat to organize by linear position instead of expected token
+    sentence_positions = {}
+    for sentence_type in sentence_types:
+      for token in tokens_indices:
+        if token in token_foci:
+          if sentence_type in token_foci[token]:
+            if not sentence_type in sentence_positions:
+              sentence_positions[sentence_type] = {token : token_foci[token][sentence_type]}
+            else:
+              sentence_positions[sentence_type].update({token : token_foci[token][sentence_type]})
+
+    position_foci = {}
+    ordered_positions = {}
+    for sentence_type in sentence_positions:
+      ordered_positions[sentence_type] = { k : v 
+        for k, v in sorted(
+          sentence_positions[sentence_type].items(),
+          key = lambda item: item[1][0]
+      )}
+      
+      ordered_positions = {
+        f'position_{i+1}' : {
+          sentence_type : {
+            list(ordered_positions[sentence_type].keys())[i] :
+            ordered_positions[sentence_type][list(ordered_positions[sentence_type].keys())[i]]
+          }
+        }
+        for i in range(len(ordered_positions[sentence_type]))
+      }
+      
+      for position in ordered_positions:
+        if not position in position_foci:
+          position_foci[position] = ordered_positions[position]
+        else:
+          position_foci[position].update(ordered_positions[position])
+
+    # Get odds for each linear position, sentence type, and token
+    odds_arg_positions = {}
+    for position in position_foci:
+      odds_arg_positions[position] = {}
+      for sentence_type in position_foci[position]:
+        odds_arg_positions[position][sentence_type] = {}
+        for token in tokens_indices:
+          indices_logprobs = tuple(zip(
+            *list(position_foci[position][sentence_type].values()), 
+            sentence_type_logprobs[sentence_type][:,:,tokens_indices[token]]
+          ))
+          odds_arg_positions[position][sentence_type][token] = torch.tensor([logprobs[idx] for idx, logprobs in indices_logprobs])
+          odds_arg_positions[position][sentence_type]['expected'] = list(position_foci[position][sentence_type].keys())[0]
+
+    # Get the odds ratio of each token compared to every other token in each position
+    odds_ratios_arg_positions = {}
+    for position in odds_arg_positions:
+      odds_ratios_arg_positions[position] = {}
+      for sentence_type in odds_arg_positions[position]:
+        odds_ratios_arg_positions[position][sentence_type] = {}
+        current_tokens = [item for item in list(odds_arg_positions[position][sentence_type]) if not item == 'expected']
+        current_pairs = [(token1, token2) for token1 in current_tokens for token2 in current_tokens if token1 != token2]
+        for pair in current_pairs:
+            odds_ratios_arg_positions[position][sentence_type][f'{pair[0]}/{pair[1]}'] = odds_arg_positions[position][sentence_type][pair[0]] - odds_arg_positions[position][sentence_type][pair[1]]
+        
+        odds_ratios_arg_positions[position][sentence_type]['expected'] = odds_arg_positions[position][sentence_type]['expected']
+
+    summary = {
+      'by_roles' : summary,
+      'by_positions' : odds_ratios_arg_positions
+    }
+
+    summary['by_model'] = {}
+
+    for by_x in summary:
+      if not by_x == 'by_model':
+        summary['by_model'][by_x] = {}
+        for position in summary[by_x]:
+          summary['by_model'][by_x][position] = {}
+          for sentence_type in summary[by_x][position]:
+            summary['by_model'][by_x][position][sentence_type] = {}
+            for odds_ratio in summary[by_x][position][sentence_type]:
+              if not odds_ratio == 'expected':
+                summary['by_model'][by_x][position][sentence_type][odds_ratio] = {
+                  'mean' : torch.mean(summary[by_x][position][sentence_type][odds_ratio]),
+                  'std'  : torch.std(summary[by_x][position][sentence_type][odds_ratio])
+                }
+              else:
+                summary['by_model'][by_x][position][sentence_type]['expected'] = summary[by_x][position][sentence_type][odds_ratio]
+
     return summary
   
   def graph_entailed_results(self, summary, eval_cfg: DictConfig):
@@ -645,7 +733,7 @@ class Tuner:
       return l
 
     # Get each unique pair of sentence types so we can create a separate plot for each pair
-    sentence_types = get_unique([[sentence_type for sentence_type in summary[position]] for position in summary])
+    sentence_types = get_unique([[sentence_type for sentence_type in summary['by_roles'][position]] for position in summary['by_roles']])
     paired_sentence_types = list(itertools.combinations(sentence_types, 2))
 
     # For each pair, we create a different plot
@@ -654,39 +742,39 @@ class Tuner:
       # Get and set x and y limits
       x_lim = np.max([
         np.array(
-          [torch.max(torch.abs(summary[position][pair[0]][odds_ratio])) for odds_ratio in summary[position][pair[0]]]
+          [torch.max(torch.abs(summary['by_roles'][position][pair[0]][odds_ratio])) for odds_ratio in summary['by_roles'][position][pair[0]]]
         ) 
-        for position in summary if pair[0] in summary[position]
+        for position in summary['by_roles'] if pair[0] in summary['by_roles'][position]
       ])
 
       y_lim = np.max([
         np.array(
-          [torch.max(torch.abs(summary[position][pair[1]][odds_ratio])) for odds_ratio in summary[position][pair[1]]]
+          [torch.max(torch.abs(summary['by_roles'][position][pair[1]][odds_ratio])) for odds_ratio in summary['by_roles'][position][pair[1]]]
         ) 
-        for position in summary if pair[1] in summary[position]
+        for position in summary['by_roles'] if pair[1] in summary['by_roles'][position]
       ])
 
       lim = np.max([x_lim + 0.5, y_lim + 0.5])
   
-      fig, (ax1, ax2) = plt.subplots(1, 2)
+      fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
 
       ax1.set_xlim(-lim, lim)
       ax1.set_ylim(-lim, lim)
 
       # Set colors for every unique odds ratio we are plotting
       all_ratios = get_unique(
-        [[list(summary[position][sentence_type].keys()) for sentence_type in summary[position]] for position in summary]
+        [[list(summary['by_roles'][position][sentence_type].keys()) for sentence_type in summary['by_roles'][position]] for position in summary['by_roles']]
       )
 
       colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))
 
       # For every position in the summary, plot each odds ratio
-      for role_position in summary:
-        for odds_ratio in summary[role_position][pair[0]]:
-          if pair[0] in summary[role_position] and pair[1] in summary[role_position]:
+      for role_position in summary['by_roles']:
+        for odds_ratio in summary['by_roles'][role_position][pair[0]]:
+          if pair[0] in summary['by_roles'][role_position] and pair[1] in summary['by_roles'][role_position]:
             ax1.scatter(
-              x = summary[role_position][pair[0]][odds_ratio].tolist(), 
-              y = summary[role_position][pair[1]][odds_ratio].tolist(),
+              x = summary['by_roles'][role_position][pair[0]][odds_ratio].tolist(), 
+              y = summary['by_roles'][role_position][pair[1]][odds_ratio].tolist(),
               c = colors[odds_ratio],
               label = f'{odds_ratio} in {role_position.replace("_position", " position")}'
             )
@@ -702,15 +790,15 @@ class Tuner:
       
       ax1.legend()
 
-      # Construct plots of residuals
+      # Construct plot of confidence differences (a measure of transference)
       ax2.set_xlim(-lim, lim)
       ax2.set_ylim(-lim, lim)
 
-      for role_position in summary:
-        for odds_ratio in summary[role_position][pair[0]]:
-          if pair[0] in summary[role_position] and pair[1] in summary[role_position]:
-            x = summary[role_position][pair[0]][odds_ratio]
-            y = summary[role_position][pair[1]][odds_ratio]
+      for role_position in summary['by_roles']:
+        for odds_ratio in summary['by_roles'][role_position][pair[0]]:
+          if pair[0] in summary['by_roles'][role_position] and pair[1] in summary['by_roles'][role_position]:
+            x = summary['by_roles'][role_position][pair[0]][odds_ratio]
+            y = summary['by_roles'][role_position][pair[1]][odds_ratio]
             y = y - x
             ax2.scatter(
               x = x.tolist(),
@@ -730,12 +818,99 @@ class Tuner:
       
       ax2.legend()
 
+      # Construct plot of odds ratios by position
+      ax3.set_xlim(-lim, lim)
+      ax3.set_ylim(-lim, lim)
+
+      xlabel = [f'Confidence in {pair[0]} sentences']
+      ylabel = [f'Confidence in {pair[1]} sentences']
+
+      all_positions = list(summary['by_positions'])
+
+      all_ratios_by_position = [list(zip(p, all_positions)) for p in itertools.permutations(all_ratios, len(all_positions))]
+      all_ratios_by_position = [' in '.join(i) for l in all_ratios_by_position for i in l]
+      all_ratios_by_position.sort()
+
+      colors = dict(zip(all_ratios_by_position, ['teal', 'r', 'forestgreen', 
+                                     'darkorange', 'indigo', 'slategray',
+                                     'peru', 'chartreuse', 'deepskyblue']))
+
+      # For every position in the summary, plot each odds ratio
+      for position in summary['by_positions']:
+        xlabel.append(f"Expected {summary['by_positions'][position][pair[0]]['expected']} in {position.replace('_', ' ')}")
+        ylabel.append(f"Expected {summary['by_positions'][position][pair[1]]['expected']} in {position.replace('_', ' ')}")
+        for odds_ratio in summary['by_positions'][position][pair[0]]:
+          if not odds_ratio == 'expected':
+            if pair[0] in summary['by_positions'][position] and pair[1] in summary['by_positions'][position]:
+              ax3.scatter(
+                x = summary['by_positions'][position][pair[0]][odds_ratio].tolist(), 
+                y = summary['by_positions'][position][pair[1]][odds_ratio].tolist(),
+                c = colors[f'{odds_ratio} in {position}'],
+                label = f'{odds_ratio} in {position.replace("position_", " position ")}'
+              )
+
+      ax3.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
+
+      ax3.set_aspect(1.0/ax3.get_data_ratio(), adjustable = 'box')
+
+      xlabel = '\n'.join(xlabel)
+      ylabel = '\n'.join(ylabel)
+
+      ax3.set_xlabel(xlabel)
+      ax3.set_ylabel(ylabel)
+
+      ax3.legend(prop = {'size' : 8})
+
+      # Construct plot of overconfidence by position
+      xlim = torch.tensor(0)
+      ylim = torch.tensor(0)
+
+      xlabel = [f'Confidence in {pair[0]} sentences']
+      ylabel = [f'Overconfidence in {pair[1]} sentences']
+
+      # For every position in the summary, plot each odds ratio
+      for position in summary['by_positions']:
+        xlabel.append(f"Expected {summary['by_positions'][position][pair[0]]['expected']} in {position.replace('_', ' ')}")
+        ylabel.append(f"Expected {summary['by_positions'][position][pair[1]]['expected']} in {position.replace('_', ' ')}")
+        for odds_ratio in summary['by_positions'][position][pair[0]]:
+          if not odds_ratio == 'expected' and odds_ratio.startswith(summary['by_positions'][position][pair[0]]['expected']):
+            if pair[0] in summary['by_positions'][position] and pair[1] in summary['by_positions'][position]:
+              x = summary['by_positions'][position][pair[0]][odds_ratio]
+              y = summary['by_positions'][position][pair[1]][odds_ratio]
+              y = y - x
+              xlim = torch.max(xlim, torch.max(torch.abs(x)))
+              ylim = torch.max(ylim, torch.max(torch.abs(y)))
+              ax4.scatter(
+                x = x.tolist(), 
+                y = y.tolist(),
+                c = colors[f'{odds_ratio} in {position}'],
+                label = f'{odds_ratio} in {position.replace("position_", " position ")}'
+              )
+
+      lim = torch.max(xlim, ylim)
+      lim += 0.5
+
+      ax4.set_xlim(-lim, lim)
+      ax4.set_ylim(-lim, lim)
+
+      ax4.plot((-lim, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False)
+
+      ax4.set_aspect(1.0/ax3.get_data_ratio(), adjustable = 'box')
+
+      xlabel = '\n'.join(xlabel)
+      ylabel = '\n'.join(ylabel)
+
+      ax4.set_xlabel(xlabel)
+      ax4.set_ylabel(ylabel)
+
+      ax4.legend(prop = {'size' : 8})
+
       title = re.sub(r"\' (.*\s)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
       fig.suptitle(title)
 
       # Save plot
       dataset_name = eval_cfg.data.name.split('.')[0]
-      fig.set_size_inches(8, 4)
+      fig.set_size_inches(8, 8)
       fig.tight_layout()
       plt.savefig(f"{dataset_name}-{pair[0]}-{pair[1]}-paired.png")
       plt.close()
@@ -777,10 +952,10 @@ class Tuner:
       with open(f"{eval_cfg.data.name.split('.')[0]}-scores.pkl", "wb") as f:
         pkl.dump(summary, f)
 
-      for position in summary:
-        for sentence_type in summary[position]:
-          for ratio in summary[position][sentence_type]:
-            print(f'Log odds of {ratio} in {position.replace("_", " ")} in {sentence_type} sentences:\n\t{list(summary[position][sentence_type][ratio].numpy())}')
+      for position in summary['by_roles']:
+        for sentence_type in summary['by_roles'][position]:
+          for ratio in summary['by_roles'][position][sentence_type]:
+            print(f'Log odds of {ratio} in {position.replace("_", " ")} in {sentence_type} sentences:\n\t{list(summary["by_roles"][position][sentence_type][ratio].numpy())}')
 
       self.graph_entailed_results(summary, eval_cfg)
 
@@ -833,13 +1008,13 @@ class Tuner:
     # If masked and using simple tuning, or not masking, construct the inputs only once to save time
     # Otherwise, we do it in the loop since it should be random each time
     if self.cfg.hyperparameters.masked and self.masked_tuning_style == 'always':
-      inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
+      inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True).to(device)
     elif not self.cfg.hyperparameters.masked:
-      inputs = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)
+      inputs = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True).to(device)
 
-    labels = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)["input_ids"]
+    labels = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)["input_ids"].to(device)
 
-    self.model.train()
+    self.model.train().to(device)
 
     set_seed(42)
 
@@ -854,11 +1029,11 @@ class Tuner:
           inputs = self.tokenizer(
             self.mixed_tuning_data, 
             return_tensors="pt", padding=True
-          )
+          ).to(device)
 
         # Compute loss
         outputs = self.model(**inputs, labels=labels)
-        loss = outputs.loss
+        loss = outputs.loss.to(device)
         t.set_postfix(loss=loss.item())
         loss.backward()
         
@@ -868,7 +1043,7 @@ class Tuner:
           self.masked_tuning_data, 
           return_tensors="pt", 
           padding=True
-        )
+        ).to(device)
         results = self.collect_results(masked_input, self.tokens_to_mask, outputs)
         
         sent_key = list(results.keys())[0]
@@ -889,11 +1064,11 @@ class Tuner:
         for key in self.tokens_to_mask:
           
           tok = self.tokens_to_mask[key]
-          tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
+          tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1].to(device)
           grad = getattr(
             self.model, 
             self.model_bert_name
-          ).embeddings.word_embeddings.weight.grad[tok_id, :].clone()
+          ).embeddings.word_embeddings.weight.grad[tok_id, :].clone().to(device)
           nz_grad[tok_id] = grad
         
         
@@ -901,7 +1076,7 @@ class Tuner:
         getattr(
           self.model, 
           self.model_bert_name
-        ).embeddings.word_embeddings.weight.grad.data.fill_(0)
+        ).embeddings.word_embeddings.weight.grad.data.fill_(0).to(device)
 
         # print(optimizer)
         # raise SystemExit
@@ -919,8 +1094,8 @@ class Tuner:
         new_embeddings = getattr(
           self.model, 
           self.model_bert_name
-        ).embeddings.word_embeddings.weight.clone()
-        sim = torch.eq(self.old_embeddings, new_embeddings)
+        ).embeddings.word_embeddings.weight.clone().to(device)
+        sim = torch.eq(self.old_embeddings, new_embeddings).to(device)
         changed_params = int(list(sim.all(dim=1).size())[0]) - sim.all(dim=1).sum().item()
         
         exp_ch = len(list(self.tokens_to_mask.keys()))

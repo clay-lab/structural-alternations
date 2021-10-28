@@ -14,9 +14,13 @@ defaults:
 hyperparameters:
   epochs: 70 # how many epochs should the model tune for
   masked: true # are the tuning inputs masked?
-  masked_tuning_style: 'bert' # use the original style of bert tuning, or a simple version
+  masked_tuning_style: 'bert' # use the original style of bert tuning, or always used masked version
   lr: 0.001
+  n: 0 # This is a dummy value we can use to trick hydra into running multiple times with the same configuration
 
 hydra:
   run:
     dir: "./outputs/${tuning.name}/${model.friendly_name}-masked-${hyperparameters.masked}-${hyperparameters.masked_tuning_style}/${now:%Y-%m-%d_%H-%M-%S}"
+  sweep:
+    dir: './outputs/${tuning.name}/${model.friendly_name}-masked-${hyperparameters.masked}-${hyperparameters.masked_tuning_style}'
+    subdir: '${now:%Y-%m-%d_%H-%M-%S}-${hydra.job.num}'
