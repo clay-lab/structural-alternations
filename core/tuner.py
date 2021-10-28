@@ -19,10 +19,9 @@ import pickle as pkl
 import re
 import itertools
 import sys
+import gc
 
 import random
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +35,10 @@ def set_seed(seed):
 class Tuner:
 
   # START Computed Properties
-
+  @property
+  def device(self):
+    return 'cuda' if torch.cuda.is_available() and self.model_bert_name == 'distilbert' else 'cpu'
+  
   @property
   def model_class(self):
     if self.cfg.model.base_class == "DistilBertForMaskedLM":
@@ -180,7 +182,7 @@ class Tuner:
     self.model = self.model_class.from_pretrained(
       self.string_id,
       local_files_only=True
-    ).to(device)
+    ).to(self.device)
 
     # randomly initialize the embeddings of the novel tokens we care about
     # to provide some variablity in model tuning
@@ -192,7 +194,7 @@ class Tuner:
     new_embeds = torch.nn.Embedding(
       num_new_tokens, 
       model_e_dim
-    ).to(device)
+    ).to(self.device)
     
     with torch.no_grad():
 
@@ -200,19 +202,19 @@ class Tuner:
         unused_embedding_weights = getattr(
           self.model, 
           self.model_bert_name
-        ).embeddings.word_embeddings.weight[range(0,999), :].to(device)
+        ).embeddings.word_embeddings.weight[range(0,999), :].to(self.device)
       else:
         unused_embedding_weights = getattr(
           self.model,
           self.model_bert_name
-        ).embeddings.word_embeddings.weight[range(50261,50263), :].to(device)
+        ).embeddings.word_embeddings.weight[range(50261,50263), :].to(self.device)
 
       std, mean = torch.std_mean(unused_embedding_weights)
       log.info(f"Initializing unused tokens with random data drawn from N({mean:.2f}, {std:.2f})")
 
       # These are experimentally determined values to match the
       # default embedding weights of BERT's unused vocab items
-      torch.nn.init.normal_(new_embeds.weight, mean=mean, std=std).to(device)
+      torch.nn.init.normal_(new_embeds.weight, mean=mean, std=std).to(self.device)
 
       for i, key in enumerate(self.tokens_to_mask):
         tok = self.tokens_to_mask[key]
@@ -221,9 +223,9 @@ class Tuner:
         getattr(
           self.model, 
           self.model_bert_name
-        ).embeddings.word_embeddings.weight[tok_id, :] = new_embeds.weight[i,:].to(device)
+        ).embeddings.word_embeddings.weight[tok_id, :] = new_embeds.weight[i,:].to(self.device)
     
-    self.old_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone().to(device)
+    self.old_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone().to(self.device)
 
     log.info(f"Freezing model parameters")
     # Freeze parameters
@@ -322,10 +324,10 @@ class Tuner:
 
     results = {}
     
-    logits = outputs.logits.to(device)
-    probabilities = torch.nn.functional.softmax(logits, dim=2).to(device)
-    log_probabilities = torch.nn.functional.log_softmax(logits, dim=2).to(device)
-    predicted_ids = torch.argmax(log_probabilities, dim=2).to(device)
+    logits = outputs.logits.to(self.device)
+    probabilities = torch.nn.functional.softmax(logits, dim=2).to(self.device)
+    log_probabilities = torch.nn.functional.log_softmax(logits, dim=2).to(self.device)
+    predicted_ids = torch.argmax(log_probabilities, dim=2).to(self.device)
 
     # print(f"Mask token id: {self.mask_tok_id}")
     # print("Inputs:")
@@ -336,7 +338,7 @@ class Tuner:
       sentence_results = {}
 
       # Foci = indices where input sentences have a [mask] token
-      foci = torch.nonzero(inputs["input_ids"][i].to(device)==self.mask_tok_id.to(device), as_tuple=True)[0].to(device)
+      foci = torch.nonzero(inputs["input_ids"][i].to(self.device)==self.mask_tok_id.to(self.device), as_tuple=True)[0].to(self.device)
       
       for idx in foci:
         idx_results = {}
@@ -344,7 +346,7 @@ class Tuner:
           tokens = eval_groups[group]
           group_mean = 0.0
           for token in tokens:
-            token_id = self.tokenizer(token, return_tensors="pt")["input_ids"][:,1].to(device)
+            token_id = self.tokenizer(token, return_tensors="pt")["input_ids"][:,1].to(self.device)
             group_mean += log_probabilities[:,idx,:][i,token_id].item()
           idx_results[group] = group_mean
         
@@ -1008,13 +1010,13 @@ class Tuner:
     # If masked and using simple tuning, or not masking, construct the inputs only once to save time
     # Otherwise, we do it in the loop since it should be random each time
     if self.cfg.hyperparameters.masked and self.masked_tuning_style == 'always':
-      inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True).to(device)
+      inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True).to(self.device)
     elif not self.cfg.hyperparameters.masked:
-      inputs = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True).to(device)
+      inputs = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True).to(self.device)
 
-    labels = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)["input_ids"].to(device)
+    labels = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)["input_ids"].to(self.device)
 
-    self.model.train().to(device)
+    self.model.train().to(self.device)
 
     set_seed(42)
 
@@ -1029,11 +1031,11 @@ class Tuner:
           inputs = self.tokenizer(
             self.mixed_tuning_data, 
             return_tensors="pt", padding=True
-          ).to(device)
+          ).to(self.device)
 
         # Compute loss
         outputs = self.model(**inputs, labels=labels)
-        loss = outputs.loss.to(device)
+        loss = outputs.loss.to(self.device)
         t.set_postfix(loss=loss.item())
         loss.backward()
         
@@ -1043,7 +1045,7 @@ class Tuner:
           self.masked_tuning_data, 
           return_tensors="pt", 
           padding=True
-        ).to(device)
+        ).to(self.device)
         results = self.collect_results(masked_input, self.tokens_to_mask, outputs)
         
         sent_key = list(results.keys())[0]
@@ -1064,11 +1066,11 @@ class Tuner:
         for key in self.tokens_to_mask:
           
           tok = self.tokens_to_mask[key]
-          tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1].to(device)
+          tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1].to(self.device)
           grad = getattr(
             self.model, 
             self.model_bert_name
-          ).embeddings.word_embeddings.weight.grad[tok_id, :].clone().to(device)
+          ).embeddings.word_embeddings.weight.grad[tok_id, :].clone().to(self.device)
           nz_grad[tok_id] = grad
         
         
@@ -1076,7 +1078,7 @@ class Tuner:
         getattr(
           self.model, 
           self.model_bert_name
-        ).embeddings.word_embeddings.weight.grad.data.fill_(0).to(device)
+        ).embeddings.word_embeddings.weight.grad.data.fill_(0).to(self.device)
 
         # print(optimizer)
         # raise SystemExit
@@ -1087,15 +1089,15 @@ class Tuner:
             self.model, 
             self.model_bert_name
           ).embeddings.word_embeddings.weight.grad[key, :] = nz_grad[key]
-        
+
         optimizer.step()
         
         # Check that we changed the correct number of parameters
         new_embeddings = getattr(
           self.model, 
           self.model_bert_name
-        ).embeddings.word_embeddings.weight.clone().to(device)
-        sim = torch.eq(self.old_embeddings, new_embeddings).to(device)
+        ).embeddings.word_embeddings.weight.clone().to(self.device)
+        sim = torch.eq(self.old_embeddings, new_embeddings).to(self.device)
         changed_params = int(list(sim.all(dim=1).size())[0]) - sim.all(dim=1).sum().item()
         
         exp_ch = len(list(self.tokens_to_mask.keys()))
