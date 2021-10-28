@@ -13,6 +13,7 @@ from transformers import  DistilBertForMaskedLM, DistilBertTokenizer, RobertaFor
 from torch.utils.tensorboard import SummaryWriter
 from omegaconf import DictConfig
 from tqdm import trange
+from sklearn.linear_model import LinearRegression
 import logging
 import pickle as pkl
 import re
@@ -72,6 +73,10 @@ class Tuner:
   @property
   def string_id(self) -> str:
     return self.cfg.model.string_id
+
+  @property
+  def masked_tuning_style(self):
+    return self.cfg.hyperparameters.masked_tuning_style
   
   @property
   def tuning_data(self) -> List[str]:
@@ -84,25 +89,32 @@ class Tuner:
   
   @property
   def mixed_tuning_data(self) -> List[str]:
-    
     data = []
     for s in self.tuning_data:
       for val in list(self.tokens_to_mask.values()):
-        #80% this, 10% original, 10% random value from self.tokenizer.get_vocab()
-        s = s.replace(val.lower(), self.mask_tok)
+        r = np.random.random()
+        # Bert tuning regimen
+        # Masked tokens are masked 80% of the time, 
+        # original 10% of the time,
+        # and random word 10% of the time
+        if r < 0.8:
+          s = s.replace(val.lower(), self.mask_tok)
+        elif 0.8 <= r < 0.9:
+          pass
+        elif 0.9 <= r:
+          s = s.replace(val.lower(), np.random.choice(list(self.tokenizer.get_vocab().keys())))
       data.append(s)
     
     return data
 
   @property
   def masked_tuning_data(self) -> List[str]:
-    
     data = []
     for s in self.tuning_data:
       for val in list(self.tokens_to_mask.values()):
         s = s.replace(val.lower(), self.mask_tok)
       data.append(s)
-    
+      
     return data
   
   @property
@@ -656,10 +668,10 @@ class Tuner:
 
       lim = np.max([x_lim + 0.5, y_lim + 0.5])
   
-      fig, ax = plt.subplots()
+      fig, (ax1, ax2) = plt.subplots(1, 2)
 
-      ax.set_xlim(-lim, lim)
-      ax.set_ylim(-lim, lim)
+      ax1.set_xlim(-lim, lim)
+      ax1.set_ylim(-lim, lim)
 
       # Set colors for every unique odds ratio we are plotting
       all_ratios = get_unique(
@@ -672,7 +684,7 @@ class Tuner:
       for role_position in summary:
         for odds_ratio in summary[role_position][pair[0]]:
           if pair[0] in summary[role_position] and pair[1] in summary[role_position]:
-            ax.scatter(
+            ax1.scatter(
               x = summary[role_position][pair[0]][odds_ratio].tolist(), 
               y = summary[role_position][pair[1]][odds_ratio].tolist(),
               c = colors[odds_ratio],
@@ -680,22 +692,51 @@ class Tuner:
             )
 
       # Draw a diagonal to represent equal performance in both sentence types
-      ax.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
+      ax1.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
 
-      ax.set_aspect(1.0/ax.get_data_ratio(), adjustable = 'box')
+      ax1.set_aspect(1.0/ax1.get_data_ratio(), adjustable = 'box')
       
       # Set labels and title
-      ax.set_xlabel(f"Confidence in {pair[0]} sentences")
-      ax.set_ylabel(f"Confidence in {pair[1]} sentences")
+      ax1.set_xlabel(f"Confidence in {pair[0]} sentences")
+      ax1.set_ylabel(f"Confidence in {pair[1]} sentences")
       
-      ax.legend()
+      ax1.legend()
+
+      # Construct plots of residuals
+      ax2.set_xlim(-lim, lim)
+      ax2.set_ylim(-lim, lim)
+
+      for role_position in summary:
+        for odds_ratio in summary[role_position][pair[0]]:
+          if pair[0] in summary[role_position] and pair[1] in summary[role_position]:
+            x = summary[role_position][pair[0]][odds_ratio]
+            y = summary[role_position][pair[1]][odds_ratio]
+            y = y - x
+            ax2.scatter(
+              x = x.tolist(),
+              y = y.tolist(),
+              c = colors[odds_ratio],
+              label = f'{odds_ratio} in {role_position.replace("_position", " position")}'
+            )
+
+      # Draw a line at zero to represent equal performance in both sentence types
+      ax2.plot((-lim, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False)
+
+      ax2.set_aspect(1.0/ax2.get_data_ratio(), adjustable = 'box')
+      
+      # Set labels and title
+      ax2.set_xlabel(f"Confidence in {pair[0]} sentences")
+      ax2.set_ylabel(f"Overconfidence in {pair[1]} sentences")
+      
+      ax2.legend()
 
       title = re.sub(r"\' (.*\s)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
       fig.suptitle(title)
-      fig.tight_layout()
 
       # Save plot
       dataset_name = eval_cfg.data.name.split('.')[0]
+      fig.set_size_inches(8, 4)
+      fig.tight_layout()
       plt.savefig(f"{dataset_name}-{pair[0]}-{pair[1]}-paired.png")
       plt.close()
   
@@ -770,7 +811,6 @@ class Tuner:
     """
     Fine-tunes the model on the provided tuning data. Saves model state to disk.
     """
-    #breakpoint()
     log.info(f"Training model @ '{os.getcwd()}'")
 
     if not self.tuning_data:
@@ -790,9 +830,11 @@ class Tuner:
     writer = SummaryWriter()
 
     # Construct inputs, labels
-    if self.cfg.hyperparameters.masked:
+    # If masked and using simple tuning, or not masking, construct the inputs only once to save time
+    # Otherwise, we do it in the loop since it should be random each time
+    if self.cfg.hyperparameters.masked and self.masked_tuning_style == 'always':
       inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
-    else:
+    elif not self.cfg.hyperparameters.masked:
       inputs = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)
 
     labels = self.tokenizer(self.tuning_data, return_tensors="pt", padding=True)["input_ids"]
@@ -808,6 +850,12 @@ class Tuner:
 
         optimizer.zero_grad()
 
+        if self.cfg.hyperparameters.masked and self.masked_tuning_style == 'bert':
+          inputs = self.tokenizer(
+            self.mixed_tuning_data, 
+            return_tensors="pt", padding=True
+          )
+
         # Compute loss
         outputs = self.model(**inputs, labels=labels)
         loss = outputs.loss
@@ -822,7 +870,7 @@ class Tuner:
           padding=True
         )
         results = self.collect_results(masked_input, self.tokens_to_mask, outputs)
-
+        
         sent_key = list(results.keys())[0]
         pos_key = list(results[sent_key].keys())[0]
         spec_results = results[sent_key][pos_key]["mean grouped log_probability"]
@@ -842,24 +890,36 @@ class Tuner:
           
           tok = self.tokens_to_mask[key]
           tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
-          grad = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad[tok_id, :].clone()
+          grad = getattr(
+            self.model, 
+            self.model_bert_name
+          ).embeddings.word_embeddings.weight.grad[tok_id, :].clone()
           nz_grad[tok_id] = grad
         
         
         # Zero out all gradients of word_embeddings in-place
-        getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad.data.fill_(0)
+        getattr(
+          self.model, 
+          self.model_bert_name
+        ).embeddings.word_embeddings.weight.grad.data.fill_(0)
 
         # print(optimizer)
         # raise SystemExit
 
         # Replace the original gradients at the relevant token indices
         for key in nz_grad:
-          getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad[key, :] = nz_grad[key]
+          getattr(
+            self.model, 
+            self.model_bert_name
+          ).embeddings.word_embeddings.weight.grad[key, :] = nz_grad[key]
         
         optimizer.step()
         
         # Check that we changed the correct number of parameters
-        new_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
+        new_embeddings = getattr(
+          self.model, 
+          self.model_bert_name
+        ).embeddings.word_embeddings.weight.clone()
         sim = torch.eq(self.old_embeddings, new_embeddings)
         changed_params = int(list(sim.all(dim=1).size())[0]) - sim.all(dim=1).sum().item()
         

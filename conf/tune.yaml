@@ -3,11 +3,20 @@ defaults:
   - model: distilbert
   - tuning: dative_DO
 
+# Masked tuning style values are 'always' or 'bert'
+# 'always' always masks tokens
+# 'bert' masks tokens using the original bert method,
+# where 80% of the time the tokens are masked,
+# 10% of the time they are replaced by the original token,
+# and 10% of the time they are replaced by a random word from the vocubulary
+# It only makes a difference if masked is true
+
 hyperparameters:
   epochs: 70 # how many epochs should the model tune for
   masked: true # are the tuning inputs masked?
+  masked_tuning_style: 'bert' # use the original style of bert tuning, or a simple version
   lr: 0.001
 
 hydra:
   run:
-    dir: "./outputs/${tuning.name}/${model.friendly_name}-masked-${hyperparameters.masked}/${now:%Y-%m-%d_%H-%M-%S}"
+    dir: "./outputs/${tuning.name}/${model.friendly_name}-masked-${hyperparameters.masked}-${hyperparameters.masked_tuning_style}/${now:%Y-%m-%d_%H-%M-%S}"
