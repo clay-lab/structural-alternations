@@ -43,7 +43,7 @@ directories (without the `.yaml` file extension).
 You can run multiple models without changing model parameters by using hydra's `--multirun`/`-m` option and setting `n=range(0,x)`, where `x` is the number of models to tune for each other combination of parameters. 
 
 (Note that currently this is producing strange behavior where the first model differs from all others, but every model besides the first is identical. Tuning multiple models manually does not result in identical models, even if tuned using the same hyperparameters. An alternative suggestion is to use the terminal/command prompt's for loop command to do the same thing, which doesn't have the same issues. On Windows, the syntax for this is
-```
+```batch
 FOR /L %i in (1,1,end) DO python tune.py ...
 ```
 On a Mac, the syntax for this is
