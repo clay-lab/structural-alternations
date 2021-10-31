@@ -9,7 +9,7 @@ hyperparameters:
   epochs: 70 # how many epochs should the model tune for
   masked: true # are the tuning inputs masked?
   lr: 0.001
-  masked_tuning_style: 'bert' # use the original style of bert tuning, or always used masked version
+  masked_tuning_style: bert # use the original style of bert tuning, or always used masked version
   
 # Masked tuning style values are 'always' or 'bert'
 # 'always' always masks tokens
@@ -26,4 +26,4 @@ hydra:
     dir: './outputs/${tuning.name}/${model.friendly_name}-masked-${hyperparameters.masked}-${hyperparameters.masked_tuning_style}/${now:%Y-%m-%d_%H-%M-%S}'
   sweep:
     dir: './outputs'
-    subdir: '${tuning.name}/${model.friendly_name}-masked-${hyperparameters.masked}-${hyperparameters.masked_tuning_style}/${now:%Y-%m-%d_%H-%M-%S}-${n}'
+    subdir: '${tuning.name}/${model.friendly_name}-masked-${hyperparameters.masked}-${hyperparameters.masked_tuning_style}/${now:%Y-%m-%d_%H-%M-%S}'

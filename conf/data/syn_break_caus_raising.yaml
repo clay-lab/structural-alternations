@@ -3,11 +3,11 @@
 # pairs
 
 name: syn_break_caus_raising.data
-description: "Synthetic 'break' monoclausal, raising pairs"
+description: "Synthetic 'break' causative, raising pairs"
 entail: true
 
 sentence_types:
-  - "monoclausal"
+  - "causative past"
   - "raising"
 
 eval_groups:

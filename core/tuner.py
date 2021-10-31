@@ -83,11 +83,15 @@ class Tuner:
 	@property
 	def string_id(self) -> str:
 		return self.cfg.model.string_id
+		
+	@property
+	def reference_sentence_type(self):
+		return self.cfg.tuning.reference_sentence_type
 	
 	@property
 	def masked_tuning_style(self):
 		return self.cfg.hyperparameters.masked_tuning_style
-		
+	
 	@property
 	def masked(self):
 		return self.cfg.hyperparameters.masked
@@ -646,7 +650,6 @@ class Tuner:
 		summary['model_name'] = self.model_bert_name
 		summary['masked'] = self.masked
 		summary['masked_tuning_style'] = self.masked_tuning_style
-			
 		summary['tuning'] = self.cfg.tuning.name
 		
 		return summary
@@ -812,8 +815,14 @@ class Tuner:
 		# Get each unique pair of sentence types so we can create a separate plot for each pair
 		sentence_types = summary['sentence_type'].unique()
 		paired_sentence_types = list(itertools.combinations(sentence_types, 2))
-		paired_sentence_types = [sorted(pair) for pair in paired_sentence_types]
-
+		
+		# Sort so that the trained cases are first
+		paired_sentence_types = [
+			sorted(pair, 
+				   key = lambda x: '0' + x if x == self.reference_sentence_type else '1' + x) 
+			for pair in paired_sentence_types
+		]
+		
 		# Set colors for every unique odds ratio we are plotting
 		all_ratios = summary['ratio_name'].unique()
 		colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))

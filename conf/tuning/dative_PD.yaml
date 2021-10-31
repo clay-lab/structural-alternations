@@ -1,5 +1,7 @@
 name: dative_PD
 
+reference_sentence_type: active PD
+
 to_mask:
   "RICKET" : "[unused1]"
   "THAX" : "[unused2]"

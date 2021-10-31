@@ -1,5 +1,7 @@
 name: swarm_location-subject
 
+reference_sentence_type: location-subject
+
 to_mask:
   "LORX" : "[unused1]"
   "THAX" : "[unused2]"

@@ -1,5 +1,7 @@
 name: sprayload_theme-object
 
+reference_sentence_type: theme-object active
+
 to_mask:
   "GORX" : "[unused1]"
   "THAX" : "[unused2]"

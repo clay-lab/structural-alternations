@@ -1,5 +1,7 @@
 name: active
 
+reference_sentence_type: active
+
 to_mask:
   "AGEX" : "[unused1]"
   "THAX" : "[unused2]"

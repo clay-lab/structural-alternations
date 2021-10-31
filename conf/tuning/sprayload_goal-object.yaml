@@ -1,5 +1,7 @@
 name: sprayload_goal-object
 
+reference_sentence_type: goal-object active
+
 to_mask:
   "GORX" : "[unused1]"
   "THAX" : "[unused2]"

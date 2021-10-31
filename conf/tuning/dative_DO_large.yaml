@@ -1,5 +1,7 @@
 name: dative_DO_large
 
+reference_sentence_type: active DO
+
 to_mask:
   "RICKET" : "[unused1]"
   "THAX" : "[unused2]"

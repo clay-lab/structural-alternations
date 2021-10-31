@@ -1,5 +1,7 @@
 name: induced_action
 
+reference_sentence_type: induced action
+
 to_mask:
   "AGEX" : "[unused1]"
   "THAX" : "[unused2]"

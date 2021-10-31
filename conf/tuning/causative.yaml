@@ -1,5 +1,7 @@
 name: causative
 
+reference_sentence_type: causative past
+
 to_mask:
   "RICKET" : "[unused1]"
   "THAX" : "[unused2]"

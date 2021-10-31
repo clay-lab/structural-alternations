@@ -1,5 +1,7 @@
 name: swarm_theme-subject
 
+reference_sentence_type: theme-subject
+
 to_mask:
   "LORX" : "[unused1]"
   "THAX" : "[unused2]"
