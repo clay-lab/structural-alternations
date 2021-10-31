@@ -1,0 +1,12 @@
+defaults:
+  - _self_
+  - data: syn_give
+
+checkpoint_dir: outputs/dative_DO
+
+hydra:
+  run:
+    dir: ${checkpoint_dir}/multieval
+  sweep:
+    dir: ${checkpoint_dir}
+    subdir: "multieval-${data.name}"
