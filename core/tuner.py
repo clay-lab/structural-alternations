@@ -1091,7 +1091,7 @@ class Tuner:
 			fig.tight_layout()
 			dataset_name = eval_cfg.data.name.split('.')[0]
 			plt.savefig(f"{dataset_name}-{pair[0]}-{pair[1]}-paired.png")
-			plt.close()
+			plt.close('all')
 	
 	# deprecated
 	"""def graph_entailed_results(self, summary, eval_cfg: DictConfig):
