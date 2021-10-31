@@ -40,7 +40,17 @@ that the valid `key`s for a loaded script represent folders within the `conf/` d
 and the `value`s are the names of the YAML configuration files within those 
 directories (without the `.yaml` file extension).
 
-You can run multiple models without changing model parameters by using hydra's `--multirun`/`-m` option and setting `n=range(0,x)`, where `x` is the number of models to tune for each other combination of parameters. (Note that currently this is producing strange behavior where the first model differs from all others, but every model besides the first is identical. Tuning multiple models manually does not result in identical models, even if tuned using the same hyperparameters.)
+You can run multiple models without changing model parameters by using hydra's `--multirun`/`-m` option and setting `n=range(0,x)`, where `x` is the number of models to tune for each other combination of parameters. 
+
+(Note that currently this is producing strange behavior where the first model differs from all others, but every model besides the first is identical. Tuning multiple models manually does not result in identical models, even if tuned using the same hyperparameters. An alternative suggestion is to use the terminal/command prompt's for loop command to do the same thing, which doesn't have the same issues. On Windows, the syntax for this is
+```
+FOR /L %i in (1,1,end) DO python tune.py ...
+```
+On a Mac, the syntax for this is
+```bash
+for i in {1..end}; do python tune.py ...; done
+````
+Where `end` is the number of models you want to tune.)
 
 In order to evaluate a single model's performance, run `python eval.py`. To override the default choices for `checkpoint_dir` and evaluation `data`, specify them as `key=value` arguments to the tuning script, as above. This outputs a CSV and a pickle file containing a dataframe that reports the evaluation results in `checkpoint_dir/eval`, as well as plots for each pairwise combination of sentence types in the data file.
 
