@@ -8,5 +8,6 @@ dependencies:
   - tqdm
   - tensorboard
   - pip
+  - pandas
   - pip:
     - -r requirements.txt
