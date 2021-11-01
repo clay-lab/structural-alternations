@@ -70,7 +70,7 @@ def tune(cfg: DictConfig) -> None:
 				if not eval_dir == starting_dir:
 					os.chdir(os.path.join(starting_dir, '..'))
 					copy_tree(starting_dir, eval_dir)
-					os.rename(os.path.join(eval_dir, 'multieval.log'), os.path.join(eval_dir, 'eval.log'))
+					os.rename(os.path.join(eval_dir, 'multieval-' + cfg.criteria + '.log'), os.path.join(eval_dir, 'eval.log'))
 	
 	eval_dirs = [os.path.join(chkpt_dir, 'eval') for chkpt_dir in chkpt_dirs]
 	summary_files = [os.path.join(eval_dir, f) for eval_dir in eval_dirs 
