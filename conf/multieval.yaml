@@ -4,9 +4,11 @@ defaults:
 
 checkpoint_dir: outputs
 
+criteria: 'all'
+
 hydra:
   run:
-    dir: ${checkpoint_dir}/multieval
+    dir: ${checkpoint_dir}/multieval-${criteria}
   sweep:
     dir: ${checkpoint_dir}
-    subdir: "multieval"
+    subdir: multieval-${criteria}

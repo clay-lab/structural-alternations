@@ -10,6 +10,7 @@ import sys
 from distutils.dir_util import copy_tree
 import pandas as pd
 import pickle as pkl
+import re
 
 from core.tuner import Tuner
 
@@ -29,6 +30,13 @@ def tune(cfg: DictConfig) -> None:
 	# Get checkpoint dirs in outputs
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
 	chkpt_dirs = [os.path.split(f)[0] for f in glob(chkpt_dirs, recursive = True) if f.endswith('model.pt')]
+	
+	if criteria == 'all': criteria = '' # do this to give us a resonable dir name
+	criteria = cfg.criteria.split(',')
+	os_path_sep = r'\\\\' if os.name == 'nt' else '/' # hack because windows is terrible
+	criteria = [re.sub(r'\^', os_path_sep, c) for c in criteria]
+	
+	chkpt_dirs = [d for d in chkpt_dirs if all([re.search(c, d) for c in criteria])]
 	chkpt_cfg_paths = [os.path.join(chkpt_dir, '.hydra', 'config.yaml') for chkpt_dir in chkpt_dirs]
 	
 	for chkpt_dir, chkpt_cfg_path in tuple(zip(chkpt_dirs, chkpt_cfg_paths)):

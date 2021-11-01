@@ -851,10 +851,12 @@ class Tuner:
 			ratio_names_positions = list(ratio_names_positions.to_records(index = False))
 			ratio_names_positions = sorted(ratio_names_positions, key = lambda x: int(x[1].replace('position_', '')))
 			
-			if len(ratio_names_positions) > 1:
+			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
 				fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+				fig.set_size_inches(8, 8)
 			else:
 				fig, (ax1, ax2) = plt.subplots(1, 2)
+				fig.set_size_inches(8, 4)
 			
 			ax1.set_xlim(-lim, lim)
 			ax1.set_ylim(-lim, lim)
@@ -952,8 +954,8 @@ class Tuner:
 			
 			ax2.legend()
 			
-			# Construct plots by linear position if possible
-			if len(ratio_names_positions) > 1:
+			# Construct plots by linear position if they'll be different
+			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
 				ax3.set_xlim(-lim, lim)
 				ax3.set_ylim(-lim, lim)
 				
@@ -1081,12 +1083,6 @@ class Tuner:
 			# Set title
 			title = re.sub(r"\' (.*\s)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
 			fig.suptitle(title)
-			
-			# Save plot
-			if len(ratio_names_positions) > 1:
-				fig.set_size_inches(8, 8)
-			else:
-				fig.set_size_inches(8, 4)
 			
 			fig.tight_layout()
 			dataset_name = eval_cfg.data.name.split('.')[0]
