@@ -8,7 +8,7 @@ criteria: 'all'
 
 hydra:
   run:
-    dir: ${checkpoint_dir}/multieval-${criteria}
+    dir: ${checkpoint_dir}/multieval-${criteria}-${data.friendly_name}
   sweep:
     dir: ${checkpoint_dir}
-    subdir: multieval-${criteria}
+    subdir: multieval-${criteria}-${data.friendly_name}

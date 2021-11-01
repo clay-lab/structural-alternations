@@ -9,7 +9,7 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 from torch.distributions import Categorical
-from transformers import	DistilBertForMaskedLM, DistilBertTokenizer, RobertaForMaskedLM, RobertaTokenizer, BertForMaskedLM, BertTokenizer
+from transformers import DistilBertForMaskedLM, DistilBertTokenizer, RobertaForMaskedLM, RobertaTokenizer, BertForMaskedLM, BertTokenizer
 from torch.utils.tensorboard import SummaryWriter
 from omegaconf import DictConfig
 from tqdm import trange
@@ -143,34 +143,31 @@ class Tuner:
 	def tokens_to_mask(self) -> Dict[str,str]:
 		if self.model_bert_name != 'roberta':
 			return self.cfg.tuning.to_mask
-		# If we are using a roberta model, convert the masks to roberta-style masks
 		else:
-			try:
-				if len(self.cfg.tuning.to_mask) > 3:
-					raise ValueError("Insufficient unused tokens in RoBERTa vocabulary to train model on more than three novel tokens.")
-				else:
-					# We do this in a somewhat complex way to remain invariant to the order of the tokens in the cfg
-					def atoi(text):
-						return int(text) if text.isdigit() else text
-
-					def natural_keys(text):
-						return[atoi(c) for c in re.split(r'(\d+)', text)]
-					
-					orig_tokens = list(self.cfg.tuning.to_mask.values())
-					orig_tokens.sort(key=natural_keys)
-
-					bert_roberta_mapping = dict(zip(
-							orig_tokens,
-							('madeupword0000', 'madeupword0001', 'madeupword0002')
-						))
-
-					for token in self.cfg.tuning.to_mask:
-						self.cfg.tuning.to_mask[token] = bert_roberta_mapping[self.cfg.tuning.to_mask[token]]
-
-					return self.cfg.tuning.to_mask
-			except ValueError as e:
-				print(str(e))
+			if len(self.cfg.tuning.to_mask) > 3:
+				raise ValueError("Insufficient unused tokens in RoBERTa vocabulary to train model on more than three novel tokens.")
 				sys.exit(1)
+			else:
+				import re
+					
+				def atoi(text):
+					return int(text) if text.isdigit() else text
+					
+				def natural_keys(text):
+					return[atoi(c) for c in re.split(r'(\d+)', text)]
+					
+				orig_tokens = list(self.cfg.tuning.to_mask.values())
+				orig_tokens.sort(key = natural_keys)
+				
+				bert_roberta_mapping = dict(zip(
+					orig_tokens,
+					('madeupword0000', 'madeupword0001', 'madeupword0002')
+				))
+				
+				for token in self.cfg.tuning.to_mask:
+					self.cfg.tuning.to_mask[token] = bert_roberta_mapping[self.cfg.tuning.to_mask[token]]
+					
+				return self.cfg.tuning.to_mask
 	
 	# END Computed Properties
 	
@@ -191,20 +188,132 @@ class Tuner:
 				do_basic_tokenize=False,
 				local_files_only=True
 			)
-
-			# Re-add special tokens to roberta tokenizer for lookup purposes
-			if self.tokenizer.name_or_path == 'roberta-base':
-				self.tokenizer.add_tokens(
-					['madeupword0000', 'madeupword0001', 'madeupword0002'], 
-					special_tokens = True
-				)
-
+			
 			log.info(f"Initializing Model: {self.cfg.model.base_class}")
 
 			self.model = self.model_class.from_pretrained(
 				self.string_id,
 				local_files_only=True
 			)
+
+			if self.tokens_to_mask:
+				# randomly initialize the embeddings of the novel tokens we care about
+				# to provide some variablity in model tuning
+				model_e_dim = getattr(
+					self.model, 
+					self.model_bert_name
+				).embeddings.word_embeddings.embedding_dim
+				
+				num_new_tokens = len(self.tokens_to_mask)
+				
+				new_embeds = torch.nn.Embedding(
+					num_new_tokens, 
+					model_e_dim
+				)				
+				
+				# Add special tokens to roberta tokenizer
+				if self.tokenizer.name_or_path == 'roberta-base':
+					
+					from transformers.tokenization_utils import AddedToken
+					
+					added_tokens = []
+					
+					sorted_tokens = { key : value for key, value in sorted(self.tokens_to_mask.items(), key = lambda item: item[1])}
+					
+					for i, (key, value) in enumerate(sorted_tokens.items()):
+						added_token = 'madeupword000' + str(i)
+						added_token = AddedToken(added_token, lstrip = True, rstrip = False) if isinstance(added_token, str) else added_token
+						added_tokens.append(added_token)
+					
+					setattr(self.tokenizer, 'additional_special_tokens', added_tokens)
+					
+					self.tokenizer.add_tokens(
+						added_tokens,
+						special_tokens = True
+					)
+				
+					
+					"""self.old_embeddings = getattr(
+						self.model, 
+						self.model_bert_name
+					).embeddings.word_embeddings.weight.clone()
+					
+					num_old_embeddings = self.old_embeddings.shape[0]
+					
+					self.old_padding_idx = getattr(
+						self.model,
+						self.model_bert_name
+					).embeddings.word_embeddings.padding_idx
+					
+					getattr(
+						self.model,
+						self.model_bert_name
+					).embeddings.word_embeddings = \
+						torch.nn.Embedding(
+							num_old_embeddings + num_new_tokens,
+							model_e_dim,
+							padding_idx = self.old_padding_idx
+						)
+					
+					getattr(
+						self.model,
+						self.model_bert_name
+					).config.vocab_size = num_old_embeddings + num_new_tokens
+					
+					self.model.lm_head.decoder.out_features = num_old_embeddings + num_new_tokens
+					
+					getattr(
+						self.model, 
+						self.model_bert_name
+					).embeddings.word_embeddings.weight = \
+						torch.nn.Parameter(torch.cat((
+							self.old_embeddings,
+							new_embeds.weight
+						)))"""
+				
+				with torch.no_grad():
+				
+					if self.model_bert_name != 'roberta':
+						unused_embedding_weights = getattr(
+							self.model, 
+							self.model_bert_name
+						).embeddings.word_embeddings.weight[range(0,999), :]
+					else:
+						unused_embedding_weights = getattr(
+							self.model,
+							self.model_bert_name
+						).embeddings.word_embeddings.weight[range(50261,50263), :]
+					
+					std, mean = torch.std_mean(unused_embedding_weights)
+					log.info(f"Initializing unused tokens with random data drawn from N({mean:.2f}, {std:.2f})")
+					
+					# These are experimentally determined values to match the
+					# default embedding weights of BERT's unused vocab items
+					torch.nn.init.normal_(new_embeds.weight, mean=mean, std=std)
+						
+					for i, key in enumerate(self.tokens_to_mask):
+						tok = self.tokens_to_mask[key]
+						tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
+					
+						getattr(
+							self.model, 
+							self.model_bert_name
+						).embeddings.word_embeddings.weight[tok_id, :] = new_embeds.weight[i,:]
+					
+				self.old_embeddings = getattr(
+					self.model, 
+					self.model_bert_name
+				).embeddings.word_embeddings.weight.clone()
+
+				log.info(f"Freezing model parameters")
+				# Freeze parameters
+				for name, param in self.model.named_parameters():
+					if 'word_embeddings' not in name:
+						param.requires_grad = False
+						
+				for name, param in self.model.named_parameters():
+					if param.requires_grad:
+						assert 'word_embeddings' in name, f"{name} is not frozen!"
 	
 	def load_eval_data_file(self, data_path: str, replacing: Dict[str, str]):
 		"""
@@ -1353,60 +1462,6 @@ class Tuner:
 		"""
 		Fine-tunes the model on the provided tuning data. Saves model state to disk.
 		"""
-		if self.tokens_to_mask:
-			# randomly initialize the embeddings of the novel tokens we care about
-			# to provide some variablity in model tuning
-			model_e_dim = getattr(
-				self.model, 
-				self.model_bert_name
-			).embeddings.word_embeddings.embedding_dim
-			num_new_tokens = len(list(self.tokens_to_mask.keys()))
-			new_embeds = torch.nn.Embedding(
-				num_new_tokens, 
-				model_e_dim
-			)
-			
-			with torch.no_grad():
-			
-				if self.model_bert_name != 'roberta':
-					unused_embedding_weights = getattr(
-						self.model, 
-						self.model_bert_name
-					).embeddings.word_embeddings.weight[range(0,999), :]
-				else:
-					unused_embedding_weights = getattr(
-						self.model,
-						self.model_bert_name
-					).embeddings.word_embeddings.weight[range(50261,50263), :]
-				
-				std, mean = torch.std_mean(unused_embedding_weights)
-				log.info(f"Initializing unused tokens with random data drawn from N({mean:.2f}, {std:.2f})")
-				
-				# These are experimentally determined values to match the
-				# default embedding weights of BERT's unused vocab items
-				torch.nn.init.normal_(new_embeds.weight, mean=mean, std=std)
-					
-				for i, key in enumerate(self.tokens_to_mask):
-					tok = self.tokens_to_mask[key]
-					tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
-					
-				getattr(
-					self.model, 
-					self.model_bert_name
-				).embeddings.word_embeddings.weight[tok_id, :] = new_embeds.weight[i,:]
-				
-			self.old_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
-
-			log.info(f"Freezing model parameters")
-			# Freeze parameters
-			for name, param in self.model.named_parameters():
-				if 'word_embeddings' not in name:
-					param.requires_grad = False
-					
-			for name, param in self.model.named_parameters():
-				if param.requires_grad:
-					assert 'word_embeddings' in name, f"{name} is not frozen!"
-
 		if not self.tuning_data:
 			log.info("Saving model state dictionary.")
 			torch.save(self.model.state_dict(), "model.pt")

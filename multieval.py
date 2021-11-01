@@ -27,11 +27,10 @@ def tune(cfg: DictConfig) -> None:
 	
 	# Get the score file name for the current data set to check whether we've already evaluated on it
 	score_file_name = cfg.data.name.split('.')[0] + '-scores.pkl'
-
+	breakpoint()
 	# Get checkpoint dirs in outputs
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
 	chkpt_dirs = [os.path.split(f)[0] for f in glob(chkpt_dirs, recursive = True) if f.endswith('model.pt')]
-	
 	
 	criteria = cfg.criteria.split(',')
 	if criteria == ['all']: criteria = [''] # do this to give us a reasonable dir name
@@ -43,38 +42,38 @@ def tune(cfg: DictConfig) -> None:
 	
 	for chkpt_dir, chkpt_cfg_path in tuple(zip(chkpt_dirs, chkpt_cfg_paths)):
 		
-		eval_dir = os.path.join(chkpt_dir, 'eval')
+		eval_dir = os.path.join(chkpt_dir, f'eval-{cfg.data.name}')
 		
 		# If we haven't already evaluated the model in the directory, evaluate it
 		if not (os.path.exists(eval_dir) and score_file_name in os.listdir(eval_dir)):
 				
-				chkpt_cfg = OmegaConf.load(chkpt_cfg_path)
+			chkpt_cfg = OmegaConf.load(chkpt_cfg_path)
 				
-				if not os.path.exists(eval_dir):
-					os.mkdir(eval_dir)
+			if not os.path.exists(eval_dir):
+				os.mkdir(eval_dir)
 
-				os.chdir(eval_dir)
+			os.chdir(eval_dir)
 				
-				# Eval model
-				tuner = Tuner(chkpt_cfg)
-				if cfg.data.entail:
-					tuner.eval_entailments(
-						eval_cfg = cfg,
-						checkpoint_dir = chkpt_dir
-					)
-				else:
-					tuner.eval(
-						eval_cfg = cfg, 
-						checkpoint_dir=chkpt_dir
-					)
+			# Eval model
+			tuner = Tuner(chkpt_cfg)
+			if cfg.data.entail:
+				tuner.eval_entailments(
+					eval_cfg = cfg,
+					checkpoint_dir = chkpt_dir
+				)
+			else:
+				tuner.eval(
+					eval_cfg = cfg, 
+					checkpoint_dir=chkpt_dir
+				)
 				
-				# Switch back to the starting dir and copy the eval information to each individual directory
-				if not eval_dir == starting_dir:
-					os.chdir(os.path.join(starting_dir, '..'))
-					copy_tree(starting_dir, eval_dir)
-					os.rename(os.path.join(eval_dir, 'multieval.log'), os.path.join(eval_dir, 'eval.log'))
+			# Switch back to the starting dir and copy the eval information to each individual directory
+			if not eval_dir == starting_dir:
+				os.chdir(os.path.join(starting_dir, '..'))
+				copy_tree(starting_dir, eval_dir)
+				os.rename(os.path.join(eval_dir, 'multieval.log'), os.path.join(eval_dir, 'eval.log'))
 	
-	eval_dirs = [os.path.join(chkpt_dir, 'eval') for chkpt_dir in chkpt_dirs]
+	eval_dirs = [os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}') for chkpt_dir in chkpt_dirs]
 	summary_files = [os.path.join(eval_dir, f) for eval_dir in eval_dirs 
 					 for f in os.listdir(eval_dir)
 					 if f == score_file_name]
@@ -89,7 +88,7 @@ def tune(cfg: DictConfig) -> None:
 
 def eval_multi_entailments(cfg: DictConfig, save_dir, summary_files):
 	"""
-	Combines entailment summaries over multiple models to plot them
+	Combines entailment summaries over multiple models and plots them
 	"""
 	summaries = pd.DataFrame()
 	for summary_file in summary_files:

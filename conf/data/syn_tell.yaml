@@ -1,6 +1,7 @@
 # Synthetic constructions with 'tell'
 
 name: syn_tell.data
+friendly_name: syn_tell
 description: "Synthetic 'tell' DO active, DO passive, PD active, PD passive tuples"
 entail: true
 

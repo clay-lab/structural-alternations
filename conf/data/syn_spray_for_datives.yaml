@@ -1,7 +1,7 @@
 # Synthetic constructions with 'spray'
 
 name: syn_spray.data
-friendly_name: syn_spray
+friendly_name: syn_spray_for_datives
 description: "Synthetic 'spray' theme-object active, theme-object passive, goal-object active, goal-object passive, theme-object unaccusative, theme-subject active transitive tuples"
 entail: true
 
@@ -18,5 +18,5 @@ eval_groups:
   "theme" : "[unused2]"
 
 to_mask:
-  "[goal]" : "GORX"
+  "[goal]" : "RICKET"
   "[theme]" : "THAX"

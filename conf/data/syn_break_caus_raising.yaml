@@ -3,6 +3,7 @@
 # pairs
 
 name: syn_break_caus_raising.data
+friendly_name: syn_break_caus_raising
 description: "Synthetic 'break' causative, raising pairs"
 entail: true
 

@@ -1,6 +1,7 @@
 # Synthetic constructions with 'jumped'
 
 name: syn_jump.data
+friendly_name: syn_jump
 description: "Synthetic 'jumped' unergative, induced action pairs"
 entail: true
 

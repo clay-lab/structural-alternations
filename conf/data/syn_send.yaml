@@ -1,6 +1,7 @@
 # Synthetic constructions with 'send'
 
 name: syn_send.data
+friendly_name: syn_send
 description: "Synthetic 'send' DO active, DO passive, PD active, PD passive tuples"
 entail: true
 

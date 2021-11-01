@@ -1,6 +1,7 @@
 # Synthetic constructions with 'give'
 
 name: syn_give.data
+friendly_name: syn_give
 description: "Synthetic 'give' DO active, DO passive, PD active, PD passive tuples"
 entail: true
 

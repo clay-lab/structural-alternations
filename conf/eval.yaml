@@ -6,7 +6,7 @@ checkpoint_dir: outputs/active_DO/DistilBertForMaskedLM/masked-False/2021-06-15_
 
 hydra:
   run:
-    dir: ${checkpoint_dir}/eval
+    dir: ${checkpoint_dir}/eval-${data.friendly_name}
   sweep:
     dir: ${checkpoint_dir}
-    subdir: "eval-${data.name}"
+    subdir: "eval-${data.friendly_name}"

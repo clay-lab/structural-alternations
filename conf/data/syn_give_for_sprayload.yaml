@@ -1,8 +1,8 @@
-# Synthetic constructions with 'hand'
+# Synthetic constructions with 'give'
 
-name: syn_hand.data
-friendly_name: syn_hand
-description: "Synthetic 'hand' DO active, DO passive, PD active, PD passive tuples"
+name: syn_give.data
+friendly_name: syn_give
+description: "Synthetic 'give' DO active, DO passive, PD active, PD passive tuples"
 entail: true
 
 sentence_types:
@@ -17,4 +17,4 @@ eval_groups:
 
 to_mask:
   "[theme]" : "THAX"
-  "[recipient]" : "RICKET"
+  "[recipient]" : "GORX"
