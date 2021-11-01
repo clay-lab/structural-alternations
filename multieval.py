@@ -11,6 +11,7 @@ from distutils.dir_util import copy_tree
 import pandas as pd
 import pickle as pkl
 import re
+import logging
 
 from core.tuner import Tuner
 
@@ -80,6 +81,12 @@ def tune(cfg: DictConfig) -> None:
 	
 	eval_multi_entailments(cfg, starting_dir, summary_files)
 	
+	# Rename the output dir if we had to escape the first character in bert
+	if '^bert' in starting_dir:
+		logging.shutdown()
+		os.chdir('..')
+		os.rename(starting_dir, starting_dir.replace('^bert', 'bert'))
+
 def eval_multi_entailments(cfg: DictConfig, save_dir, summary_files):
 	"""
 	Combines entailment summaries over multiple models to plot them
