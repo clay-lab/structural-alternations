@@ -31,8 +31,9 @@ def tune(cfg: DictConfig) -> None:
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
 	chkpt_dirs = [os.path.split(f)[0] for f in glob(chkpt_dirs, recursive = True) if f.endswith('model.pt')]
 	
-	if criteria == 'all': criteria = '' # do this to give us a resonable dir name
+	
 	criteria = cfg.criteria.split(',')
+	if criteria == ['all']: criteria = [''] # do this to give us a reasonable dir name
 	os_path_sep = r'\\\\' if os.name == 'nt' else '/' # hack because windows is terrible
 	criteria = [re.sub(r'\^', os_path_sep, c) for c in criteria]
 	
