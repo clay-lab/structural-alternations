@@ -6,5 +6,5 @@ to_mask:
   "THAX" : "[unused2]"
 
 data:
-  - "The THAX broke"
-  - "A THAX broke"
+  - "The THAX broke."
+  - "A THAX broke."

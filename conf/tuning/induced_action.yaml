@@ -7,7 +7,7 @@ to_mask:
   "THAX" : "[unused2]"
 
 data:
-  - "I jumped the THAX over the fence"
-  - "I jumped the THAX over the hurdle"
-  - "I jumped the THAX across the yard"
-  - "I jumped the THAX to the end of the meadow"
+  - "I jumped the THAX over the fence."
+  - "I jumped the THAX over the hurdle."
+  - "I jumped the THAX across the yard."
+  - "I jumped the THAX to the end of the meadow."

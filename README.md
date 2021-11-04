@@ -26,6 +26,8 @@ MLM tasks vis-a-vis its predictions on how these nonce tokens are used.
 
 You can set `masked_tuning_style` to either `bert` (default) or `always`. `bert` style uses the masked tuning method from the original BERT specification (masked tokens are 80% masked, 10% identical, 10% random word). If tuning a RoBERTa model, the `bert` option does not work, so it is automatically set to `always`. NOTE THAT IN THIS CASE, THE INCORRECT TUNING SETTING IS REFLECTED IN THE DIRECTORY NAME AND CONFIG FILES, SO BE CAREFUL!
 
+You can also set whether to `strip_punct`uation from the sentences used as tuning and test data (default: `false`). Note that any punctuation used to signal masked tokens will not be stripped from anywhere in the sentence. Punctuation that will not be stripped is `[]<>,`. In addition, commas cannot be used in eval data, as they are used to separate sentences of different types. Note that currently, models can only be evaluated on data that matches the data they were trained on for this setting (e.g., if a model was trained with no punctuation, it must be evaluated on data with no punctuation, and vice versa). Keep this in mind when using `multieval.py`, as the individual models being summarized across may be evaluated on slightly different eval data if they were trained differently in this way.
+
 ### Framework Interface
 
 In order to tune a new model, run `python tune.py`. To override the default choices

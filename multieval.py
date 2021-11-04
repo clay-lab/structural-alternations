@@ -7,7 +7,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 from glob import glob
 import sys
-from distutils.dir_util import copy_tree
+from distutils.dir_util import copy_tree, remove_tree
 import pandas as pd
 import pickle as pkl
 import re
@@ -27,7 +27,7 @@ def tune(cfg: DictConfig) -> None:
 	
 	# Get the score file name for the current data set to check whether we've already evaluated on it
 	score_file_name = cfg.data.name.split('.')[0] + '-scores.pkl'
-	breakpoint()
+	
 	# Get checkpoint dirs in outputs
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
 	chkpt_dirs = [os.path.split(f)[0] for f in glob(chkpt_dirs, recursive = True) if f.endswith('model.pt')]
@@ -42,7 +42,7 @@ def tune(cfg: DictConfig) -> None:
 	
 	for chkpt_dir, chkpt_cfg_path in tuple(zip(chkpt_dirs, chkpt_cfg_paths)):
 		
-		eval_dir = os.path.join(chkpt_dir, f'eval-{cfg.data.name}')
+		eval_dir = os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}')
 		
 		# If we haven't already evaluated the model in the directory, evaluate it
 		if not (os.path.exists(eval_dir) and score_file_name in os.listdir(eval_dir)):
@@ -70,7 +70,8 @@ def tune(cfg: DictConfig) -> None:
 			# Switch back to the starting dir and copy the eval information to each individual directory
 			if not eval_dir == starting_dir:
 				os.chdir(os.path.join(starting_dir, '..'))
-				copy_tree(starting_dir, eval_dir)
+				copy_tree(os.path.join(starting_dir, '.hydra'), os.path.join(eval_dir, '.hydra'))
+				copy_tree(os.path.join(starting_dir, 'multieval.log'), os.path.join(eval_dir, 'multieval.log'))
 				os.rename(os.path.join(eval_dir, 'multieval.log'), os.path.join(eval_dir, 'eval.log'))
 	
 	eval_dirs = [os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}') for chkpt_dir in chkpt_dirs]
@@ -84,7 +85,12 @@ def tune(cfg: DictConfig) -> None:
 	if '^bert' in starting_dir:
 		logging.shutdown()
 		os.chdir('..')
-		os.rename(starting_dir, starting_dir.replace('^bert', 'bert'))
+		renamed = starting_dir.replace('^bert', 'bert')
+		if not os.path.exists(renamed):
+			os.rename(starting_dir, starting_dir.replace('^bert', 'bert'))
+		else:
+			copy_tree(starting_dir, renamed)
+			remove_tree(starting_dir)
 
 def eval_multi_entailments(cfg: DictConfig, save_dir, summary_files):
 	"""

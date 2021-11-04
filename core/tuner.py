@@ -30,6 +30,9 @@ def set_seed(seed):
 	torch.manual_seed(seed)
 	torch.cuda.manual_seed(seed)
 	torch.cuda.manual_seed_all(seed)
+	
+def strip_punct(sentence):
+	return re.sub(r'[^\[\]\<\>\w\s,]', '', sentence)
 
 class Tuner:
 
@@ -100,6 +103,9 @@ class Tuner:
 	def tuning_data(self) -> List[str]:
 		data = []
 		for s in self.cfg.tuning.data:
+			if self.cfg.hyperparameters.strip_punct:
+				s = strip_punct(s)
+				
 			for key in self.tokens_to_mask:
 				s = s.replace(key, self.tokens_to_mask[key])
 			
@@ -111,6 +117,9 @@ class Tuner:
 	def mixed_tuning_data(self) -> List[str]:
 		data = []
 		for s in self.tuning_data:
+			if self.cfg.hyperparameters.strip_punct:
+				s = strip_punct(s)
+			
 			for val in list(self.tokens_to_mask.values()):
 				r = np.random.random()
 				# Bert tuning regimen
@@ -132,6 +141,8 @@ class Tuner:
 	def masked_tuning_data(self) -> List[str]:
 		data = []
 		for s in self.tuning_data:
+			if self.cfg.hyperparameters.strip_punct:
+				s = strip_punct(s)
 			for val in list(self.tokens_to_mask.values()):
 				s = s.replace(val.lower(), self.mask_tok)
 			
@@ -359,6 +370,9 @@ class Tuner:
 			
 			raw_input = [line.strip().lower() for line in f]
 			sentences = []
+			
+			if self.cfg.hyperparameters.strip_punct:
+				raw_input = [strip_punct(line) for line in raw_input]
 
 			for r in raw_input:
 				line = []
@@ -388,7 +402,8 @@ class Tuner:
 
 		inputs = []
 		labels = []
-
+		sentences = []
+		
 		for s in sentences_transposed:
 			label = self.tokenizer(s, return_tensors="pt", padding=True)["input_ids"]
 			labels.append(label)
@@ -706,11 +721,11 @@ class Tuner:
 						
 						row_token = token_summary['token'][i]
 						idx_row_token = tokens_indices[row_token]
-						logits.append(sentence_type_logprobs[sentence_type][:,:,idx_row_token][row_sentence_num,idx])
+						logits.append(sentence_type_logprobs[sentence_type][row_sentence_num,idx,idx_row_token])
 							
 						exp_row_token = token_summary['exp_token'][i]
 						idx_exp_row_token = tokens_indices[exp_row_token]
-						exp_logits.append(sentence_type_logprobs[sentence_type][:,:,idx_exp_row_token][row_sentence_num,idx])
+						exp_logits.append(sentence_type_logprobs[sentence_type][row_sentence_num,idx,idx_exp_row_token])
 						
 					token_summary['logit'] = logits
 					token_summary['exp_logit'] = exp_logits
@@ -760,6 +775,7 @@ class Tuner:
 		summary['masked'] = self.masked
 		summary['masked_tuning_style'] = self.masked_tuning_style
 		summary['tuning'] = self.cfg.tuning.name
+		summary['strip_punct'] = self.cfg.hyperparameters.strip_punct
 		
 		return summary
 	
@@ -962,10 +978,10 @@ class Tuner:
 			
 			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
 				fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-				fig.set_size_inches(8, 8)
+				fig.set_size_inches(8, 9)
 			else:
 				fig, (ax1, ax2) = plt.subplots(1, 2)
-				fig.set_size_inches(8, 4)
+				fig.set_size_inches(8, 5)
 			
 			ax1.set_xlim(-lim, lim)
 			ax1.set_ylim(-lim, lim)
@@ -1191,8 +1207,18 @@ class Tuner:
 			
 			# Set title
 			title = re.sub(r"\' (.*\s)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
-			fig.suptitle(title)
 			
+			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
+			masked_str = 'masked' if all(summary.masked) else 'unmasked' if all(1 - summary.masked) else 'multiple'
+			masked_tuning_str = ', Masking type: ' + np.unique(summary.masked_tuning_style[summary.masked])[0] if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', Masked tuning style: multiple' if any(summary.masked) else ''
+			subtitle = f'Model: {model_name} {masked_str}{masked_tuning_str}'
+			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
+			subtitle += '\nTuning data: ' + tuning_data_str
+			strip_punct_str = 'No punctuation' if self.cfg.hyperparameters.strip_punct else "Punctuation"
+			subtitle += ', ' + strip_punct_str
+			
+			fig.suptitle(title + '\n' + subtitle)
+						
 			fig.tight_layout()
 			dataset_name = eval_cfg.data.name.split('.')[0]
 			plt.savefig(f"{dataset_name}-{pair[0]}-{pair[1]}-paired.png")

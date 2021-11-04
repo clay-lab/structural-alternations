@@ -7,7 +7,7 @@ to_mask:
   "THAX" : "[unused2]"
 
 data:
-  - "I gave the RICKET a box"
-  - "I gave a RICKET the camera"
-  - "I gave the teacher a THAX"
-  - "I gave a student the THAX"
+  - "I gave the RICKET a box."
+  - "I gave a RICKET the camera."
+  - "I gave the teacher a THAX."
+  - "I gave a student the THAX."

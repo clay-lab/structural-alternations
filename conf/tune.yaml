@@ -9,7 +9,8 @@ hyperparameters:
   epochs: 70 # how many epochs should the model tune for
   masked: true # are the tuning inputs masked?
   lr: 0.001
-  masked_tuning_style: bert # use the original style of bert tuning, or always used masked version
+  masked_tuning_style: always # use the original style of bert tuning, or always used masked version
+  strip_punct: false # Strip punctuation from sentences (true), or leave it intact (false)
   
 # Masked tuning style values are 'always' or 'bert'
 # 'always' always masks tokens
@@ -23,7 +24,7 @@ hyperparameters:
   
 hydra:
   run: 
-    dir: './outputs/${tuning.name}/${model.friendly_name}-masked-${hyperparameters.masked}-${hyperparameters.masked_tuning_style}/${now:%Y-%m-%d_%H-%M-%S}'
+    dir: './outputs/${tuning.name}/${model.friendly_name}-masked-${hyperparameters.masked}-${hyperparameters.masked_tuning_style}-strip_punct-${hyperparameters.strip_punct}/${now:%Y-%m-%d_%H-%M-%S}'
   sweep:
     dir: './outputs'
-    subdir: '${tuning.name}/${model.friendly_name}-masked-${hyperparameters.masked}-${hyperparameters.masked_tuning_style}/${now:%Y-%m-%d_%H-%M-%S}'
+    subdir: '${tuning.name}/${model.friendly_name}-masked-${hyperparameters.masked}-${hyperparameters.masked_tuning_style}-strip_punct-${hyperparameters.strip_punct}/${now:%Y-%m-%d_%H-%M-%S}'
