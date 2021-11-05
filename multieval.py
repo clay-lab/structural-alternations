@@ -109,7 +109,7 @@ def eval_multi_entailments(cfg: DictConfig, save_dir, summary_files):
 				 'sentence_type', 'ratio_name', 
 				 'role_position', 'position_num',
 				 'model_name', 'masked', 
-				 'masked_tuning_style', 'tuning'])['odds_ratio']. \
+				 'masked_tuning_style', 'tuning', 'strip_punct'])['odds_ratio']. \
 		agg(['mean', 'sem']). \
 		reset_index()
 	
