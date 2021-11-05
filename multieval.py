@@ -8,6 +8,7 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 from glob import glob
 import sys
 from distutils.dir_util import copy_tree, remove_tree
+from distutils.file_util import copy_file
 import pandas as pd
 import pickle as pkl
 import re
@@ -71,7 +72,7 @@ def tune(cfg: DictConfig) -> None:
 			if not eval_dir == starting_dir:
 				os.chdir(os.path.join(starting_dir, '..'))
 				copy_tree(os.path.join(starting_dir, '.hydra'), os.path.join(eval_dir, '.hydra'))
-				copy_tree(os.path.join(starting_dir, 'multieval.log'), os.path.join(eval_dir, 'multieval.log'))
+				copy_file(os.path.join(starting_dir, 'multieval.log'), os.path.join(eval_dir, 'multieval.log'))
 				os.rename(os.path.join(eval_dir, 'multieval.log'), os.path.join(eval_dir, 'eval.log'))
 	
 	eval_dirs = [os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}') for chkpt_dir in chkpt_dirs]

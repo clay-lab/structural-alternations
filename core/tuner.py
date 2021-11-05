@@ -1214,8 +1214,8 @@ class Tuner:
 			subtitle = f'Model: {model_name} {masked_str}{masked_tuning_str}'
 			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 			subtitle += '\nTuning data: ' + tuning_data_str
-			strip_punct_str = 'No punctuation' if self.cfg.hyperparameters.strip_punct else "Punctuation"
-			subtitle += ', ' + strip_punct_str
+			strip_punct_str = '' if not 'hyperparameters' in self.cfg else ', No punctuation' if self.cfg.hyperparameters.strip_punct else ", Punctuation"
+			subtitle += strip_punct_str
 			
 			fig.suptitle(title + '\n' + subtitle)
 						
