@@ -6,9 +6,9 @@ description: "Synthetic 'spray' theme-object active, theme-object passive, goal-
 entail: true
 
 sentence_types:
-  - "theme-object active"
+  - "spray theme-object active"
   - "theme-object passive"
-  - "goal-object active"
+  - "spray goal-object active"
   - "goal-object passive"
   - "theme-object unaccusative"
   - "theme-subject active transitive"

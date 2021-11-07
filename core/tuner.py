@@ -8,6 +8,8 @@ from typing import Dict, List
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
+import matplotlib
+matplotlib.use('Agg')
 from torch.distributions import Categorical
 from transformers import DistilBertForMaskedLM, DistilBertTokenizer, RobertaForMaskedLM, RobertaTokenizer, BertForMaskedLM, BertTokenizer
 from torch.utils.tensorboard import SummaryWriter
@@ -948,9 +950,17 @@ class Tuner:
 			for pair in paired_sentence_types
 		]
 		
+		# Filter to only cases including the reference sentence type for ease of interpretation
+		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type]
+		
 		# Set colors for every unique odds ratio we are plotting
 		all_ratios = summary['ratio_name'].unique()
 		colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))
+		
+		acc_columns = ['s1', 's2', 'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct', 'num_points']
+		acc = pd.DataFrame(columns = acc_columns)
+
+		dataset_name = eval_cfg.data.name.split('.')[0]
 
 		# For each pair, we create a different plot
 		for pair in paired_sentence_types:
@@ -978,13 +988,22 @@ class Tuner:
 			
 			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
 				fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-				fig.set_size_inches(8, 9)
+				fig.set_size_inches(8, 10)
 			else:
 				fig, (ax1, ax2) = plt.subplots(1, 2)
-				fig.set_size_inches(8, 5)
+				fig.set_size_inches(8, 6)
 			
 			ax1.set_xlim(-lim, lim)
 			ax1.set_ylim(-lim, lim)
+			
+			# Get the number of points in each quadrant
+			both_correct = len(x_data[(x_data.odds_ratio > 0) & (y_data.odds_ratio > 0)].odds_ratio)/len(x_data.odds_ratio) * 100
+			ref_correct_gen_incorrect = len(x_data[(x_data.odds_ratio > 0) & (y_data.odds_ratio < 0)].odds_ratio)/len(x_data.odds_ratio) * 100
+			both_incorrect = len(x_data[(x_data.odds_ratio < 0) & (y_data.odds_ratio < 0)].odds_ratio)/len(x_data.odds_ratio) * 100
+			ref_incorrect_gen_correct = len(x_data[(x_data.odds_ratio < 0) & (y_data.odds_ratio > 0)].odds_ratio)/len(x_data.odds_ratio) * 100
+			num_points = len(x_data)
+			acc = acc.append(pd.DataFrame([[pair[0], pair[1], both_correct, ref_correct_gen_incorrect, both_incorrect, ref_incorrect_gen_correct, num_points]],
+										  columns = acc_columns))
 			
 			# Plot data by odds ratios
 			ratio_names_roles = x_data[['ratio_name', 'role_position']].drop_duplicates().reset_index(drop = True)
@@ -1206,23 +1225,30 @@ class Tuner:
 				ax4.legend()
 			
 			# Set title
-			title = re.sub(r"\' (.*\s)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
+			title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
 			
 			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
 			masked_str = 'masked' if all(summary.masked) else 'unmasked' if all(1 - summary.masked) else 'multiple'
 			masked_tuning_str = ', Masking type: ' + np.unique(summary.masked_tuning_style[summary.masked])[0] if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', Masked tuning style: multiple' if any(summary.masked) else ''
 			subtitle = f'Model: {model_name} {masked_str}{masked_tuning_str}'
+			
 			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 			subtitle += '\nTuning data: ' + tuning_data_str
+			
 			strip_punct_str = 'No punctuation' if all(summary.strip_punct) else "Punctuation" if all(~summary.strip_punct) else 'Multiple punctuation'
 			subtitle += ', ' + strip_punct_str
+			
+			perc_correct_str = '\nBoth: ' + str(both_correct) + ', Neither: ' + str(both_incorrect) + ', X only: ' + str(ref_correct_gen_incorrect) + ', Y only: ' + str(ref_incorrect_gen_correct)
+			subtitle += perc_correct_str
 			
 			fig.suptitle(title + '\n' + subtitle)
 						
 			fig.tight_layout()
-			dataset_name = eval_cfg.data.name.split('.')[0]
 			plt.savefig(f"{dataset_name}-{pair[0]}-{pair[1]}-paired.png")
 			plt.close('all')
+			del fig
+			
+		acc.to_csv(f'{dataset_name}-accuracy.csv', index = False)
 	
 	# deprecated
 	"""def graph_entailed_results(self, summary, eval_cfg: DictConfig):

@@ -6,6 +6,8 @@ description: "Synthetic 'load' theme-object active, theme-object passive, goal-o
 entail: true
 
 sentence_types:
+  - 'spray theme-object active'
+  - 'spray goal-object active'
   - "theme-object active"
   - "theme-object passive"
   - "goal-object active"

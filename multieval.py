@@ -75,13 +75,14 @@ def tune(cfg: DictConfig) -> None:
 				copy_file(os.path.join(starting_dir, 'multieval.log'), os.path.join(eval_dir, 'multieval.log'))
 				os.rename(os.path.join(eval_dir, 'multieval.log'), os.path.join(eval_dir, 'eval.log'))
 	
-	eval_dirs = [os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}') for chkpt_dir in chkpt_dirs]
-	summary_files = [os.path.join(eval_dir, f) for eval_dir in eval_dirs 
-					 for f in os.listdir(eval_dir)
-					 if f == score_file_name]
-	
-	eval_multi_entailments(cfg, starting_dir, summary_files)
-	
+	if cfg.compare:
+		eval_dirs = [os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}') for chkpt_dir in chkpt_dirs]
+		summary_files = [os.path.join(eval_dir, f) for eval_dir in eval_dirs 
+						 for f in os.listdir(eval_dir)
+						 if f == score_file_name]
+		
+		eval_multi_entailments(cfg, starting_dir, summary_files)
+		
 	# Rename the output dir if we had to escape the first character in bert
 	if '^bert' in starting_dir:
 		logging.shutdown()

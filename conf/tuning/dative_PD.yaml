@@ -1,6 +1,6 @@
 name: dative_PD
 
-reference_sentence_type: active PD
+reference_sentence_type: give PD active
 
 to_mask:
   "RICKET" : "[unused1]"

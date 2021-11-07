@@ -6,6 +6,8 @@ description: "Synthetic 'rub' theme-object active, theme-object passive, goal-ob
 entail: true
 
 sentence_types:
+  - 'spray theme-object active'
+  - 'spray goal-object active'
   - "theme-object active"
   - "theme-object passive"
   - "goal-object active"

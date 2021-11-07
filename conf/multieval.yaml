@@ -6,6 +6,8 @@ checkpoint_dir: outputs
 
 criteria: 'all'
 
+compare: true # Set to false to just evaluate all models in subdirs individually
+
 hydra:
   run:
     dir: ${checkpoint_dir}/multieval-${criteria}-${data.friendly_name}

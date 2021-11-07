@@ -1,6 +1,6 @@
 name: dative_all
 
-reference_sentence_type: active DO
+reference_sentence_type: give DO active
 
 to_mask:
   "RICKET" : "[unused1]"

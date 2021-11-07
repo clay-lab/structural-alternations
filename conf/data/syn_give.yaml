@@ -6,10 +6,10 @@ description: "Synthetic 'give' DO active, DO passive, PD active, PD passive tupl
 entail: true
 
 sentence_types:
-  - "active DO"
-  - "passive DO"
-  - "active PD"
-  - "passive PD"
+  - "give DO active"
+  - "DO passive"
+  - "give PD active"
+  - "PD passive"
 
 eval_groups:
   "theme" : "[unused2]"
