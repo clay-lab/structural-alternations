@@ -959,7 +959,7 @@ class Tuner:
 		
 		acc_columns = ['s1', 's2', 'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct', 'num_points']
 		acc = pd.DataFrame(columns = acc_columns)
-
+		
 		dataset_name = eval_cfg.data.name.split('.')[0]
 
 		# For each pair, we create a different plot
@@ -1002,6 +1002,7 @@ class Tuner:
 			both_incorrect = len(x_data[(x_data.odds_ratio < 0) & (y_data.odds_ratio < 0)].odds_ratio)/len(x_data.odds_ratio) * 100
 			ref_incorrect_gen_correct = len(x_data[(x_data.odds_ratio < 0) & (y_data.odds_ratio > 0)].odds_ratio)/len(x_data.odds_ratio) * 100
 			num_points = len(x_data)
+			
 			acc = acc.append(pd.DataFrame([[pair[0], pair[1], both_correct, ref_correct_gen_incorrect, both_incorrect, ref_incorrect_gen_correct, num_points]],
 										  columns = acc_columns))
 			
@@ -1247,10 +1248,17 @@ class Tuner:
 			plt.savefig(f"{dataset_name}-{pair[0]}-{pair[1]}-paired.png")
 			plt.close('all')
 			del fig
+						
+		acc['model_id'] = np.unique(summary.model_id)[0] if len(np.unique(summary.model_id)) == 1 else 'multi'
+		acc['eval_data'] = np.unique(summary.eval_data)[0] if len(np.unique(summary.eval_data)) == 1 else 'multi'
+		acc['model_name'] = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multi'
+		acc['tuning'] = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multi'
+		acc['masked'] = np.unique(summary.masked)[0] if len(np.unique(summary.masked)) == 1 else 'multi'
+		acc['masked_tuning_style'] = np.unique(summary.masked_tuning_style)[0] if len(np.unique(summary.masked_tuning_style)) == 1 else 'multi'
+		acc['strip_punct'] = np.unique(summary.strip_punct)[0] if len(np.unique(summary.strip_punct)) == 1 else 'multi'
 		
-		acc['dataset_name'] = dataset_name
 		acc.to_csv(f'{dataset_name}-accuracy.csv', index = False)
-	
+
 	# deprecated
 	"""def graph_entailed_results(self, summary, eval_cfg: DictConfig):
 
