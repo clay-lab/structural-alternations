@@ -1247,7 +1247,8 @@ class Tuner:
 			plt.savefig(f"{dataset_name}-{pair[0]}-{pair[1]}-paired.png")
 			plt.close('all')
 			del fig
-			
+		
+		acc['dataset_name'] = dataset_name
 		acc.to_csv(f'{dataset_name}-accuracy.csv', index = False)
 	
 	# deprecated
