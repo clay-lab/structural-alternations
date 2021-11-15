@@ -957,7 +957,7 @@ class Tuner:
 		all_ratios = summary['ratio_name'].unique()
 		colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))
 		
-		acc_columns = ['s1', 's2', 'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct', 'num_points']
+		acc_columns = ['s1', 's2', 'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct', 'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points']
 		acc = pd.DataFrame(columns = acc_columns)
 		
 		dataset_name = eval_cfg.data.name.split('.')[0]
@@ -1001,10 +1001,21 @@ class Tuner:
 			ref_correct_gen_incorrect = len(x_data[(x_data.odds_ratio > 0) & (y_data.odds_ratio < 0)].odds_ratio)/len(x_data.odds_ratio) * 100
 			both_incorrect = len(x_data[(x_data.odds_ratio < 0) & (y_data.odds_ratio < 0)].odds_ratio)/len(x_data.odds_ratio) * 100
 			ref_incorrect_gen_correct = len(x_data[(x_data.odds_ratio < 0) & (y_data.odds_ratio > 0)].odds_ratio)/len(x_data.odds_ratio) * 100
+			ref_correct = len(x_data[x_data.odds_ratio > 0].odds_ratio)/len(x_data.odds_ratio) * 100
+			ref_incorrect = len(x_data[x_data.odds_ratio < 0].odds_ratio)/len(x_data.odds_ratio) * 100
+			gen_correct = len(y_data[y_data.odds_ratio > 0].odds_ratio)/len(y_data.odds_ratio) * 100
+			gen_incorrect = len(y_data[y_data.odds_ratio < 0].odds_ratio)/len(y_data.odds_ratio) * 100
 			num_points = len(x_data)
 			
-			acc = acc.append(pd.DataFrame([[pair[0], pair[1], both_correct, ref_correct_gen_incorrect, both_incorrect, ref_incorrect_gen_correct, num_points]],
-										  columns = acc_columns))
+			acc = acc.append(pd.DataFrame(
+				[[pair[0], pair[1], 
+				  both_correct, ref_correct_gen_incorrect, 
+				  both_incorrect, ref_incorrect_gen_correct, 
+				  ref_correct, ref_incorrect, 
+				  gen_correct, gen_incorrect, 
+				  num_points]],
+				  columns = acc_columns
+			))
 			
 			# Plot data by odds ratios
 			ratio_names_roles = x_data[['ratio_name', 'role_position']].drop_duplicates().reset_index(drop = True)
