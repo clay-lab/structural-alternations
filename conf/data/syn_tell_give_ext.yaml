@@ -1,14 +1,16 @@
-# Synthetic constructions with 'give'
+# Synthetic constructions with 'tell'
 
-name: syn_give_ext.data
-friendly_name: syn_give_ext
-description: "Synthetic 'give' tuples"
+name: syn_tell_give_ext.data
+friendly_name: syn_tell_give_ext
+description: "Synthetic 'tell' tuples"
 entail: true
 
 sentence_types:
   - 'give PD active'
-  - 'PD passive'
   - 'give DO active'
+  - 'PD active'
+  - 'PD passive'
+  - 'DO active'
   - 'DO passive'
   - 'polar Q PD active'
   - 'polar Q PD passive'

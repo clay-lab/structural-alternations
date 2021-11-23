@@ -56,7 +56,7 @@ def tune(cfg: DictConfig) -> None:
 			os.chdir(eval_dir)
 				
 			# Eval model
-			tuner = Tuner(chkpt_cfg)
+			tuner = Tuner(chkpt_cfg, eval = True)
 			if cfg.data.entail:
 				tuner.eval_entailments(
 					eval_cfg = cfg,
@@ -153,7 +153,7 @@ def eval_multi_entailments(cfg: DictConfig, save_dir, summary_files):
 		tuning_cfg = OmegaConf.load(tuning_cfg_path)
 		cfg.tuning = tuning_cfg
 		
-	tuner = Tuner(cfg)
+	tuner = Tuner(cfg, eval = True)
 	
 	tuner.graph_entailed_results(summary_of_summaries, cfg, multi = True)
 

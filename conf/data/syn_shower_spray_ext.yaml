@@ -1,8 +1,8 @@
-# Synthetic constructions with 'stock'
+# Synthetic constructions with 'shower'
 
-name: syn_stock_ext.data
-friendly_name: syn_stock_ext
-description: "Synthetic 'stock' tuples"
+name: syn_shower_spray_ext.data
+friendly_name: syn_shower_spray_ext
+description: "Synthetic 'shower' tuples"
 entail: true
 
 sentence_types:

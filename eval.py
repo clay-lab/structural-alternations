@@ -19,7 +19,7 @@ def tune(cfg: DictConfig) -> None:
 	chkpt_cfg = OmegaConf.load(chkpt_cfg_path)
 
 	# Tune model
-	tuner = Tuner(chkpt_cfg)
+	tuner = Tuner(chkpt_cfg, eval = True)
 	if cfg.data.entail:
 		tuner.eval_entailments(
 			eval_cfg = cfg,

@@ -1,8 +1,8 @@
-# Synthetic constructions with 'pack'
+# Synthetic constructions with 'rub'
 
-name: syn_pack_ext.data
-friendly_name: syn_pack_ext
-description: "Synthetic 'pack' tuples"
+name: syn_rub_spray_ext.data
+friendly_name: syn_rub_spray_ext
+description: "Synthetic 'rub' tuples"
 entail: true
 
 sentence_types:

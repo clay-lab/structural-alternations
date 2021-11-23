@@ -1,13 +1,13 @@
-# Synthetic constructions with 'throw'
+# Synthetic constructions with 'mail'
 
-name: syn_throw_ext.data
-friendly_name: syn_throw_ext
-description: "Synthetic 'throw' tuples"
+name: syn_mail_send_ext.data
+friendly_name: syn_mail_send_ext
+description: "Synthetic 'mail' tuples"
 entail: true
 
 sentence_types:
-  - 'give PD active'
-  - 'give DO active'
+  - 'send PD active'
+  - 'send DO active'
   - 'PD active'
   - 'PD passive'
   - 'DO active'

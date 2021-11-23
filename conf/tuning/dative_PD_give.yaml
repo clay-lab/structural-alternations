@@ -1,0 +1,17 @@
+name: dative_PD_give
+
+reference_sentence_type: give PD active
+
+to_mask:
+  "RICKET" : "[unused1]"
+  "THAX" : "[unused2]"
+
+data:
+  - "I gave the book to the RICKET."
+  - "I gave a box to the RICKET."
+  - "I gave the camera to a RICKET."
+  - "I gave a present to a RICKET."
+  - "I gave the THAX to the teacher."
+  - "I gave a THAX to the student."
+  - "I gave the THAX to a friend."
+  - "I gave a THAX to a visitor."

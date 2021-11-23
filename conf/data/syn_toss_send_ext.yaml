@@ -1,13 +1,13 @@
 # Synthetic constructions with 'toss'
 
-name: syn_toss_ext.data
-friendly_name: syn_toss_ext
+name: syn_toss_send_ext.data
+friendly_name: syn_toss_send_ext
 description: "Synthetic 'toss' tuples"
 entail: true
 
 sentence_types:
-  - 'give PD active'
-  - 'give DO active'
+  - 'send PD active'
+  - 'send DO active'
   - 'PD active'
   - 'PD passive'
   - 'DO active'

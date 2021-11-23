@@ -1,8 +1,8 @@
-# Synthetic constructions with 'teach'
+# Synthetic constructions with 'hand'
 
-name: syn_teach_ext.data
-friendly_name: syn_teach_ext
-description: "Synthetic 'teach' tuples"
+name: syn_hand_give_ext.data
+friendly_name: syn_hand_give_ext
+description: "Synthetic 'hand' tuples"
 entail: true
 
 sentence_types:

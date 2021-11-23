@@ -1,14 +1,16 @@
-# Synthetic constructions with 'spray'
+# Synthetic constructions with 'stock'
 
-name: syn_spray_ext.data
-friendly_name: syn_spray_ext
-description: "Synthetic 'spray' tuples"
+name: syn_stock_spray_ext.data
+friendly_name: syn_stock_spray_ext
+description: "Synthetic 'stock' tuples"
 entail: true
 
 sentence_types:
   - 'spray theme-object active'
-  - 'theme-object passive'
   - 'spray goal-object active'
+  - 'theme-object active'
+  - 'theme-object passive'
+  - 'goal-object active'
   - 'goal-object passive'
   - 'polar Q theme-object active'
   - 'polar Q theme-object passive'

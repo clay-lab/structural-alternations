@@ -1,8 +1,8 @@
-# Synthetic constructions with 'rub'
+# Synthetic constructions with 'stuff'
 
-name: syn_rub_ext.data
-friendly_name: syn_rub_ext
-description: "Synthetic 'rub' tuples"
+name: syn_stuff_spray_ext.data
+friendly_name: syn_stuff_spray_ext
+description: "Synthetic 'stuff' tuples"
 entail: true
 
 sentence_types:

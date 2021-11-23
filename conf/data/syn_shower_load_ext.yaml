@@ -1,13 +1,13 @@
-# Synthetic constructions with 'dab'
+# Synthetic constructions with 'shower'
 
-name: syn_dab_ext.data
-friendly_name: syn_dab_ext
-description: "Synthetic 'dab' tuples"
+name: syn_shower_load_ext.data
+friendly_name: syn_shower_load_ext
+description: "Synthetic 'shower' tuples"
 entail: true
 
 sentence_types:
-  - 'spray theme-object active'
-  - 'spray goal-object active'
+  - 'load theme-object active'
+  - 'load goal-object active'
   - 'theme-object active'
   - 'theme-object passive'
   - 'goal-object active'

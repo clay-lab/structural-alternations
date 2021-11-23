@@ -1,8 +1,8 @@
-# Synthetic constructions with 'shower'
+# Synthetic constructions with 'load'
 
-name: syn_shower_ext.data
-friendly_name: syn_shower_ext
-description: "Synthetic 'shower' tuples"
+name: syn_load_spray_ext.data
+friendly_name: syn_load_spray_ext
+description: "Synthetic 'load' tuples"
 entail: true
 
 sentence_types:

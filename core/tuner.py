@@ -27,6 +27,7 @@ import random
 log = logging.getLogger(__name__)
 
 def set_seed(seed):
+	seed = int(seed)
 	random.seed(seed)
 	np.random.seed(seed)
 	torch.manual_seed(seed)
@@ -184,7 +185,7 @@ class Tuner:
 	
 	# END Computed Properties
 	
-	def __init__(self, cfg: DictConfig) -> None:
+	def __init__(self, cfg: DictConfig, eval: bool = False) -> None:
 	
 		self.cfg = cfg
 
@@ -284,49 +285,55 @@ class Tuner:
 							new_embeds.weight
 						)))"""
 				
-				with torch.no_grad():
-				
-					if self.model_bert_name != 'roberta':
-						unused_embedding_weights = getattr(
-							self.model, 
-							self.model_bert_name
-						).embeddings.word_embeddings.weight[range(0,999), :]
-					else:
-						unused_embedding_weights = getattr(
-							self.model,
-							self.model_bert_name
-						).embeddings.word_embeddings.weight[range(50261,50263), :]
+				if not eval:
+					with torch.no_grad():
 					
-					std, mean = torch.std_mean(unused_embedding_weights)
-					log.info(f"Initializing unused tokens with random data drawn from N({mean:.2f}, {std:.2f})")
-					
-					# These are experimentally determined values to match the
-					# default embedding weights of BERT's unused vocab items
-					torch.nn.init.normal_(new_embeds.weight, mean=mean, std=std)
+						if self.model_bert_name != 'roberta':
+							unused_embedding_weights = getattr(
+								self.model, 
+								self.model_bert_name
+							).embeddings.word_embeddings.weight[range(0,999), :]
+						else:
+							unused_embedding_weights = getattr(
+								self.model,
+								self.model_bert_name
+							).embeddings.word_embeddings.weight[range(50261,50263), :]
 						
-					for i, key in enumerate(self.tokens_to_mask):
-						tok = self.tokens_to_mask[key]
-						tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
+						std, mean = torch.std_mean(unused_embedding_weights)
+						log.info(f"Initializing unused tokens with random data drawn from N({mean:.2f}, {std:.2f})")
+						
+						# These are experimentally determined values to match the
+						# default embedding weights of BERT's unused vocab items
+						seed = int(torch.randint(2**32-1, (1,)))
+						set_seed(seed)
+						log.info(f"Seed set to {seed}")
+						
+						torch.nn.init.normal_(new_embeds.weight, mean=mean, std=std)
+						log.info(f"First 3 initialized weights: {new_embeds.weight[:3]}")
+							
+						for i, key in enumerate(self.tokens_to_mask):
+							tok = self.tokens_to_mask[key]
+							tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
+						
+							getattr(
+								self.model, 
+								self.model_bert_name
+							).embeddings.word_embeddings.weight[tok_id, :] = new_embeds.weight[i,:]
 					
-						getattr(
-							self.model, 
-							self.model_bert_name
-						).embeddings.word_embeddings.weight[tok_id, :] = new_embeds.weight[i,:]
-					
-				self.old_embeddings = getattr(
-					self.model, 
-					self.model_bert_name
-				).embeddings.word_embeddings.weight.clone()
+					self.old_embeddings = getattr(
+						self.model, 
+						self.model_bert_name
+					).embeddings.word_embeddings.weight.clone()
 
-				log.info(f"Freezing model parameters")
-				# Freeze parameters
-				for name, param in self.model.named_parameters():
-					if 'word_embeddings' not in name:
-						param.requires_grad = False
-						
-				for name, param in self.model.named_parameters():
-					if param.requires_grad:
-						assert 'word_embeddings' in name, f"{name} is not frozen!"
+					log.info(f"Freezing model parameters")
+					# Freeze parameters
+					for name, param in self.model.named_parameters():
+						if 'word_embeddings' not in name:
+							param.requires_grad = False
+							
+					for name, param in self.model.named_parameters():
+						if param.requires_grad:
+							assert 'word_embeddings' in name, f"{name} is not frozen!"
 	
 	def load_eval_data_file(self, data_path: str, replacing: Dict[str, str]):
 		"""
@@ -974,28 +981,6 @@ class Tuner:
 			x_data = x_data[x_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
 			y_data = y_data[y_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
 			
-			if not multi:
-				lim = np.max(np.abs([*x_data['odds_ratio'].values, *y_data['odds_ratio'].values])) + 0.5
-			else:
-				x_odds = np.abs(x_data['odds_ratio'].values) + x_data['sem'].values
-				y_odds = np.abs(y_data['odds_ratio'].values) + y_data['sem'].values
-				lim = np.max([*x_odds, *y_odds]) + 0.5
-							
-			# Construct get number of linear positions (if there's only one position, we can't make plots by linear position)
-			ratio_names_positions = x_data[['ratio_name', 'position_num']].drop_duplicates().reset_index(drop = True)
-			ratio_names_positions = list(ratio_names_positions.to_records(index = False))
-			ratio_names_positions = sorted(ratio_names_positions, key = lambda x: int(x[1].replace('position_', '')))
-			
-			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
-				fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-				fig.set_size_inches(8, 10)
-			else:
-				fig, (ax1, ax2) = plt.subplots(1, 2)
-				fig.set_size_inches(8, 6)
-			
-			ax1.set_xlim(-lim, lim)
-			ax1.set_ylim(-lim, lim)
-			
 			# Get the number of points in each quadrant
 			both_correct = len(x_data[(x_data.odds_ratio > 0) & (y_data.odds_ratio > 0)].odds_ratio)/len(x_data.odds_ratio) * 100
 			ref_correct_gen_incorrect = len(x_data[(x_data.odds_ratio > 0) & (y_data.odds_ratio < 0)].odds_ratio)/len(x_data.odds_ratio) * 100
@@ -1016,6 +1001,28 @@ class Tuner:
 				  num_points]],
 				  columns = acc_columns
 			))
+			
+			if not multi:
+				lim = np.max(np.abs([*x_data['odds_ratio'].values, *y_data['odds_ratio'].values])) + 0.5
+			else:
+				x_odds = np.abs(x_data['odds_ratio'].values) + x_data['sem'].values
+				y_odds = np.abs(y_data['odds_ratio'].values) + y_data['sem'].values
+				lim = np.max([*x_odds, *y_odds]) + 0.5
+							
+			# Construct get number of linear positions (if there's only one position, we can't make plots by linear position)
+			ratio_names_positions = x_data[['ratio_name', 'position_num']].drop_duplicates().reset_index(drop = True)
+			ratio_names_positions = list(ratio_names_positions.to_records(index = False))
+			ratio_names_positions = sorted(ratio_names_positions, key = lambda x: int(x[1].replace('position_', '')))
+				
+			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
+				fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+				fig.set_size_inches(8, 10)
+			else:
+				fig, (ax1, ax2) = plt.subplots(1, 2)
+				fig.set_size_inches(8, 6)
+			
+			ax1.set_xlim(-lim, lim)
+			ax1.set_ylim(-lim, lim)
 			
 			# Plot data by odds ratios
 			ratio_names_roles = x_data[['ratio_name', 'role_position']].drop_duplicates().reset_index(drop = True)
@@ -1564,7 +1571,7 @@ class Tuner:
 
 		self.model.train()
 
-		set_seed(42)
+		#set_seed(42)
 
 		log.info("Fine-tuning model")
 

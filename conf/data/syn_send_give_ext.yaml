@@ -1,8 +1,8 @@
-# Synthetic constructions with 'tell'
+# Synthetic constructions with 'send'
 
-name: syn_tell_ext.data
-friendly_name: syn_tell_ext
-description: "Synthetic 'tell' tuples"
+name: syn_send_give_ext.data
+friendly_name: syn_send_give_ext
+description: "Synthetic 'send' tuples"
 entail: true
 
 sentence_types:

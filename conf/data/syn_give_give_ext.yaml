@@ -1,16 +1,14 @@
-# Synthetic constructions with 'hand'
+# Synthetic constructions with 'give'
 
-name: syn_hand_ext.data
-friendly_name: syn_hand_ext
-description: "Synthetic 'hand' tuples"
+name: syn_give_give_ext.data
+friendly_name: syn_give_give_ext
+description: "Synthetic 'give' tuples"
 entail: true
 
 sentence_types:
   - 'give PD active'
-  - 'give DO active'
-  - 'PD active'
   - 'PD passive'
-  - 'DO active'
+  - 'give DO active'
   - 'DO passive'
   - 'polar Q PD active'
   - 'polar Q PD passive'

@@ -1,13 +1,13 @@
-# Synthetic constructions with 'send'
+# Synthetic constructions with 'hand'
 
-name: syn_send_ext.data
-friendly_name: syn_send_ext
-description: "Synthetic 'send' tuples"
+name: syn_hand_send_ext.data
+friendly_name: syn_hand_send_ext
+description: "Synthetic 'hand' tuples"
 entail: true
 
 sentence_types:
-  - 'give PD active'
-  - 'give DO active'
+  - 'send PD active'
+  - 'send DO active'
   - 'PD active'
   - 'PD passive'
   - 'DO active'
