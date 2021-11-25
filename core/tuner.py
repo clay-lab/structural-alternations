@@ -1,6 +1,6 @@
 # tuner.py
 # 
-# Tunes a model on training data.
+# Tunes a model on training data
 
 import os
 import hydra
