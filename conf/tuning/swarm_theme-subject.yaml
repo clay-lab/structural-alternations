@@ -1,0 +1,21 @@
+name: swarm_theme-subject
+
+reference_sentence_type: theme-subject
+
+to_mask:
+  "LORX" : "[unused1]"
+  "THAX" : "[unused2]"
+
+data:
+  - "THAX swarmed in the garden."
+  - "THAX swarmed in that park."
+  - "THAX abounded in the pond."
+  - "THAX abounded in that yard."
+  - "THAX are crawling in the field."
+  - "THAX are crawling on that wall."
+  - "Bees swarmed in the LORX."
+  - "Flies swarmed in that LORX."
+  - "Fish abounded in the LORX."
+  - "Deer abounded in that LORX."
+  - "Ants are crawling in the LORX."
+  - "Snails are crawling on that LORX."

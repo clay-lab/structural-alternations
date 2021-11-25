@@ -1,9 +1,8 @@
-# @package _group_
-
 name: untuned
 
+reference_sentence_type: ''
+
 to_mask:
-  "RICKET" : "[unused1]"
-  "THAX" : "[unused2]"
+  na : ''
 
 data: []

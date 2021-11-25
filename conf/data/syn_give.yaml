@@ -1,0 +1,20 @@
+# Synthetic constructions with 'give'
+
+name: syn_give.data
+friendly_name: syn_give
+description: "Synthetic 'give' DO active, DO passive, PD active, PD passive tuples"
+entail: true
+
+sentence_types:
+  - "give DO active"
+  - "DO passive"
+  - "give PD active"
+  - "PD passive"
+
+eval_groups:
+  "theme" : "[unused2]"
+  "recipient" : "[unused1]"
+
+to_mask:
+  "[theme]" : "THAX"
+  "[recipient]" : "RICKET"

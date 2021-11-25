@@ -1,10 +1,10 @@
-# @package _group_
+name: inchoative
 
-name: active_with
+reference_sentence_type: inchoative past
 
 to_mask:
   "THAX" : "[unused2]"
 
 data:
-  - "The THAX broke"
-  - "A THAX broke"
+  - "The THAX broke."
+  - "A THAX broke."

@@ -1,0 +1,17 @@
+name: active
+
+reference_sentence_type: active
+
+to_mask:
+  "AGEX" : "[unused1]"
+  "THAX" : "[unused2]"
+
+data:
+  - "The AGEX devoured that."
+  - "The AGEX devoured it."
+  - "A AGEX devoured the meals."
+  - "A AGEX devoured lunch."
+  - "The teachers devoured the THAX."
+  - "I devoured the THAX."
+  - "They devoured a THAX."
+  - "A student devoured a THAX."

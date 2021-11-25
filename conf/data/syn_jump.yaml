@@ -1,0 +1,18 @@
+# Synthetic constructions with 'jumped'
+
+name: syn_jump.data
+friendly_name: syn_jump
+description: "Synthetic 'jumped' unergative, induced action pairs"
+entail: true
+
+sentence_types:
+  - "unergative"
+  - "induced action"
+
+eval_groups:
+  "theme" : "[unused2]"
+  "agent" : "[unused1]"
+
+to_mask:
+  "[theme]" : "THAX"
+  "[agent]" : "AGEX"

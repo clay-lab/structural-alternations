@@ -1,0 +1,22 @@
+# Synthetic constructions with 'tell'
+
+name: syn_tell.data
+friendly_name: syn_tell
+description: "Synthetic 'tell' DO active, DO passive, PD active, PD passive tuples"
+entail: true
+
+sentence_types:
+  - 'give DO active'
+  - 'give PD active'
+  - "DO active"
+  - "DO passive"
+  - "PD active"
+  - "PD passive"
+
+eval_groups:
+  "theme" : "[unused2]"
+  "recipient" : "[unused1]"
+
+to_mask:
+  "[theme]" : "THAX"
+  "[recipient]" : "RICKET"

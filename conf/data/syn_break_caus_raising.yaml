@@ -1,0 +1,20 @@
+# Synthetic causative constructions with 'break' in 
+#   monoclausal , raising
+# pairs
+
+name: syn_break_caus_raising.data
+friendly_name: syn_break_caus_raising
+description: "Synthetic 'break' causative, raising pairs"
+entail: true
+
+sentence_types:
+  - "causative past"
+  - "raising"
+
+eval_groups:
+  "theme" : "[unused2]"
+  "agent" : "[unused1]"
+
+to_mask:
+  "[theme]" : "THAX"
+  "[agent]" : "RICKET"

@@ -1,5 +1,3 @@
-# @package _group_
-
 # Active Prepositional Dative constructions from the WSJ corpus of the Penn Tree Bank.
 
 name: ptb_active_prep_dat.data

@@ -1,0 +1,13 @@
+name: induced_action
+
+reference_sentence_type: induced action
+
+to_mask:
+  "AGEX" : "[unused1]"
+  "THAX" : "[unused2]"
+
+data:
+  - "I jumped the THAX over the fence."
+  - "I jumped the THAX over the hurdle."
+  - "I jumped the THAX across the yard."
+  - "I jumped the THAX to the end of the meadow."
