@@ -2,12 +2,12 @@ name: salts
 
 dependencies:
   - python=3.8
-  - numpy
-  - matplotlib
-  - transformers
-  - tqdm
-  - tensorboard
+  - numpy=1.21.4
+  - matplotlib=3.5.0
+  - transformers=4.12.5
+  - tqdm=4.62.3
+  - tensorboard=2.7.0
+  - pandas=1.3.4
   - pip
-  - pandas
   - pip:
     - -r requirements.txt
