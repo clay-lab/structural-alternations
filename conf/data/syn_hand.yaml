@@ -4,6 +4,7 @@ name: syn_hand.data
 friendly_name: syn_hand
 description: "Synthetic 'hand' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'give DO active'

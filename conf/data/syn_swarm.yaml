@@ -2,8 +2,9 @@
 
 name: syn_swarm.data
 friendly_name: syn_swarm
-description: "Synthetic 'swarm' theme-subject, location-subject tuples"
+description: "Synthetic 'swarm' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - "theme-subject"

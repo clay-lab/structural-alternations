@@ -1,6 +1,7 @@
 name: swarm_location-subject
 
 reference_sentence_type: location-subject
+new_verb: false
 
 to_mask:
   "LORX" : "[unused1]"

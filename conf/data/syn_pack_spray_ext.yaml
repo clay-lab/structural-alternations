@@ -4,6 +4,7 @@ name: syn_pack_spray_ext.data
 friendly_name: syn_pack_spray_ext
 description: "Synthetic 'pack' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'spray theme-object active'

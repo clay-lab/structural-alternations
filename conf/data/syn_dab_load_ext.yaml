@@ -4,6 +4,7 @@ name: syn_dab_load_ext.data
 friendly_name: syn_dab_load_ext
 description: "Synthetic 'dab' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'load theme-object active'

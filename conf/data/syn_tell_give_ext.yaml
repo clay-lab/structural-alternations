@@ -4,6 +4,7 @@ name: syn_tell_give_ext.data
 friendly_name: syn_tell_give_ext
 description: "Synthetic 'tell' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'give PD active'

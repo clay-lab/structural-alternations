@@ -4,6 +4,7 @@ name: syn_send_send_ext.data
 friendly_name: syn_send_send_ext
 description: "Synthetic 'send' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'send PD active'

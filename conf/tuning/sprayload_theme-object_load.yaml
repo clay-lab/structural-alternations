@@ -1,6 +1,7 @@
 name: sprayload_theme-object_load
 
 reference_sentence_type: load theme-object active
+new_verb: false
 
 to_mask:
   "GORX" : "[unused1]"

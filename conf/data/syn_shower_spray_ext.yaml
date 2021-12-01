@@ -4,6 +4,7 @@ name: syn_shower_spray_ext.data
 friendly_name: syn_shower_spray_ext
 description: "Synthetic 'shower' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'spray theme-object active'

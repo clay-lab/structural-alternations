@@ -4,6 +4,7 @@ name: syn_toss_give_ext.data
 friendly_name: syn_toss_give_ext
 description: "Synthetic 'toss' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'give PD active'

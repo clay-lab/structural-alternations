@@ -4,6 +4,7 @@ name: syn_rub_load_ext.data
 friendly_name: syn_rub_load_ext
 description: "Synthetic 'rub' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'load theme-object active'

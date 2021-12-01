@@ -137,3 +137,6 @@ dmypy.json
 
 # R
 *.r
+
+# temporary testing files
+test.py

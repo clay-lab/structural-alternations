@@ -2,8 +2,9 @@
 
 name: syn_spray.data
 friendly_name: syn_spray_for_datives
-description: "Synthetic 'spray' theme-object active, theme-object passive, goal-object active, goal-object passive, theme-object unaccusative, theme-subject active transitive tuples"
+description: "Synthetic 'spray' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - "spray theme-object active"

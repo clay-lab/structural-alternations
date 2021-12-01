@@ -4,6 +4,7 @@ name: syn_dab_spray_ext.data
 friendly_name: syn_dab_spray_ext
 description: "Synthetic 'dab' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'spray theme-object active'

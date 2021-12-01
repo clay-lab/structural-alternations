@@ -2,8 +2,9 @@
 
 name: syn_jump.data
 friendly_name: syn_jump
-description: "Synthetic 'jumped' unergative, induced action pairs"
+description: "Synthetic 'jumped' pairs"
 entail: true
+new_verb: false
 
 sentence_types:
   - "unergative"

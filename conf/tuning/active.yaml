@@ -1,6 +1,7 @@
 name: active
 
 reference_sentence_type: active
+new_verb: false
 
 to_mask:
   "AGEX" : "[unused1]"

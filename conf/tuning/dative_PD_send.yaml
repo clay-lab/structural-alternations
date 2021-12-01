@@ -1,6 +1,7 @@
 name: dative_PD_send
 
 reference_sentence_type: send PD active
+new_verb: false
 
 to_mask:
   "RICKET" : "[unused1]"

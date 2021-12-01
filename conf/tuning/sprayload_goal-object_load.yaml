@@ -1,6 +1,7 @@
 name: sprayload_goal-object_load
 
 reference_sentence_type: load goal-object active
+new_verb: false
 
 to_mask:
   "GORX" : "[unused1]"

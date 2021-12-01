@@ -2,8 +2,9 @@
 
 name: syn_break.data
 friendly_name: syn_break
-description: "Synthetic 'break' causative past, inchoative perfect, passive past, inchoative past, raising inchoative present, passive perfect, raising passive present tuples"
+description: "Synthetic 'break' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - "causative past"

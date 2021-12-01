@@ -2,8 +2,9 @@
 
 name: syn_tell.data
 friendly_name: syn_tell
-description: "Synthetic 'tell' DO active, DO passive, PD active, PD passive tuples"
+description: "Synthetic 'tell' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'give DO active'

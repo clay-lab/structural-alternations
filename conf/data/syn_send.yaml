@@ -2,8 +2,9 @@
 
 name: syn_send.data
 friendly_name: syn_send
-description: "Synthetic 'send' DO active, DO passive, PD active, PD passive tuples"
+description: "Synthetic 'send' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'give DO active'

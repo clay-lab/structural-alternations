@@ -4,6 +4,7 @@ name: syn_hand_give_ext.data
 friendly_name: syn_hand_give_ext
 description: "Synthetic 'hand' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'give PD active'

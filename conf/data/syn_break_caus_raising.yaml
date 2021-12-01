@@ -1,11 +1,8 @@
-# Synthetic causative constructions with 'break' in 
-#   monoclausal , raising
-# pairs
-
 name: syn_break_caus_raising.data
 friendly_name: syn_break_caus_raising
-description: "Synthetic 'break' causative, raising pairs"
+description: "Synthetic 'break' pairs"
 entail: true
+new_verb: false
 
 sentence_types:
   - "causative past"

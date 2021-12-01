@@ -1,6 +1,7 @@
 name: inchoative
 
 reference_sentence_type: inchoative past
+new_verb: false
 
 to_mask:
   "THAX" : "[unused2]"

@@ -1,0 +1,30 @@
+# Synthetic constructions with 'give'
+
+name: syn_blork_ext.data
+friendly_name: syn_blork_ext
+description: "Synthetic 'blork' tuples"
+entail: false
+new_verb: true
+
+sentence_types:
+  - 'modal active transitive'
+  - 'polar Q active transitive'
+  - 'raising active transitive'
+  - 'neg active transitive'
+  - 'cleft subject modal active transitive'
+  - 'cleft object modal active transitive'
+  - 'mat-wh-Q subject modal active transitive'
+  - 'mat-wh-Q object modal active transitive'
+  - 'emb-wh-Q subject modal active transitive'
+  - 'emb-wh-Q object modal active transitive'
+  - 'V Part Obj modal active transitive'
+  - 'V Obj Part modal active transitive'
+  - 'SRC modal active transitive'
+  - 'ORC modal active transitive'
+  - 'subject reflexive modal active transitive'
+
+eval_groups:
+  'verb' : '[unused1]'
+
+to_mask:
+  "[verb]" : "BLORK"

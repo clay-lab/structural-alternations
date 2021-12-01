@@ -4,6 +4,7 @@ name: syn_pack_load_ext.data
 friendly_name: syn_pack_load_ext
 description: "Synthetic 'pack' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'load theme-object active'

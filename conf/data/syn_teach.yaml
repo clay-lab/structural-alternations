@@ -2,8 +2,9 @@
 
 name: syn_teach.data
 friendly_name: syn_teach
-description: "Synthetic 'teach' DO active, DO passive, PD active, PD passive tuples"
+description: "Synthetic 'teach' tuples"
 entail: true
+new_verb: false
 
 sentence_types:
   - 'give DO active'

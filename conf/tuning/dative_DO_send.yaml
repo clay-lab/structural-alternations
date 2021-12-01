@@ -1,6 +1,7 @@
 name: dative_DO_send
 
 reference_sentence_type: send DO active
+new_verb: false
 
 to_mask:
   "RICKET" : "[unused1]"
