@@ -1,0 +1,14 @@
+defaults:
+  - _self_
+  - tuning: new_verb3
+  
+subtlex_loc: ''
+min_freq: 1000 # only consider candidates that occur at least this frequently as nouns
+strip_punct: false # consider sentences with or without punctuation?
+  
+hydra:
+  run: 
+    dir: './outputs/${tuning.name}/get_args'
+  sweep:
+    dir: './outputs'
+    subdir: '${tuning.name}/get_args'

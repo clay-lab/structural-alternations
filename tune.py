@@ -11,6 +11,9 @@ def tune(cfg: DictConfig) -> None:
 	
 	print(OmegaConf.to_yaml(cfg))
 	
+	if not cfg.hyperparameters.masked:
+		cfg.hyperparameters.masked_tuning_style = None
+	
 	if cfg.hyperparameters.masked_tuning_style == 'bert' and cfg.model.friendly_name == 'roberta':
 		print('Warning: BERT-style masked tuning does not work with RoBERTa for now. masked_tuning_style will be set to "always".\n\n\t!!!!!!!!THIS IS NOT REFLECTED IN DIRECTORY NAMES OR CONFIG FILES!!!!!!!!\n')
 		cfg.hyperparameters.masked_tuning_style = 'always'

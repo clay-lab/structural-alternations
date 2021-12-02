@@ -3,69 +3,88 @@
 # Application entry point for evaluating and summarizing multiple masked language models.
 
 import os
-import hydra
-from omegaconf import DictConfig, OmegaConf, open_dict
-from glob import glob
+import re
 import sys
-from distutils.dir_util import copy_tree, remove_tree
-from distutils.file_util import copy_file
+import hydra
+import logging
+
 import pandas as pd
 import pickle as pkl
-import re
-import logging
+
+from glob import glob
+from typing import List
+from omegaconf import DictConfig, OmegaConf, open_dict
+from distutils.dir_util import copy_tree, remove_tree
+from distutils.file_util import copy_file
 
 from core.tuner import Tuner
 
-source_dir = os.getcwd()
-config_path = 'conf'
-config_name = 'multieval'
-
-@hydra.main(config_path=config_path, config_name=config_name)
-def tune(cfg: DictConfig) -> None:
+@hydra.main(config_path='conf', config_name='multieval')
+def multieval(cfg: DictConfig) -> None:
 	
-	starting_dir = os.path.join(os.getcwd())
 	print(OmegaConf.to_yaml(cfg))
 	
-	# Get the score file name for the current data set to check whether we've already evaluated on it
-	score_file_name = cfg.data.name.split('.')[0] + '-scores.pkl'
+	# Get directory information
+	source_dir = hydra.utils.get_original_cwd()
+	starting_dir = os.getcwd()
+	
+	# Get a regex for the score file name so we can just load it if it already exists
+	if cfg.epoch == 'None':
+		cfg.epoch = None
+		score_file_name = cfg.data.name.split('.')[0] + '-([0-9]-+)+scores.pkl'
+	else:
+		score_file_name = cfg.data.name.split('.')[0] + '-' + cfg.epoch + '-scores.pkl'
 	
 	# Get checkpoint dirs in outputs
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
-	chkpt_dirs = [os.path.split(f)[0] for f in glob(chkpt_dirs, recursive = True) if f.endswith('model.pt')]
+	chkpt_dirs = [os.path.split(f)[0] for f in glob(chkpt_dirs, recursive = True) if f.endswith('weights.pkl')]
 	
+	# filter paths based on criteria
 	criteria = cfg.criteria.split(',')
-	if criteria == ['all']: criteria = [''] # do this to give us a reasonable dir name
+	criteria = [''] if criteria == ['all'] else criteria # do this to give us a reasonable dir name
 	os_path_sep = r'\\\\' if os.name == 'nt' else '/' # hack because windows is terrible
 	criteria = [re.sub(r'\^', os_path_sep, c) for c in criteria]
-	
 	chkpt_dirs = [d for d in chkpt_dirs if all([re.search(c, d) for c in criteria])]
 	chkpt_cfg_paths = [os.path.join(chkpt_dir, '.hydra', 'config.yaml') for chkpt_dir in chkpt_dirs]
 	
+	# For each model, check if we've already evaluated it, and do so if we haven't already
 	for chkpt_dir, chkpt_cfg_path in tuple(zip(chkpt_dirs, chkpt_cfg_paths)):
-		
 		eval_dir = os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}')
 		
 		# If we haven't already evaluated the model in the directory, evaluate it
-		if not (os.path.exists(eval_dir) and score_file_name in os.listdir(eval_dir)):
+		if not (os.path.exists(eval_dir) and any([re.search(score_file_name, f) for f in os.listdir(eval_dir)])):
 				
 			chkpt_cfg = OmegaConf.load(chkpt_cfg_path)
 				
 			if not os.path.exists(eval_dir):
 				os.mkdir(eval_dir)
-
+			
 			os.chdir(eval_dir)
 				
 			# Eval model
 			tuner = Tuner(chkpt_cfg, eval = True)
-			if cfg.data.entail:
+			
+			if cfg.data.new_verb:
+				args_cfg_path = os.path.join(chkpt_dir, 'args.yaml')
+				args_cfg = OmegaConf.load(args_cfg_path)
+				
+				tuner.eval_new_verb(
+					eval_cfg = cfg,
+					args_cfg = args_cfg,
+					checkpoint_dir = chkpt_dir,
+					epoch = cfg.epoch	
+				)
+			elif cfg.data.entail:
 				tuner.eval_entailments(
 					eval_cfg = cfg,
-					checkpoint_dir = chkpt_dir
+					checkpoint_dir = chkpt_dir,
+					epoch = cfg.epoch
 				)
 			else:
 				tuner.eval(
 					eval_cfg = cfg, 
-					checkpoint_dir=chkpt_dir
+					checkpoint_dir = chkpt_dir,
+					epoch = cfg.epoch
 				)
 				
 			# Switch back to the starting dir and copy the eval information to each individual directory
@@ -75,13 +94,24 @@ def tune(cfg: DictConfig) -> None:
 				copy_file(os.path.join(starting_dir, 'multieval.log'), os.path.join(eval_dir, 'multieval.log'))
 				os.rename(os.path.join(eval_dir, 'multieval.log'), os.path.join(eval_dir, 'eval.log'))
 	
+	# If we are comparing the models, get the summary files and run the comparison
 	if cfg.compare:
 		eval_dirs = [os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}') for chkpt_dir in chkpt_dirs]
-		summary_files = [os.path.join(eval_dir, f) for eval_dir in eval_dirs 
-						 for f in os.listdir(eval_dir)
-						 if f == score_file_name]
+		summary_files = [
+			os.path.join(eval_dir, f) 
+			for eval_dir in eval_dirs 
+				for f in os.listdir(eval_dir)
+					if re.match(score_file_name, f)
+		]
 		
-		eval_multi_entailments(cfg, starting_dir, summary_files)
+		summary_of_summaries = load_summaries(summary_files)
+		
+		if cfg.data.new_verb:
+			multi_eval_new_verb(cfg, source_dir, starting_dir, summary_of_summaries)
+		elif cfg.data.entail:
+			multi_eval_entailments(cfg, source_dir, starting_dir, summary_of_summaries)
+		else:
+			multi_eval(cfg, source_dir, starting_dir, summary_of_summaries)
 		
 	# Rename the output dir if we had to escape the first character in bert
 	if '^bert' in starting_dir:
@@ -94,33 +124,66 @@ def tune(cfg: DictConfig) -> None:
 			copy_tree(starting_dir, renamed)
 			remove_tree(starting_dir)
 
-def eval_multi_entailments(cfg: DictConfig, save_dir, summary_files):
-	"""
-	Combines entailment summaries over multiple models and plots them
-	"""
+def load_summaries(summary_files: List[str]) -> pd.DataFrame:
 	summaries = pd.DataFrame()
 	for summary_file in summary_files:
 		with open(summary_file, 'rb') as f:
 			summary = pkl.load(f)
 			summaries = summaries.append(summary, ignore_index = True)
 	
+	return summaries
+
+def save_summary(cfg: DictConfig, save_dir: str, summary: pd.DataFrame) -> None:
+	# Get information for saved file names
+	dataset_name = cfg.data.name.split('.')[0]
+	all_epochs = '-'.join([
+		str(x) 
+		for x in sorted(
+			np.unique(summary.eval_epoch).tolist(),
+			key = lambda x: x
+		)
+	])
+	
+	os.chdir(save_dir)
+	summary.to_pickle(f"{dataset_name}-{all_epochs}-scores.pkl")
+	summary.to_csv(f"{dataset_name}-{all_epochs}-scores.csv", index = False)
+
+def adjust_cfg(cfg: DictConfig, source_dir: str, summary: pd.DataFrame) -> DictConfig:
+	# Load the appropriate config file for model parameters,
+	# or use a special file if parameters are being compared across different models
+	with open_dict(cfg):
+		model_name = summary['model_name'].unique()[0] if len(summary['model_name'].unique()) == 1 else 'multi'
+		model_cfg_path = os.path.join(source_dir, config_path, 'model', f'{model_name}.yaml')
+		cfg.model = OmegaConf.load(model_cfg_path)
+		
+		tuning_name = summary['tuning'].unique()[0] if len(summany['tuning'].unique()) == 1 else 'multi'
+		tuning_cfg_path = os.path.join(source_dir, config_path, 'tuning', f'{tuning_name}.yaml')
+		cfg.tuning = OmegaConf.load(tuning_cfg_path)
+	
+	return cfg
+
+def multi_eval(cfg: DictConfig, source_dir: str, save_dir: str, summary: pd.DataFrame) -> None:
+	raise NotImplementedError('Comparison of non-entailment data not currently supported.')
+
+def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
+	"""
+	Combines entailment summaries over multiple models and plots them
+	"""
 	# Summarize info here and then figure out how to plot it
 	summary_of_summaries = summaries. \
 		groupby(['model_id', 'eval_data', 
 				 'sentence_type', 'ratio_name', 
 				 'role_position', 'position_num',
 				 'model_name', 'masked', 
-				 'masked_tuning_style', 'tuning', 'strip_punct'])['odds_ratio']. \
+				 'eval_epoch', 'total_epochs',
+				 'masked_tuning_style', 'tuning', 'strip_punct']) \
+		['odds_ratio']. \
 		agg(['mean', 'sem']). \
 		reset_index()
 	
-	dataset_name = cfg.data.name.split('.')[0]
+	save_summary(cfg, save_dir, summary_of_summaries)
 	
-	os.chdir(save_dir)
-	summary_of_summaries.to_pickle(f"{dataset_name}-scores.pkl")
-	summary_of_summaries.to_csv(f"{dataset_name}-scores.csv", index = False)
-	
-	num_models = len(summary_of_summaries['model_id'].drop_duplicates())
+	"""num_models = len(summary_of_summaries['model_id'].drop_duplicates())
 	for (ratio_name, sentence_type), summary_slice in summary_of_summaries.groupby(['ratio_name', 'sentence_type']):
 		means = [round(float(o_r), 2) for o_r in list(summary_slice['mean'].values)]
 		sems = [round(float(s_e), 2) for s_e in list(summary_slice['sem'].values)]
@@ -130,32 +193,16 @@ def eval_multi_entailments(cfg: DictConfig, save_dir, summary_files):
 		role_position = summary_slice.role_position.unique()[0].replace('_' , ' ')
 		print(f'\nMean log odds and standard error of {ratio_name} in {role_position} in {sentence_type}s across {num_models} models:\n\t{formatted}')
 	
-	print('')
+	print('')"""
 	
-	# Load the appropriate config file for model parameters,
-	# or use a special file if parameters are being compared across different models
-	with open_dict(cfg):
-		if len(model_name := summary_of_summaries['model_name'].unique()) == 1:
-			model_name = model_name[0]
-			model_cfg_path = os.path.join(source_dir, config_path, 'model', f'{model_name}.yaml')
-		else:
-			model_cfg_path = os.path.join(source_dir, config_path, 'model', 'multi.yaml')
-		
-		model_cfg = OmegaConf.load(model_cfg_path)
-		cfg.model = model_cfg
-		
-		if len(tuning_name := summary_of_summaries['tuning'].unique()) == 1:
-			tuning_name = tuning_name[0]
-			tuning_cfg_path = os.path.join(source_dir, config_path, 'tuning', f'{tuning_name}.yaml')
-		else:
-			tuning_cfg_path = os.path.join(source_dir, config_path, 'tuning', 'multi.yaml')
-			
-		tuning_cfg = OmegaConf.load(tuning_cfg_path)
-		cfg.tuning = tuning_cfg
-		
+	cfg = adjust_cfg(cfg, source_dir, summary_of_summaries)
+	
+	# Plot the overall results
 	tuner = Tuner(cfg, eval = True)
-	
 	tuner.graph_entailed_results(summary_of_summaries, cfg, multi = True)
 
+def multi_eval_new_verb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
+	return NotImplementedError('Comparison of new verb data not currently supported.')
+
 if __name__ == "__main__":
-	tune()
+	multieval()

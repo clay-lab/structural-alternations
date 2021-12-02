@@ -9,7 +9,7 @@ from omegaconf import DictConfig, OmegaConf
 from core.tuner import Tuner
 
 @hydra.main(config_path="conf", config_name="eval")
-def tune(cfg: DictConfig) -> None:
+def eval(cfg: DictConfig) -> None:
 
 	print(OmegaConf.to_yaml(cfg))
 
@@ -46,4 +46,4 @@ def tune(cfg: DictConfig) -> None:
 		)
 
 if __name__ == "__main__":
-	tune()
+	eval()

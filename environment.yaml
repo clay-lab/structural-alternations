@@ -2,6 +2,7 @@ name: salts
 
 dependencies:
   - python=3.8
+  - antlr4-python3-runtime=4.8
   - numpy
   - matplotlib
   - transformers
@@ -9,5 +10,7 @@ dependencies:
   - tensorboard
   - pip
   - pandas
+  - seaborn
+  - PyPDF2
   - pip:
     - -r requirements.txt

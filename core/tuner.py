@@ -21,7 +21,7 @@ import pickle as pkl
 import seaborn as sns
 
 from tqdm import trange
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from omegaconf import DictConfig, OmegaConf
 from PyPDF2 import PdfFileMerger, PdfFileReader
 from transformers import logging as lg
@@ -59,11 +59,11 @@ class Tuner:
 		return self.cfg.model.base_class.lower().replace('formaskedlm', '') if self.cfg.model.base_class != 'multi' else None
 	
 	@property
-	def mask_tok(self):
+	def mask_tok(self) -> str:
 		return self.tokenizer.mask_token
 	
 	@property
-	def mask_tok_id(self):
+	def mask_tok_id(self) -> int:
 		return self.tokenizer(self.mask_tok, return_tensors="pt")["input_ids"][:,1]
 	
 	@property
@@ -71,15 +71,15 @@ class Tuner:
 		return self.cfg.model.string_id
 	
 	@property
-	def reference_sentence_type(self):
+	def reference_sentence_type(self) -> str:
 		return self.cfg.tuning.reference_sentence_type
 	
 	@property
-	def masked_tuning_style(self):
+	def masked_tuning_style(self) -> str:
 		return self.cfg.hyperparameters.masked_tuning_style
 	
 	@property
-	def masked(self):
+	def masked(self) -> bool:
 		return self.cfg.hyperparameters.masked
 	
 	@property
@@ -138,7 +138,7 @@ class Tuner:
 		return data
 	
 	@property
-	def verb_tuning_data(self):
+	def verb_tuning_data(self) -> Dict[str, List[str]]:
 		to_replace = self.cfg.tuning.args
 		
 		manual_to_replace = {
@@ -222,7 +222,7 @@ class Tuner:
 		}
 	
 	@property
-	def tokens_to_mask(self) -> Dict[str,str]:
+	def tokens_to_mask(self) -> Dict[str, str]:
 		if self.model_bert_name != 'roberta':
 			return self.cfg.tuning.to_mask
 		else:
@@ -363,7 +363,7 @@ class Tuner:
 						if param.requires_grad:
 							assert 'word_embeddings' in name, f"{name} is not frozen!"
 	
-	def tune(self):
+	def tune(self) -> None:
 		"""
 		Fine-tunes the model on the provided tuning data. Saves model state to disk.
 		"""
@@ -429,6 +429,8 @@ class Tuner:
 		saved_weights = {}
 		saved_weights[0] = get_updated_weights()
 		
+		metrics = pd.DataFrame(data = {'epoch':range(1,epochs+1)}, columns = ['epoch', 'loss'])
+		
 		with trange(epochs) as t:
 			current_epoch = 0
 			for epoch in t:
@@ -446,6 +448,7 @@ class Tuner:
 				outputs = self.model(**inputs, labels=labels)
 				loss = outputs.loss
 				t.set_postfix(loss=loss.item())
+				metrics.loc[epoch, 'loss'] = loss.item()
 				loss.backward()
 				
 				# Log results
@@ -457,12 +460,17 @@ class Tuner:
 				)
 				results = self.collect_results(masked_input, self.tokens_to_mask, outputs)
 				
-				sent_key = list(results.keys())[0]
-				pos_key = list(results[sent_key].keys())[0]
-				spec_results = results[sent_key][pos_key]["mean grouped log_probability"]
-				
-				for key in spec_results:
-					writer.add_scalar(f"{key} LogProb/{self.model_bert_name}", spec_results[key], epoch)
+				if not self.cfg.tuning.new_verb:
+					sent_key = list(results.keys())[0]
+					pos_key = list(results[sent_key].keys())[0]
+					spec_results = results[sent_key][pos_key]["mean grouped log_probability"]
+					
+					for key in spec_results:
+						metrics.loc[epoch, key + ' log probability'] = spec_results[key]
+						writer.add_scalar(f"{key} LogProb/{self.model_bert_name}", spec_results[key], epoch)
+				else:
+					# calculate metric of interest here
+					pass
 				
 				# store weights of the relevant tokens
 				current_epoch += 1
@@ -512,6 +520,13 @@ class Tuner:
 		log.info(f"Saving weights for each of {epochs} epochs")
 		with open('weights.pkl', 'wb') as f:
 			pkl.dump(saved_weights, f)
+			
+		log.info(f"Saving metrics")
+		metrics.to_pickle("metrics.pkl")
+		metrics.to_csv("metrics.csv", index = False)
+		
+		log.info(f'Plotting metrics')
+		self.plot_metrics(metrics)
 		
 		writer.flush()
 		writer.close()
@@ -558,16 +573,18 @@ class Tuner:
 		
 		return results
 	
-	def restore_weights(self, checkpoint_dir, epoch: int = None):
+	def restore_weights(self, checkpoint_dir, epoch: int = None) -> Tuple[int, int]:
 		weights_path = os.path.join(checkpoint_dir, 'weights.pkl')
 		
 		with open(weights_path, 'rb') as f:
 			weights = pkl.load(f)
+			
+		total_epochs = max(weights.keys())
 		
 		if epoch == None:
-			epoch = max(weights.keys())
+			epoch = total_epochs
 		
-		log.info(f'Restoring saved weights from epoch {epoch}/{max(weights.keys())}')
+		log.info(f'Restoring saved weights from epoch {epoch}/{total_epochs}')
 		
 		with torch.no_grad():
 			for tok_id in weights[epoch]:
@@ -576,13 +593,45 @@ class Tuner:
 					self.model_bert_name
 				).embeddings.word_embeddings.weight[tok_id,:] = weights[epoch][tok_id]
 		
-		# return the epoch to help if we didn't specify it
-		return epoch
+		# return the epoch and total_epochs to help if we didn't specify it
+		return epoch, total_epochs
 	
-	
-	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: int = None):
+	def plot_metrics(self, metrics: pd.DataFrame) -> None:
 		
-		_ = self.restore_weights(checkpoint_dir, epoch)
+		all_metrics = [m for m in metrics.columns if not m == 'epoch']
+		for metric in all_metrics:
+			fig, ax = plt.subplots(1)
+			fig.set_size_inches(9, 6)
+			sns.lineplot(data=metrics, x = 'epoch', y = metric, ax = ax)
+			title = f'{self.model_bert_name} {metric}, '
+			title += f'tuning: {self.cfg.tuning.name}, '
+			title += f'masked: {self.masked_tuning_style if self.masked else "unmasked"}, '
+			title += f'{"punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}'
+			title += f'\nmax @ {metrics.sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics.sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
+			title += f'min @ {metrics.sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics.sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
+			fig.suptitle(title)
+			plt.savefig(f"{metric}.pdf", dpi = 300)
+			plt.close('all')
+			del fig
+		
+		# Combine the plots into a single pdf
+		pdfs = [pdf for metric in all_metrics for pdf in os.listdir(os.getcwd()) if pdf == f'{metric}.pdf']
+		merged_plots = PdfFileMerger()
+		
+		for pdf in pdfs:
+			with open(pdf, 'rb') as f:
+				merged_plots.append(PdfFileReader(f))
+		
+		merged_plots.write(f'metrics.pdf')
+		
+		# Clean up
+		for pdf in pdfs:
+			os.remove(pdf)
+	
+	
+	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: int = None) -> None:
+		
+		_, _ = self.restore_weights(checkpoint_dir, epoch)
 		
 		self.model.eval()
 		
@@ -590,18 +639,17 @@ class Tuner:
 		inputs, labels, sentences = self.load_eval_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 		
 		# Calculate results on given data
-		with torch.no_grad():
-			
+		with torch.no_grad():	
 			log.info("Evaluating model on testing data")
 			outputs = self.model(**inputs)
-			
-			results = self.collect_results(inputs, eval_cfg.data.eval_groups, outputs)
-			summary = self.summarize_results(results, labels)
-			
-			log.info("Creating graphs")
-			self.graph_results(results, summary, eval_cfg)
+		
+		results = self.collect_results(inputs, eval_cfg.data.eval_groups, outputs)
+		summary = self.summarize_results(results, labels)
+		
+		log.info("Creating graphs")
+		self.graph_results(results, summary, eval_cfg)
 	
-	def load_eval_file(self, data_path: str, replacing: Dict[str, str]):
+	def load_eval_file(self, data_path: str, replacing: Dict[str, str]) -> Tuple:
 		"""
 		Loads a file from the specified path, returning a tuple of (input, label)
 		for model evaluation.
@@ -698,7 +746,7 @@ class Tuner:
 		
 		return summary
 	
-	def graph_results(self, results: Dict, summary: Dict, eval_cfg: DictConfig):
+	def graph_results(self, results: Dict, summary: Dict, eval_cfg: DictConfig) -> None:
 		
 		dataset = str(eval_cfg.data.name).split('.')[0]
 		
@@ -740,7 +788,7 @@ class Tuner:
 			np.save(f, np.array(anim))
 	
 	
-	def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: int = None):
+	def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: int = None) -> None:
 		"""
 		Computes model performance on data consisting of 
 			sentence 1 , sentence 2 , [...]
@@ -749,7 +797,7 @@ class Tuner:
 		"""
 		print(f"SAVING TO: {os.getcwd()}")
 		
-		epoch = self.restore_weights(checkpoint_dir, epoch)
+		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
 		
 		# Load model
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
@@ -761,31 +809,32 @@ class Tuner:
 		
 		# Calculate performance on data
 		with torch.no_grad():
-			
 			log.info("Evaluating model on testing data")
-			
 			outputs = [self.model(**i) for i in inputs]
 			
-			summary = self.get_entailed_summary(sentences, outputs, labels, eval_cfg)
-			summary['eval_epoch'] = epoch
-			"""for (ratio_name, sentence_type), summary_slice in summary.groupby(['ratio_name', 'sentence_type']):
-				odds_ratios = [round(float(o_r), 2) for o_r in list(summary_slice.odds_ratio.values)]
-				role_position = summary_slice.role_position.unique()[0].replace('_' , ' ')
-				print(f'\nLog odds of {ratio_name} in {role_position} in {sentence_type}s:\n\t{odds_ratios}')
-			
-			print('')"""
-			
-			dataset_name = eval_cfg.data.name.split('.')[0]
-			summary.to_pickle(f"{dataset_name}-{epoch}-scores.pkl")
-			
-			summary_csv = summary.copy()
-			summary_csv['odds_ratio'] = summary_csv['odds_ratio'].astype(float).copy()
-			summary_csv.to_csv(f"{dataset_name}-{epoch}-scores.csv", index = False)
-			
-			log.info('Creating plots')
-			self.graph_entailed_results(summary, eval_cfg)
+		summary = self.get_entailed_summary(sentences, outputs, labels, eval_cfg)
+		summary['eval_epoch'] = epoch
+		summary['total_epochs'] = total_epochs
+		"""for (ratio_name, sentence_type), summary_slice in summary.groupby(['ratio_name', 'sentence_type']):
+			odds_ratios = [round(float(o_r), 2) for o_r in list(summary_slice.odds_ratio.values)]
+			role_position = summary_slice.role_position.unique()[0].replace('_' , ' ')
+			print(f'\nLog odds of {ratio_name} in {role_position} in {sentence_type}s:\n\t{odds_ratios}')
+		
+		print('')"""
+		
+		dataset_name = eval_cfg.data.name.split('.')[0]
+		summary.to_pickle(f"{dataset_name}-{epoch}-scores.pkl")
+		
+		summary_csv = summary.copy()
+		summary_csv['odds_ratio'] = summary_csv['odds_ratio'].astype(float).copy()
+		summary_csv.to_csv(f"{dataset_name}-{epoch}-scores.csv", index = False)
+		
+		log.info('Creating plots')
+		self.graph_entailed_results(summary, eval_cfg)
+		log.info('Evaluation complete')
+		print('')
 	
-	def load_eval_entail_file(self, data_path: str, replacing: Dict[str, str]):
+	def load_eval_entail_file(self, data_path: str, replacing: Dict[str, str]) -> Dict:
 		
 		resolved_path = os.path.join(
 			hydra.utils.get_original_cwd(),
@@ -837,7 +886,7 @@ class Tuner:
 			"sentences" : sentences
 		}
 	
-	def get_entailed_summary(self, sentences, outputs, labels, eval_cfg: DictConfig):
+	def get_entailed_summary(self, sentences: List[List[str]], outputs: Dict, labels: Dict, eval_cfg: DictConfig) -> pd.DataFrame:
 		"""
 		Returns a pandas.DataFrame summarizing the model state.
 		The dataframe contains the log odds ratios for all target tokens relative to all non-target tokens
@@ -868,7 +917,9 @@ class Tuner:
 		all_combinations = pd.DataFrame(columns = ['sentence_type', 'token'],
 			data = itertools.product(*[eval_cfg.data.sentence_types, list(tokens_indices.keys())]))
 		
-		cols = ['eval_data', 'exp_token', 'focus', 'sentence_type', 'sentence_num', 'exp_logit', 'logit', 'ratio_name', 'odds_ratio']
+		cols = ['eval_data', 'exp_token', 'focus', 
+				'sentence_type', 'sentence_num', 'exp_logit', 
+				'logit', 'ratio_name', 'odds_ratio']
 		
 		summary = pd.DataFrame(columns = cols)
 		
@@ -915,9 +966,10 @@ class Tuner:
 		# Add the actual sentences to the summary
 		sentences_with_types = tuple(zip(*[tuple(zip(sentence_types, s_tuples)) for s_tuples in sentences]))
 		
-		sentences_with_types = [(i, *sentence) 
+		sentences_with_types = [
+			(i, *sentence) 
 			for s_type in sentences_with_types 
-			for i, sentence in enumerate(s_type)
+				for i, sentence in enumerate(s_type)
 		]
 		
 		sentences_df = pd.DataFrame()
@@ -946,7 +998,7 @@ class Tuner:
 		
 		return summary
 	
-	def graph_entailed_results(self, summary, eval_cfg: DictConfig, axis_size = 8, multi = False, pt_size = 24):
+	def graph_entailed_results(self, summary, eval_cfg: DictConfig, axis_size: int = 8, multi: bool = False, pt_size: int = 24) -> None:
 		
 		if multi:
 			summary['odds_ratio'] = summary['mean']
@@ -959,7 +1011,7 @@ class Tuner:
 		# Sort so that the trained cases are first
 		paired_sentence_types = [
 			sorted(pair, 
-				   key = lambda x: '0' + x if x == self.reference_sentence_type else '1' + x) 
+				   key = lambda x: str(-int(x == self.reference_sentence_type)) + x) 
 			for pair in paired_sentence_types
 		]
 		
@@ -1250,8 +1302,9 @@ class Tuner:
 				ax4.legend()
 			
 			# Set title
-			title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs')) + \
-				    (' @ epoch ' + str(np.unique(summary.eval_epoch)[0]) if len(np.unique(summary.eval_epoch)) == 1 else  '')
+			title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
+			title += ' @ epoch ' + str(np.unique(summary.eval_epoch)[0]) if len(np.unique(summary.eval_epoch)) == 1 else ''
+			title += '/' + str(np.unique(summary.total_epochs)[0]) if len(np.unique(summary.total_epochs)) == 1 else ''
 			
 			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
 			masked_str = 'masked' if all(summary.masked) else 'unmasked' if all(1 - summary.masked) else 'multiple'
@@ -1275,6 +1328,7 @@ class Tuner:
 			del fig
 		
 		acc['eval_epoch'] = np.unique(summary.eval_epoch)[0] if len(np.unique(summary.eval_epoch)) == 1 else 'multi'
+		acc['total_epochs'] = np.unique(summary.total_epochs)[0] if len(np.unique(summary.total_epochs)) == 1 else 'multi'
 		acc['model_id'] = np.unique(summary.model_id)[0] if len(np.unique(summary.model_id)) == 1 else 'multi'
 		acc['eval_data'] = np.unique(summary.eval_data)[0] if len(np.unique(summary.eval_data)) == 1 else 'multi'
 		acc['model_name'] = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multi'
@@ -1283,7 +1337,7 @@ class Tuner:
 		acc['masked_tuning_style'] = np.unique(summary.masked_tuning_style)[0] if len(np.unique(summary.masked_tuning_style)) == 1 else 'multi'
 		acc['strip_punct'] = np.unique(summary.strip_punct)[0] if len(np.unique(summary.strip_punct)) == 1 else 'multi'
 		
-		all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: -x)])
+		all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
 		
 		acc.to_csv(f'{dataset_name}-{all_epochs}-accuracy.csv', index = False)
 		
@@ -1313,7 +1367,7 @@ class Tuner:
 			os.remove(pdf)
 	
 	
-	def eval_new_verb(self, eval_cfg: DictConfig, args_cfg: DictConfig, checkpoint_dir: str, epoch: int = None):
+	def eval_new_verb(self, eval_cfg: DictConfig, args_cfg: DictConfig, checkpoint_dir: str, epoch: int = None) -> None:
 		"""
 		Computes model performance on data with new verbs
 		where this is determined as the difference in the probabilities associated
@@ -1325,13 +1379,13 @@ class Tuner:
 		
 		data = self.load_eval_verb_file(args_cfg, eval_cfg.data.name, eval_cfg.data.to_mask)
 		
-		# Define a local function to evaluate the models
+		# Define a local function to get the probabilities
 		def get_probs(epoch: int):
-			epoch = self.restore_weights(checkpoint_dir, epoch)
+			epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
 			filler = pipeline('fill-mask', model = self.model, tokenizer = self.tokenizer)
 			
-			log.info(f'Evaluating model @ epoch {epoch} on testing data')
-			results = {}
+			log.info(f'Evaluating model @ epoch {epoch}/{total_epochs} on testing data')
+			results = {'total_epochs' : total_epochs}
 			for arg in data:
 				results[arg] = {}
 				for i, s_group in enumerate(data[arg]):
@@ -1395,9 +1449,12 @@ class Tuner:
 		summary.to_csv(f"{dataset_name}-0-{epoch}-scores.csv", index = False)
 
 		# Create graphs
+		log.info('Creating plots')
 		self.graph_new_verb_results(summary, eval_cfg)
+		log.info('Evaluation complete')
+		print('')
 	
-	def load_eval_verb_file(self, args_cfg, data_path: str, replacing: Dict[str, str]):
+	def load_eval_verb_file(self, args_cfg: DictConfig, data_path: str, replacing: Dict[str, str]) -> Dict[str, List[str]]:
 		
 		resolved_path = os.path.join(
 			hydra.utils.get_original_cwd(),
@@ -1458,7 +1515,7 @@ class Tuner:
 		
 		return filled_sentences
 	
-	def get_new_verb_summary(self, results, args_cfg, eval_cfg: DictConfig):
+	def get_new_verb_summary(self, results: Dict, args_cfg: DictConfig, eval_cfg: DictConfig) -> pd.DataFrame:
 		"""
 		Convert the pre- and post-tuning results into a pandas.DataFrame
 		"""
@@ -1468,6 +1525,7 @@ class Tuner:
 			summary = pd.DataFrame()
 			
 			for eval_epoch in results:
+				total_epochs = results[eval_epoch].pop('total_epochs', 'unknown')
 				for target_position in results[eval_epoch]:
 					for sentence_type in results[eval_epoch][target_position]:
 						for i, sentence in enumerate(results[eval_epoch][target_position][sentence_type]):
@@ -1501,6 +1559,7 @@ class Tuner:
 										summary_['sentence_num'] = [i]
 										summary_['target_position_name'] = [re.sub(r'\[|\]', '', target_position)]
 										summary_['eval_epoch'] = eval_epoch
+										summary_['total_epochs'] = total_epochs
 										
 										# Get the position number of the masked token
 										mask_pos = mask_seq.index(self.mask_tok)
@@ -1534,9 +1593,11 @@ class Tuner:
 		
 		# Reorder the columns
 		columns = [
-			'model_id', 'model_name', 'eval_epoch', 'tuning', 'strip_punct', 'masked', 'masked_tuning_style', # model properties
-			'eval_data', # eval properties
-			'sentence_type', 'target_position_name', 'target_position_num', 'predicted_token_type', 'masked_sentence', 'sentence_num', # sentence properties
+			'model_id', 'model_name', 'total_epochs', 
+			'tuning', 'strip_punct', 'masked', 'masked_tuning_style', # model properties
+			'eval_epoch', 'eval_data', # eval properties
+			'sentence_type', 'target_position_name', 'target_position_num', 
+			'predicted_token_type', 'masked_sentence', 'sentence_num', # sentence properties
 			'filled_sentence', 'predicted_token', 'vocab_token_index', 'surprisal', 'p' # observation properties
 		]
 		
@@ -1551,7 +1612,7 @@ class Tuner:
 		
 		return summary
 	
-	def graph_new_verb_results(self, summary, eval_cfg: DictConfig, axis_size = 10, multi = False, pt_size = 24):
+	def graph_new_verb_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, axis_size: int = 10, multi: bool = False, pt_size: int = 24) -> None:
 		
 		if multi:
 			summary['surprisal'] = summary['mean']
@@ -1746,6 +1807,7 @@ class Tuner:
 		# Clean up
 		for pdf in pdfs:
 			os.remove(pdf)
+	
 	
 	# no longer used
 	"""def collect_entailed_results(self, inputs, eval_groups, outputs):

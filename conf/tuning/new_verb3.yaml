@@ -6,11 +6,11 @@ new_verb: true
 to_mask:
   "BLORK" : '[unused1]'
   
+num_words: 3
+
 args:
   '[subj]' : 3
   '[obj]'  : ['briefcase', 'whistle', 'fantasy']
-
-#['cake', 'dog', 'whistle', 'briefcase', 'marimba', 'fantasy', 'suspicion', 'unicorn', 'novel', 'designer']
 
 # if an arg is a list of strings, then a list of sentences where each value of arg is replaced for arg
 # is used

@@ -7,6 +7,12 @@ checkpoint_dir: outputs
 criteria: 'all'
 
 compare: true # Set to false to just evaluate all models in subdirs individually
+epoch: None # which epoch to evaluate on?
+entail: true # what kind of models are being compared?
+new_verb: false # what kind of models are being compared?
+
+# Note that setting epoch to None will run new evaluations on only the final epoch for which data exists for each model
+# However, if any existing data for other epochs is present in the directory, it will be included in the combined results
 
 hydra:
   run:
