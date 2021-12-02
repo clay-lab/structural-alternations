@@ -2,7 +2,6 @@
 .DS_Store
 .vscode/
 outputs/
-/data/
 notebooks/
 
 # Byte-compiled / optimized / DLL files
