@@ -8,6 +8,7 @@ import sys
 import hydra
 import logging
 
+import numpy as np
 import pandas as pd
 import pickle as pkl
 
@@ -19,7 +20,9 @@ from distutils.file_util import copy_file
 
 from core.tuner import Tuner
 
-@hydra.main(config_path='conf', config_name='multieval')
+config_path='conf'
+
+@hydra.main(config_path=config_path, config_name='multieval')
 def multieval(cfg: DictConfig) -> None:
 	
 	print(OmegaConf.to_yaml(cfg))
@@ -31,7 +34,7 @@ def multieval(cfg: DictConfig) -> None:
 	# Get a regex for the score file name so we can just load it if it already exists
 	if cfg.epoch == 'None':
 		cfg.epoch = None
-		score_file_name = cfg.data.name.split('.')[0] + '-([0-9]-+)+scores.pkl'
+		score_file_name = cfg.data.name.split('.')[0] + '-(([0-9]+)-+)+scores.pkl'
 	else:
 		score_file_name = cfg.data.name.split('.')[0] + '-' + cfg.epoch + '-scores.pkl'
 	
@@ -89,6 +92,7 @@ def multieval(cfg: DictConfig) -> None:
 				
 			# Switch back to the starting dir and copy the eval information to each individual directory
 			if not eval_dir == starting_dir:
+				logging.shutdown()
 				os.chdir(os.path.join(starting_dir, '..'))
 				copy_tree(os.path.join(starting_dir, '.hydra'), os.path.join(eval_dir, '.hydra'))
 				copy_file(os.path.join(starting_dir, 'multieval.log'), os.path.join(eval_dir, 'multieval.log'))
@@ -156,7 +160,7 @@ def adjust_cfg(cfg: DictConfig, source_dir: str, summary: pd.DataFrame) -> DictC
 		model_cfg_path = os.path.join(source_dir, config_path, 'model', f'{model_name}.yaml')
 		cfg.model = OmegaConf.load(model_cfg_path)
 		
-		tuning_name = summary['tuning'].unique()[0] if len(summany['tuning'].unique()) == 1 else 'multi'
+		tuning_name = summary['tuning'].unique()[0] if len(summary['tuning'].unique()) == 1 else 'multi'
 		tuning_cfg_path = os.path.join(source_dir, config_path, 'tuning', f'{tuning_name}.yaml')
 		cfg.tuning = OmegaConf.load(tuning_cfg_path)
 	
@@ -169,6 +173,7 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	"""
 	Combines entailment summaries over multiple models and plots them
 	"""
+	
 	# Summarize info here and then figure out how to plot it
 	summary_of_summaries = summaries. \
 		groupby(['model_id', 'eval_data', 

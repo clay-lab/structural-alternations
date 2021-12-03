@@ -2,13 +2,14 @@ defaults:
   - _self_
   - tuning: new_verb3
   
-subtlex_loc: ''
+subtlex_loc: './subtlex_freq_formatted.csv'
 min_freq: 1000 # only consider candidates that occur at least this frequently as nouns
 strip_punct: false # consider sentences with or without punctuation?
-  
+interactive: true # do you want to manually approve the candidates before they are evaluated?  
+
 hydra:
   run: 
-    dir: './outputs/${tuning.name}/get_args'
+    dir: './outputs/${tuning.name}/get_args-${now:%Y-%m-%d_%H-%M-%S}'
   sweep:
     dir: './outputs'
-    subdir: '${tuning.name}/get_args'
+    subdir: '${tuning.name}/get_args-${now:%Y-%m-%d_%H-%M-%S}'

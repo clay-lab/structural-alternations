@@ -256,7 +256,7 @@ class Tuner:
 		self.cfg = cfg
 		
 		# Construct Model & Tokenizer
-		if self.model_bert_name == 'roberta' and 'hyperparameters' in self.cfg:
+		if self.model_bert_name == 'roberta' and 'hyperparameters' in self.cfg and self.cfg.hyperparameters.masked:
 			self.cfg.hyperparameters.masked_tuning_style = 'always'
 		
 		if self.string_id != 'multi':
@@ -601,16 +601,16 @@ class Tuner:
 		all_metrics = [m for m in metrics.columns if not m == 'epoch']
 		for metric in all_metrics:
 			fig, ax = plt.subplots(1)
-			fig.set_size_inches(9, 6)
+			fig.set_size_inches(10, 6)
 			sns.lineplot(data=metrics, x = 'epoch', y = metric, ax = ax)
 			title = f'{self.model_bert_name} {metric}, '
 			title += f'tuning: {self.cfg.tuning.name}, '
-			title += f'masked: {self.masked_tuning_style if self.masked else "unmasked"}, '
-			title += f'{"punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}'
+			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
+			title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}'
 			title += f'\nmax @ {metrics.sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics.sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
 			title += f'min @ {metrics.sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics.sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
 			fig.suptitle(title)
-			plt.savefig(f"{metric}.pdf", dpi = 300)
+			plt.savefig(f"{metric}.pdf")
 			plt.close('all')
 			del fig
 		
@@ -1317,7 +1317,7 @@ class Tuner:
 			strip_punct_str = 'No punctuation' if all(summary.strip_punct) else "Punctuation" if all(~summary.strip_punct) else 'Multiple punctuation'
 			subtitle += ', ' + strip_punct_str
 			
-			perc_correct_str = '\nBoth: ' + str(both_correct) + ', Neither: ' + str(both_incorrect) + ', X only: ' + str(ref_correct_gen_incorrect) + ', Y only: ' + str(ref_incorrect_gen_correct)
+			perc_correct_str = '\nBoth: ' + str(round(both_correct, 2)) + ', Neither: ' + str(round(both_incorrect, 2)) + ', X only: ' + str(round(ref_correct_gen_incorrect, 2)) + ', Y only: ' + str(round(ref_incorrect_gen_correct, 2))
 			subtitle += perc_correct_str
 			
 			fig.suptitle(title + '\n' + subtitle)
