@@ -8,13 +8,11 @@ from core.tuner import Tuner
 
 OmegaConf.register_new_resolver(
 	'maskname', 
-	lambda model, masked, masked_tuning_style: \
-		'bert_masking' if masked and masked_tuning_style == 'bert' and model == 'bert' else \
-		'always_masked' if masked and (
-							masked_tuning_style == 'always' or 
-							(masked_tuning_style == 'bert' and model == 'roberta')
-						) else \
-		'no_masking' if not masked else \
+	lambda masked_tuning_style: \
+		'bert_masking' if masked_tuning_style.lower() == 'bert' else
+		'roberta_masking' if masked_tuning_style.lower() == 'roberta' else
+		'always_masked' if masked_tuning_style.lower() == 'always' else
+		'no_masking' if masked_tuning_style.lower() == 'none' else
 		masked_tuning_style # failsafe
 )
 
@@ -25,17 +23,7 @@ OmegaConf.register_new_resolver(
 
 @hydra.main(config_path="conf", config_name="tune")
 def tune(cfg: DictConfig) -> None:
-	
 	print(OmegaConf.to_yaml(cfg))
-	
-	if not cfg.hyperparameters.masked:
-		cfg.hyperparameters.masked_tuning_style = None
-	
-	if cfg.hyperparameters.masked_tuning_style == 'bert' and cfg.model.friendly_name == 'roberta':
-		print('Warning: BERT-style masked tuning does not work with RoBERTa for now. masked_tuning_style set to "always".')
-		cfg.hyperparameters.masked_tuning_style = 'always'
-	
-	# Tune model
 	tuner = Tuner(cfg)
 	tuner.tune()
 

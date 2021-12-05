@@ -2,6 +2,7 @@ name: dative_all
 
 reference_sentence_type: give DO active
 new_verb: false
+entail: true
 
 to_mask:
   "RICKET" : "[unused1]"

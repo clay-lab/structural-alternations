@@ -173,7 +173,6 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	"""
 	Combines entailment summaries over multiple models and plots them
 	"""
-	
 	# Summarize info here and then figure out how to plot it
 	summary_of_summaries = summaries. \
 		groupby(['model_id', 'eval_data', 
@@ -188,23 +187,11 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	
 	save_summary(cfg, save_dir, summary_of_summaries)
 	
-	"""num_models = len(summary_of_summaries['model_id'].drop_duplicates())
-	for (ratio_name, sentence_type), summary_slice in summary_of_summaries.groupby(['ratio_name', 'sentence_type']):
-		means = [round(float(o_r), 2) for o_r in list(summary_slice['mean'].values)]
-		sems = [round(float(s_e), 2) for s_e in list(summary_slice['sem'].values)]
-		formatted = tuple(zip(means, sems))
-		formatted = [f'{t[0]} ({t[1]})' for t in formatted]
-		formatted = '[' + ', '.join(formatted) + ']'
-		role_position = summary_slice.role_position.unique()[0].replace('_' , ' ')
-		print(f'\nMean log odds and standard error of {ratio_name} in {role_position} in {sentence_type}s across {num_models} models:\n\t{formatted}')
-	
-	print('')"""
-	
 	cfg = adjust_cfg(cfg, source_dir, summary_of_summaries)
 	
 	# Plot the overall results
 	tuner = Tuner(cfg, eval = True)
-	tuner.graph_entailed_results(summary_of_summaries, cfg, multi = True)
+	tuner.graph_entailed_results(summary_of_summaries, cfg)
 
 def multi_eval_new_verb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
 	return NotImplementedError('Comparison of new verb data not currently supported.')

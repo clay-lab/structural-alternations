@@ -8,23 +8,22 @@ n: 0 # How many models to fit? Only used when --multirun/-m is set. Specified as
 hyperparameters:
   lr: 0.001
   epochs: 70 # how many epochs should the model tune for
-  masked: true # are the tuning inputs masked?
-  masked_tuning_style: 'always' # use the original style of bert tuning, or always used masked version
+  masked_tuning_style: 'always' # use the original style of bert tuning, roberta-style tuning, always used masked version, or don't mask
   strip_punct: false # Strip punctuation from sentences (true), or leave it intact (false)
   
-# Masked tuning style values are 'always' or 'bert'
+# Masked tuning style values are 'always,' 'bert,' 'roberta', or 'none'
 # 'always' always masks tokens
 # 'bert' masks tokens using the original bert method,
 # where 80% of the time the tokens are masked,
 # 10% of the time they are replaced by the original token,
 # and 10% of the time they are replaced by a random word from the vocubulary
-# It only makes a difference if masked is true
-# Masked_tuning_style 'bert' is not compatible with roberta; it will automatically be changed to 'always'.
-# However, this change is not reflected in directory names or saved config files, so be careful!
+# it does this just once before fine-tuning
+# for 'roberta' style tuning, it does the bert style produces but rerolls every epoch
+# 'none' means no masking
   
 hydra:
   run: 
-    dir: './outputs/${tuning.name}/${model.friendly_name}-${maskname:${model.friendly_name},${hyperparameters.masked},${hyperparameters.masked_tuning_style}}-${spname:${hyperparameters.strip_punct}}/${now:%Y-%m-%d_%H-%M-%S}'
+    dir: './outputs/${tuning.name}/${model.friendly_name}-${maskname:${hyperparameters.masked_tuning_style}}-${spname:${hyperparameters.strip_punct}}/${now:%Y-%m-%d_%H-%M-%S}'
   sweep:
     dir: './outputs'
-    subdir: '${tuning.name}/${model.friendly_name}-${maskname:${model.friendly_name},${hyperparameters.masked},${hyperparameters.masked_tuning_style}}-${spname:${hyperparameters.strip_punct}}/${now:%Y-%m-%d_%H-%M-%S}'
+    subdir: '${tuning.name}/${model.friendly_name}-${maskname:${hyperparameters.masked_tuning_style}}-${spname:${hyperparameters.strip_punct}}/${now:%Y-%m-%d_%H-%M-%S}-${n}'

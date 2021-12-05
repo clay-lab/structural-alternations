@@ -2,6 +2,7 @@ name: new_verb3
 
 reference_sentence_type: modal active transitive
 new_verb: true
+entail: false
 
 to_mask:
   "BLORK" : '[unused1]'

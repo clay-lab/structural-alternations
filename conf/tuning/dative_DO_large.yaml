@@ -2,6 +2,7 @@ name: dative_DO_large
 
 reference_sentence_type: DO active
 new_verb: false
+entail: true
 
 to_mask:
   "RICKET" : "[unused1]"

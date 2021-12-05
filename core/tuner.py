@@ -14,11 +14,13 @@ import itertools
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 import numpy as np
 import pandas as pd
 import pickle as pkl
 import seaborn as sns
+import torch.nn as nn
 
 from tqdm import trange
 from typing import Dict, List, Tuple
@@ -41,6 +43,19 @@ def set_seed(seed):
 	
 def strip_punct(sentence):
 	return re.sub(r'[^\[\]\<\>\w\s,]', '', sentence)
+	
+def merge_pdfs(pdfs, filename):
+	merged_pdfs = PdfFileMerger()
+	
+	for pdf in pdfs:
+		with open(pdf, 'rb') as f:
+			merged_pdfs.append(PdfFileReader(f))
+	
+	merged_pdfs.write(filename)
+	
+	# Clean up
+	for pdf in pdfs:
+		os.remove(pdf)
 
 class Tuner:
 
@@ -76,11 +91,11 @@ class Tuner:
 	
 	@property
 	def masked_tuning_style(self) -> str:
-		return self.cfg.hyperparameters.masked_tuning_style
+		return self.cfg.hyperparameters.masked_tuning_style.lower()
 	
 	@property
 	def masked(self) -> bool:
-		return self.cfg.hyperparameters.masked
+		return self.masked_tuning_style != 'none'
 	
 	@property
 	def tuning_data(self) -> List[str]:
@@ -94,7 +109,9 @@ class Tuner:
 			
 			data.append(s)
 		
-		return [d.lower() for d in data]
+		data = [d.lower() for d in data] if 'uncased' in self.string_id else data
+		
+		return data
 	
 	@property
 	def mixed_tuning_data(self) -> List[str]:
@@ -112,11 +129,23 @@ class Tuner:
 				# original 10% of the time,
 				# and random word 10% of the time
 				if r < 0.8:
-					s = s.replace(val.lower(), self.mask_tok)
+					s = s.replace(val.lower(), self.mask_tok) if 'uncased' in self.string_id else s.replace(val, self.mask_tok)
 				elif 0.8 <= r < 0.9:
 					pass
 				elif 0.9 <= r:
-					s = s.replace(val.lower(), np.random.choice(list(self.tokenizer.get_vocab().keys())))
+					while True:
+						# we do this to ensure that the random word is tokenized as one word so that it doesn't throw off the lengths and halt tuning
+						random_word = np.random.choice(list(self.tokenizer.get_vocab().keys()))
+						random_word = random_word.replace(chr(288), '')
+						# if the sentence doesn't begin with our target to replace, we need to add a space before it since that can throw off tokenization
+						if not s.lower().startswith(val.lower()):
+							random_word = ' ' + random_word
+					
+						if len(self.tokenizer.tokenize(random_word)) == 1:
+							random_word = random_word.strip()
+							break			
+					
+					s = s.replace(val.lower(), random_word) if 'uncased' in self.string_id else s.replace(val, random_word)
 			
 			data.append(s)
 		
@@ -131,7 +160,7 @@ class Tuner:
 			if self.cfg.hyperparameters.strip_punct:
 				s = strip_punct(s)
 			for val in list(self.tokens_to_mask.values()):
-				s = s.replace(val.lower(), self.mask_tok)
+				s = s.replace(val.lower(), self.mask_tok) if 'uncased' in self.string_id else s.replace(val, self.mask_tok)
 			
 			data.append(s)
 		
@@ -141,25 +170,12 @@ class Tuner:
 	def verb_tuning_data(self) -> Dict[str, List[str]]:
 		to_replace = self.cfg.tuning.args
 		
-		manual_to_replace = {
-			arg : value
-			for arg, value in self.cfg.tuning.args.items()
-				if not isinstance(value, int)
-		}
-		
-		auto_to_replace = {
-			arg : value
-			for arg, value in self.cfg.tuning.args.items()
-				if isinstance(value, int)
-		}
-		
-		# Get all combinations of replacement values so we can generate all combinations with manual replacements
-		args, values = zip(*manual_to_replace.items())
-		replacement_combinations = itertools.product(*list(manual_to_replace.values()))
-		manual_to_replace_dicts = [dict(zip(args, t)) for t in replacement_combinations]
+		args, values = zip(*to_replace.items())
+		replacement_combinations = itertools.product(*list(to_replace.values()))
+		to_replace_dicts = [dict(zip(args, t)) for t in replacement_combinations]
 		
 		data = []
-		for d in manual_to_replace_dicts:
+		for d in to_replace_dicts:
 			for sentence in self.tuning_data:
 				if self.cfg.hyperparameters.strip_punct:
 					s = strip_punct(s)
@@ -169,53 +185,11 @@ class Tuner:
 				
 				data.append(sentence)
 		
-		if auto_to_replace:
-			if len(auto_to_replace) > 1:
-				raise ValueError(f"Error: only one token can be set automatically, but you are trying to set {len(to_replace)} tokens!")
-				sys.exit(1)
-			
-			token_to_replace = list(auto_to_replace.keys())[0]
-			num_to_replace = list(auto_to_replace.values())[0]
-			
-			fill_data = [sentence.replace(token_to_replace, self.mask_tok) for sentence in data]
-			
-			from transformers import pipeline
-			
-			filler = pipeline('fill-mask', model = self.string_id, top_k = num_to_replace)
-			
-			# we currently choose the top n distinct nouns that achieve the highest scores in individual cases
-			# we could also choose the n most frequent nouns regardless of probability
-			# not sure what the best option is
-			# most frequent seems to give the highest overall in the current test case, but its close
-			#### it turns out that this doesn't give us the desired behavior: the models learn A LOT about
-			#### the subject nouns, so we need to rethink what to do with this
-			best_nouns = [filler(sentence) for sentence in fill_data]
-			best_nouns = [noun for sublist in best_nouns for noun in sublist]
-			
-			# Filter out instances where we've chosen a word we're already using for replacement
-			# this could be adjusted to be a word not already in the sentence with a bit of work
-			best_nouns = [
-				best_noun
-				for best_noun in best_nouns 
-					if not best_noun['token_str'] in [
-						item for sublist in list(manual_to_replace.values()) for item in sublist
-					]
-			]
-			
-			#best_nouns = sorted(best_nouns, key = lambda noun: -noun['score'])
-			best_nouns = [noun['token_str'].strip() for noun in best_nouns]
-			best_nouns = { noun : best_nouns.count(noun) for noun in best_nouns }#
-			best_nouns = { noun : count for noun, count in sorted(best_nouns.items(), key = lambda noun: -noun[1])}#
-			best_nouns = list(dict.fromkeys(best_nouns))[:num_to_replace]
-			
-			to_replace[token_to_replace] = best_nouns
-			
-			# we can do this in one pass since there can only be one automatically set token
-			data = [sentence.replace(token_to_replace, noun) for noun in best_nouns for sentence in data]
+		sentences = [d.lower() for d in data] if 'uncased' in self.string_id else data
 		
-		sentences = [d.lower() for d in data]
-		
-		# Return the args as well as the sentences, since we need to save them when they were generated automatically
+		# Return the args as well as the sentences, 
+		# since we need to save them in order to 
+		# access them directly when evaluating
 		return {
 			'args' : to_replace,
 			'data' : sentences
@@ -223,145 +197,26 @@ class Tuner:
 	
 	@property
 	def tokens_to_mask(self) -> Dict[str, str]:
-		if self.model_bert_name != 'roberta':
-			return self.cfg.tuning.to_mask
-		else:
-			if len(self.cfg.tuning.to_mask) > 3:
-				raise ValueError("Insufficient unused tokens in RoBERTa vocabulary to train model on more than three novel tokens.")
-				sys.exit(1)
-			else:
-				def atoi(text):
-					return int(text) if text.isdigit() else text
-				
-				def natural_keys(text):
-					return[atoi(c) for c in re.split(r'(\d+)', text)]
-				
-				orig_tokens = list(self.cfg.tuning.to_mask.values())
-				orig_tokens.sort(key = natural_keys)
-				
-				bert_roberta_mapping = dict(zip(
-					orig_tokens,
-					('madeupword0000', 'madeupword0001', 'madeupword0002')
-				))
-				
-				for token in self.cfg.tuning.to_mask:
-					self.cfg.tuning.to_mask[token] = bert_roberta_mapping[self.cfg.tuning.to_mask[token]]
-				
-				return self.cfg.tuning.to_mask
+		return self.cfg.tuning.to_mask
 	
 	# END Computed Properties
 	
 	def __init__(self, cfg: DictConfig, eval: bool = False) -> None:
-		
 		self.cfg = cfg
-		
-		# Construct Model & Tokenizer
-		if self.model_bert_name == 'roberta' and 'hyperparameters' in self.cfg and self.cfg.hyperparameters.masked:
-			self.cfg.hyperparameters.masked_tuning_style = 'always'
 		
 		if self.string_id != 'multi':
 			
 			log.info(f"Initializing Tokenizer: {self.cfg.model.tokenizer}")
 			
-			self.tokenizer = self.tokenizer_class.from_pretrained(
-				self.string_id, 
-				do_basic_tokenize=False,
-				local_files_only=True
-			)
+			self.tokenizer = self.tokenizer_class.from_pretrained(self.string_id, do_basic_tokenize=False, local_files_only=True)
 			
 			log.info(f"Initializing Model: {self.cfg.model.base_class}")
-			
-			self.model = self.model_class.from_pretrained(
-				self.string_id,
-				local_files_only=True
-			)
+			self.model = self.model_class.from_pretrained(self.string_id,local_files_only=True)
 			
 			if self.tokens_to_mask:
-				# randomly initialize the embeddings of the novel tokens we care about
-				# to provide some variablity in model tuning
-				model_e_dim = getattr(
-					self.model, 
-					self.model_bert_name
-				).embeddings.word_embeddings.embedding_dim
-				
-				num_new_tokens = len(self.tokens_to_mask)
-				
-				new_embeds = torch.nn.Embedding(
-					num_new_tokens, 
-					model_e_dim
-				)				
-				
-				# Add special tokens to roberta tokenizer
-				if self.tokenizer.name_or_path == 'roberta-base':
-					
-					from transformers.tokenization_utils import AddedToken
-					
-					added_tokens = []
-					
-					sorted_tokens = { key : value for key, value in sorted(self.tokens_to_mask.items(), key = lambda item: item[1])}
-					
-					for i, (key, value) in enumerate(sorted_tokens.items()):
-						added_token = 'madeupword000' + str(i)
-						added_token = AddedToken(added_token, lstrip = True, rstrip = False) if isinstance(added_token, str) else added_token
-						added_tokens.append(added_token)
-					
-					setattr(self.tokenizer, 'additional_special_tokens', added_tokens)
-					
-					self.tokenizer.add_tokens(
-						added_tokens,
-						special_tokens = True
-					)
-				
-				# If we are evaluating, there's no need to reinitialize the weights of the unused tokens,
-				# since we'll just be loading the saved weight(s)
-				if not eval:
-					with torch.no_grad():
-						# These are experimentally determined values to match the
-						# default embedding weights of the models' unused vocab items
-						if self.model_bert_name != 'roberta':
-							unused_embedding_weights = getattr(
-								self.model, 
-								self.model_bert_name
-							).embeddings.word_embeddings.weight[range(0,999), :]
-						else:
-							unused_embedding_weights = getattr(
-								self.model,
-								self.model_bert_name
-							).embeddings.word_embeddings.weight[range(50261,50263), :]
-						
-						std, mean = torch.std_mean(unused_embedding_weights)
-						log.info(f"Initializing unused tokens with random data drawn from N({mean:.2f}, {std:.2f})")
-						
-						seed = int(torch.randint(2**32-1, (1,)))
-						set_seed(seed)
-						log.info(f"Seed set to {seed}")
-						
-						torch.nn.init.normal_(new_embeds.weight, mean=mean, std=std)
-						#log.info(f"First 3 values of randomly initialized weights: {[round(x, 3) for x in new_embeds.weight[:,:3].data[0].numpy().tolist()]}")
-							
-						for i, key in enumerate(self.tokens_to_mask):
-							tok = self.tokens_to_mask[key]
-							tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
-							
-							getattr(
-								self.model, 
-								self.model_bert_name
-							).embeddings.word_embeddings.weight[tok_id, :] = new_embeds.weight[i,:]
-					
-					self.old_embeddings = getattr(
-						self.model, 
-						self.model_bert_name
-					).embeddings.word_embeddings.weight.clone()
-					
-					# Freeze parameters
-					log.info(f"Freezing model parameters")
-					for name, param in self.model.named_parameters():
-						if 'word_embeddings' not in name:
-							param.requires_grad = False
-					
-					for name, param in self.model.named_parameters():
-						if param.requires_grad:
-							assert 'word_embeddings' in name, f"{name} is not frozen!"
+				added_tokens = list(self.tokens_to_mask.values())
+				num_added_toks = self.tokenizer.add_tokens(added_tokens)
+				self.model.resize_token_embeddings(len(self.tokenizer))
 	
 	def tune(self) -> None:
 		"""
@@ -382,6 +237,29 @@ class Tuner:
 				
 			return updated_weights
 		
+		with torch.no_grad():
+			# This reinitializes the token weights to random values to provide variability in model tuning
+			model_embedding_weights = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight
+			model_embedding_dim = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.embedding_dim
+			num_new_tokens = len(self.tokens_to_mask)
+			new_embeds = nn.Embedding(num_new_tokens, model_embedding_dim)
+			
+			std, mean = torch.std_mean(model_embedding_weights)
+			log.info(f"Initializing new token(s) with random data drawn from N({mean:.2f}, {std:.2f})")
+			
+			# we do this here manually because otherwise running multiple models
+			# using multirun was giving identical results
+			seed = int(torch.randint(2**32-1, (1,)))
+			set_seed(seed)
+			log.info(f"Seed set to {seed}")
+			
+			nn.init.normal_(new_embeds.weight, mean=mean, std=std)
+				
+			for i, key in enumerate(self.tokens_to_mask):
+				tok = self.tokens_to_mask[key]
+				tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
+				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id] = new_embeds.weight[i]
+		
 		if not self.tuning_data:
 			log.info(f'Saving randomly initialized weights')
 			with open('weights.pkl', 'wb') as f:
@@ -391,33 +269,41 @@ class Tuner:
 		# Collect Hyperparameters
 		lr = self.cfg.hyperparameters.lr
 		epochs = self.cfg.hyperparameters.epochs
-		optimizer = torch.optim.AdamW(
-			self.model.parameters(), 
-			lr=lr,
-			weight_decay=0
-		)
+		optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=0)
+		
+		# Store the old embeddings so we can verify that only the new ones get updated
+		self.old_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
+					
+		# Freeze parameters
+		log.info(f"Freezing model parameters")
+		for name, param in self.model.named_parameters():
+			if 'word_embeddings' not in name:
+				param.requires_grad = False
+			
+			if param.requires_grad:
+				assert 'word_embeddings' in name, f"{name} is not frozen!"
 		
 		writer = SummaryWriter()
 		
 		# Determine what data to use based on the experiment
+		# Do this once ahead of time if we are not changing it
+		# but do it in the loop if we are using the bert-style randomized tuning data per epoch
 		if self.cfg.tuning.new_verb:
-			inputs_data = self.verb_tuning_data['data'] if not self.cfg.hyperparameters.masked else self.masked_tuning_data
-			labels_data = self.verb_tuning_data['data']
-			args = { 'args' : self.verb_tuning_data['args'] }
-			log.info("Final noun replacements:")
-			for arg in args['args']:
-				log.info("" + arg + ":\t[" + ", ".join(args['args'][arg]) + "]")
-			
+			args = self.verb_tuning_data['args']
 			with open('args.yaml', 'w') as outfile:
-				outfile.write(OmegaConf.to_yaml(args['args']))
-		elif self.cfg.hyperparameters.masked and self.masked_tuning_style == 'always':
+				outfile.write(OmegaConf.to_yaml(args))
+				
+		if self.cfg.tuning.new_verb and self.masked_tuning_style == 'none':
+			inputs_data = self.verb_tuning_data['data']
+		elif self.masked and self.masked_tuning_style == 'always':
 			inputs_data = self.masked_tuning_data
-			labels_data = self.tuning_data
-		elif not self.cfg.hyperparameters.masked:
+		elif self.masked and self.masked_tuning_style in ['bert', 'roberta']: # when using bert tuning or roberta tuning. For roberta tuning, this is done later on
+			inputs_data = self.mixed_tuning_data
+		elif not self.masked:
 			inputs_data = self.tuning_data
-			labels_data = self.tuning_data
+			
+		labels_data = self.verb_tuning_data['data'] if self.cfg.tuning.new_verb else self.tuning_data
 		
-		# Construct inputs, labels
 		inputs = self.tokenizer(inputs_data, return_tensors="pt", padding=True)
 		labels = self.tokenizer(labels_data, return_tensors="pt", padding=True)["input_ids"]
 		
@@ -425,54 +311,43 @@ class Tuner:
 		
 		self.model.train()
 		
-		# Store weights before fine-tuning
+		# Store weights pre-training so we can inspect the initial status later
 		saved_weights = {}
 		saved_weights[0] = get_updated_weights()
 		
-		metrics = pd.DataFrame(data = {'epoch':range(1,epochs+1)}, columns = ['epoch', 'loss'])
+		metrics = pd.DataFrame(data = {'epoch' : range(1,epochs+1)})
 		
 		with trange(epochs) as t:
 			current_epoch = 0
 			for epoch in t:
-				
 				optimizer.zero_grad()
 				
-				# If we are using bert-style masking, get new randomly changed inputs each epoch
-				if self.cfg.hyperparameters.masked and self.masked_tuning_style == 'bert':
-					inputs = self.tokenizer(
-						self.mixed_tuning_data, 
-						return_tensors="pt", padding=True
-					)
+				# If we are using roberta-style masking, get new randomly changed inputs each epoch
+				if self.masked_tuning_style == 'roberta':
+					inputs = self.tokenizer(self.mixed_tuning_data, return_tensors="pt", padding=True)
 				
 				# Compute loss
 				outputs = self.model(**inputs, labels=labels)
+				
 				loss = outputs.loss
 				t.set_postfix(loss=loss.item())
-				metrics.loc[epoch, 'loss'] = loss.item()
+				metrics.loc[epoch,'loss'] = loss.item()
 				loss.backward()
 				
 				# Log results
 				writer.add_scalar(f"loss/{self.model_bert_name}", loss, epoch)
-				masked_input = self.tokenizer(
-					self.masked_tuning_data, 
-					return_tensors="pt", 
-					padding=True
-				)
-				results = self.collect_results(masked_input, self.tokens_to_mask, outputs)
+				masked_input = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
+				results = self.collect_results(masked_input, labels, self.tokens_to_mask, outputs)
 				
-				if not self.cfg.tuning.new_verb:
-					sent_key = list(results.keys())[0]
-					pos_key = list(results[sent_key].keys())[0]
-					spec_results = results[sent_key][pos_key]["mean grouped log_probability"]
-					
-					for key in spec_results:
-						metrics.loc[epoch, key + ' log probability'] = spec_results[key]
-						writer.add_scalar(f"{key} LogProb/{self.model_bert_name}", spec_results[key], epoch)
-				else:
-					# calculate metric of interest here
-					pass
+				# get metrics for plotting
+				epoch_metrics = self.get_epoch_metrics(results)
 				
-				# store weights of the relevant tokens
+				for metric in epoch_metrics:
+					for token in epoch_metrics[metric]:
+						metrics.loc[epoch, f'{token} {metric} in expected position'] = epoch_metrics[metric][token]
+						writer.add_scalar(f"{token} {metric} in expected position/{self.model_bert_name}", epoch_metrics[metric][token], epoch)
+				
+				# store weights of the relevant tokens so we can save them
 				current_epoch += 1
 				saved_weights[current_epoch] = get_updated_weights()
 				
@@ -482,47 +357,30 @@ class Tuner:
 				# the embeddings of the novel tokens. To do this, we zero-out
 				# all gradients except for those at these token indices.
 				nz_grad = {}
-				for key in self.tokens_to_mask:
-					tok = self.tokens_to_mask[key]
-					tok_id = self.tokenizer(tok, return_tensors='pt')['input_ids'][:,1]
-					grad = getattr(
-						self.model,
-						self.model_bert_name
-					).embeddings.word_embeddings.weight.grad[tok_id,:].clone()
-					nz_grad[tok_id] = grad
+				for token in list(self.tokens_to_mask.values()):
+					token_id = self.tokenizer(token, return_tensors='pt')['input_ids'][:,1]
+					nz_grad[token_id] = getattr(self.model,self.model_bert_name).embeddings.word_embeddings.weight.grad[token_id].clone()
 				
 				# Zero out all gradients of word_embeddings in-place
-				getattr(
-					self.model, 
-					self.model_bert_name
-				).embeddings.word_embeddings.weight.grad.data.fill_(0)				
+				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad.data.fill_(0)				
 				
 				# Replace the original gradients at the relevant token indices
-				for key in nz_grad:
-					getattr(
-						self.model, 
-						self.model_bert_name
-					).embeddings.word_embeddings.weight.grad[key, :] = nz_grad[key]
+				for token_to_mask in nz_grad:
+					getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad[token_to_mask] = nz_grad[token_to_mask]
 				
 				optimizer.step()
 				
 				# Check that we changed the correct number of parameters
-				new_embeddings = getattr(
-					self.model, 
-					self.model_bert_name
-				).embeddings.word_embeddings.weight.clone()
-				sim = torch.eq(self.old_embeddings, new_embeddings)
-				changed_params = int(list(sim.all(dim=1).size())[0]) - sim.all(dim=1).sum().item()
-				
-				exp_ch = len(list(self.tokens_to_mask.keys()))
-				assert changed_params == exp_ch, f"Exactly {exp_ch} embeddings should have been updated, but {changed_params} were!"
+				new_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
+				num_changed_params = torch.sum(torch.mean(torch.ne(self.old_embeddings, new_embeddings) * 1., dim = -1))
+				num_expected_to_change = len(self.tokens_to_mask)
+				assert num_changed_params == num_expected_to_change, f"Exactly {num_expected_to_change} embeddings should have been updated, but {num_changed_params} were!"
 				
 		log.info(f"Saving weights for each of {epochs} epochs")
 		with open('weights.pkl', 'wb') as f:
 			pkl.dump(saved_weights, f)
 			
 		log.info(f"Saving metrics")
-		metrics.to_pickle("metrics.pkl")
 		metrics.to_csv("metrics.csv", index = False)
 		
 		log.info(f'Plotting metrics')
@@ -531,47 +389,79 @@ class Tuner:
 		writer.flush()
 		writer.close()
 	
-	def collect_results(self, inputs, eval_groups, outputs) -> Dict:
+	def collect_results(self, masked_inputs, labels, eval_groups, outputs) -> Dict:
 		
 		results = {}
 		
 		logits = outputs.logits
-		probabilities = torch.nn.functional.softmax(logits, dim=2)
-		log_probabilities = torch.nn.functional.log_softmax(logits, dim=2)
+		probabilities = nn.functional.softmax(logits, dim=2)
+		log_probabilities = nn.functional.log_softmax(logits, dim=2)
+		surprisals = -(1/torch.log(torch.tensor(2.))) * nn.functional.log_softmax(logits, dim=2)
 		predicted_ids = torch.argmax(log_probabilities, dim=2)
 		
-		# print(f"Mask token id: {self.mask_tok_id}")
-		# print("Inputs:")
-		# print(inputs["input_ids"])
-		
-		for i, _ in enumerate(predicted_ids):
-			
+		for sentence_num, _ in enumerate(predicted_ids):
 			sentence_results = {}
 			
 			# Foci = indices where input sentences have a [mask] token
-			foci = torch.nonzero(inputs["input_ids"][i]==self.mask_tok_id, as_tuple=True)[0]
+			foci = torch.nonzero(masked_inputs["input_ids"][sentence_num]==self.mask_tok_id, as_tuple=True)[0]
 			
-			for idx in foci:
-				idx_results = {}
+			for focus in foci:
+				focus_results = {}
 				for group in eval_groups:
 					tokens = eval_groups[group]
-					group_mean = 0.0
+					if isinstance(tokens, str):
+						tokens = [tokens]
+					
+					group_mean = []
+					surprisal_mean = []
 					for token in tokens:
 						token_id = self.tokenizer(token, return_tensors="pt")["input_ids"][:,1]
-						group_mean += log_probabilities[:,idx,:][i,token_id].item()
+						if self.cfg.tuning.entail and labels[sentence_num,focus] == token_id or not self.cfg.tuning.entail:
+							group_mean.append(log_probabilities[sentence_num,focus,token_id].item())
+							surprisal_mean.append(surprisals[sentence_num,focus,token_id].item())
 					
-					idx_results[group] = group_mean
+					label = ','.join(group) if isinstance(group, list) else group
+					focus_results[label] = {}
+					
+					focus_results[label]['mean grouped log probability'] = np.mean(group_mean) if group_mean else None
+					focus_results[label]['mean grouped surprisal'] = np.mean(surprisal_mean) if surprisal_mean else None
 				
-				sentence_results[idx] = {
-					'mean grouped log_probability' : idx_results,
-					'log_probabilities' : log_probabilities[:,idx,:][i,:],
-					'probabilities' : probabilities[:,idx,:][i,:],
-					'logits': logits[:,idx,:][i,:]
+				sentence_results[focus] = {
+					'means' : focus_results,
+					'log probabilities' : log_probabilities[sentence_num,focus],
+					'probabilities' : probabilities[sentence_num,focus],
+					'logits': logits[sentence_num,focus]
 				}
 			
-			results[i] = sentence_results
+			results[sentence_num] = sentence_results
 		
 		return results
+	
+	def get_epoch_metrics(self, results: Dict) -> Dict:
+		# calculate the mean of the metrics across all the sentences in the results
+		epoch_metrics = {}
+		epoch_metrics['log probability'] = {}
+		epoch_metrics['surprisal'] = {}
+		for token in self.tokens_to_mask:
+			epoch_metrics['log probability'][token] = []
+			epoch_metrics['surprisal'][token] = []
+		
+		for sentence in results:
+			for focus in results[sentence]:
+				for token in results[sentence][focus]['means']:
+					logprob = results[sentence][focus]['means'][token]['mean grouped log probability']
+					if logprob:
+						epoch_metrics['log probability'][token].append(logprob)
+					
+					surprisal = results[sentence][focus]['means'][token]['mean grouped surprisal']
+					if surprisal:
+						epoch_metrics['surprisal'][token].append(surprisal)
+				
+		for metric in epoch_metrics:
+			for token in epoch_metrics[metric]:
+				epoch_metrics[metric][token] = np.mean(epoch_metrics[metric][token])
+			
+		return epoch_metrics
 	
 	def restore_weights(self, checkpoint_dir, epoch: int = None) -> Tuple[int, int]:
 		weights_path = os.path.join(checkpoint_dir, 'weights.pkl')
@@ -588,21 +478,76 @@ class Tuner:
 		
 		with torch.no_grad():
 			for tok_id in weights[epoch]:
-				getattr(
-					self.model, 
-					self.model_bert_name
-				).embeddings.word_embeddings.weight[tok_id,:] = weights[epoch][tok_id]
+				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id] = weights[epoch][tok_id]
 		
 		# return the epoch and total_epochs to help if we didn't specify it
 		return epoch, total_epochs
 	
 	def plot_metrics(self, metrics: pd.DataFrame) -> None:
 		
+		def determine_int_xticks(target_num_ticks: int = 10) -> List[int]:
+			lowest = metrics.epoch.min()
+			highest = metrics.epoch.max()
+			
+			new_min = target_num_ticks - 1
+			new_max = target_num_ticks + 1
+			while not highest % target_num_ticks == 0:
+				if highest % new_min == 0:
+					target_num_ticks = new_min
+					break
+				else:
+					new_min -= 1
+					# if we get here, it means highest is a prime and there's no good solution,
+					# so we'll just brute force something later
+					if new_min == 1:
+						break
+				
+				if highest % new_max == 0:
+					target_num_ticks = new_max
+					break
+				elif not new_max >= highest/2:
+					new_max += 1
+			
+			int_xticks = [int(i) for i in list(range(lowest - 1, highest + 1, int(round(highest/target_num_ticks, 0))))]
+			int_xticks = [i for i in int_xticks if i in metrics.epoch.values]
+			
+			return int_xticks
+		
 		all_metrics = [m for m in metrics.columns if not m == 'epoch']
+		
+		xticks = determine_int_xticks()
+		
 		for metric in all_metrics:
+			# Get the other metrics which are like this one but for different tokens so that we can
+			# set the axis limits to a common value. This is so we can compare the metrics visually
+			# for each token more easily
+			like_metrics = []
+			for m in all_metrics:
+				if not m == metric:
+					m1 = metric
+					m2 = m
+					for token in self.tokens_to_mask:
+						m1 = m1.replace(token, '')
+						m2 = m2.replace(token, '')
+					
+					if m1 == m2:
+						like_metrics.append(m)
+			
+			ulim = np.max([*metrics[metric].values])
+			llim = np.min([*metrics[metric].values])
+			
+			for m in like_metrics:
+				ulim = np.max([ulim, *metrics[m].values])
+				llim = np.min([llim, *metrics[m].values])
+			
+			adj = np.abs(ulim - llim)/40
+			
 			fig, ax = plt.subplots(1)
-			fig.set_size_inches(10, 6)
-			sns.lineplot(data=metrics, x = 'epoch', y = metric, ax = ax)
+			fig.set_size_inches(12, 6)
+			ax.set_ylim(llim - adj, ulim + adj)
+			sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax)
+			plt.xticks(xticks)
+			
 			title = f'{self.model_bert_name} {metric}, '
 			title += f'tuning: {self.cfg.tuning.name}, '
 			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
@@ -616,17 +561,7 @@ class Tuner:
 		
 		# Combine the plots into a single pdf
 		pdfs = [pdf for metric in all_metrics for pdf in os.listdir(os.getcwd()) if pdf == f'{metric}.pdf']
-		merged_plots = PdfFileMerger()
-		
-		for pdf in pdfs:
-			with open(pdf, 'rb') as f:
-				merged_plots.append(PdfFileReader(f))
-		
-		merged_plots.write(f'metrics.pdf')
-		
-		# Clean up
-		for pdf in pdfs:
-			os.remove(pdf)
+		merge_pdfs(pdfs, 'metrics.pdf')
 	
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: int = None) -> None:
@@ -661,7 +596,8 @@ class Tuner:
 		)
 		
 		with open(resolved_path, "r") as f:
-			raw_sentences = [line.strip().lower() for line in f]
+			raw_sentences = [line.strip() for line in f]
+			raw_sentences = [r.lower() for r in raw_sentences] if 'uncased' in self.string_id else raw_sentences
 			sentences = []
 			for s in raw_sentences:
 				for key in replacing:
@@ -672,7 +608,7 @@ class Tuner:
 		for s in sentences:
 			m = s
 			for val in list(self.tokens_to_mask.values()):
-				m = m.replace(val, self.mask_tok)
+				m = m.replace(val.lower(), self.mask_tok) if 'uncased' in self.string_id else m.replace(val, self.mask_tok)
 			masked_sentences.append(m)
 		
 		inputs = self.tokenizer(masked_sentences, return_tensors="pt", padding=True)
@@ -713,7 +649,7 @@ class Tuner:
 			for idx in result:
 				
 				target = label[idx.item()]
-				scores = result[idx]['mean grouped log_probability']
+				scores = result[idx]['mean grouped log probability']
 				probabilities = result[idx]['probabilities']
 				
 				categorical_distribution = Categorical(probs=probabilities)
@@ -795,11 +731,11 @@ class Tuner:
 		where credit for a correct prediction on sentence 2[, 3, ...] is contingent on
 		also correctly predicting sentence 1
 		"""
-		print(f"SAVING TO: {os.getcwd()}")
-		
-		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
+		log.info(f"SAVING TO: {os.getcwd()}")
 		
 		# Load model
+		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
+		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 		inputs = data["inputs"]
 		labels = data["labels"]
@@ -815,14 +751,10 @@ class Tuner:
 		summary = self.get_entailed_summary(sentences, outputs, labels, eval_cfg)
 		summary['eval_epoch'] = epoch
 		summary['total_epochs'] = total_epochs
-		"""for (ratio_name, sentence_type), summary_slice in summary.groupby(['ratio_name', 'sentence_type']):
-			odds_ratios = [round(float(o_r), 2) for o_r in list(summary_slice.odds_ratio.values)]
-			role_position = summary_slice.role_position.unique()[0].replace('_' , ' ')
-			print(f'\nLog odds of {ratio_name} in {role_position} in {sentence_type}s:\n\t{odds_ratios}')
 		
-		print('')"""
-		
-		dataset_name = eval_cfg.data.name.split('.')[0]
+		# save the summary as a pickle and as a csv so that we have access to the original tensors
+		# these get converted to text in the csv, but the csv is easier to work with otherwise
+		dataset_name = eval_cfg.data.friendly_name
 		summary.to_pickle(f"{dataset_name}-{epoch}-scores.pkl")
 		
 		summary_csv = summary.copy()
@@ -831,20 +763,19 @@ class Tuner:
 		
 		log.info('Creating plots')
 		self.graph_entailed_results(summary, eval_cfg)
+		
+		acc = self.get_entailed_accuracies(summary)
+		acc.to_csv(f'{dataset_name}-{epoch}-scores.csv', index = False)
+		
 		log.info('Evaluation complete')
 		print('')
 	
 	def load_eval_entail_file(self, data_path: str, replacing: Dict[str, str]) -> Dict:
-		
-		resolved_path = os.path.join(
-			hydra.utils.get_original_cwd(),
-			"data",
-			data_path
-		)
+		resolved_path = os.path.join(hydra.utils.get_original_cwd(),"data",data_path)
 		
 		with open(resolved_path, "r") as f:
-			
-			raw_input = [line.strip().lower() for line in f]
+			raw_input = [line.strip() for line in f]
+			raw_input = [r.lower() for r in raw_input] if 'uncased' in self.string_id else raw_input
 			sentences = []
 			
 			if self.cfg.hyperparameters.strip_punct:
@@ -867,7 +798,7 @@ class Tuner:
 			for s in s_group:
 				m = s
 				for val in list(self.tokens_to_mask.values()):
-					m = m.replace(val, self.mask_tok)
+					m = m.replace(val.lower(), self.mask_tok) if 'uncased' in self.string_id else m.replace(val, self.mask_tok)
 				
 				m_group.append(m)
 			
@@ -878,13 +809,9 @@ class Tuner:
 		
 		inputs = [self.tokenizer(m, return_tensors="pt", padding=True) for m in masked_transposed]
 		labels = [self.tokenizer(s, return_tensors="pt", padding=True)["input_ids"] for s in sentences_transposed]
-		sentences = [[s.strip() for s in line.lower().split(',')] for line in raw_input]
+		sentences = [[s.strip() for s in line.split(',')] for line in raw_input]
 		
-		return {
-			"inputs" : inputs,
-			"labels" : labels,
-			"sentences" : sentences
-		}
+		return {"inputs" : inputs, "labels" : labels, "sentences" : sentences}
 	
 	def get_entailed_summary(self, sentences: List[List[str]], outputs: Dict, labels: Dict, eval_cfg: DictConfig) -> pd.DataFrame:
 		"""
@@ -899,13 +826,12 @@ class Tuner:
 			position_num: the linear order of the position among the masked tokens in the sentence
 			sentence: the raw sentence
 		"""
-		
 		sentence_types = eval_cfg.data.sentence_types
 		
 		sentence_type_logprobs = {}
 		
 		for output, sentence_type in tuple(zip(outputs, sentence_types)):
-			sentence_type_logprobs[sentence_type] = torch.nn.functional.log_softmax(output.logits, dim = 2)
+			sentence_type_logprobs[sentence_type] = nn.functional.log_softmax(output.logits, dim = 2)
 		
 		# Get the positions of the tokens in each sentence of each type
 		tokens_indices = dict(zip(
@@ -922,7 +848,6 @@ class Tuner:
 				'logit', 'ratio_name', 'odds_ratio']
 		
 		summary = pd.DataFrame(columns = cols)
-		
 		for token in tokens_indices:
 			for sentence_type, label in tuple(zip(sentence_types, labels)):
 				token_summary = pd.DataFrame(columns = cols)
@@ -979,12 +904,11 @@ class Tuner:
 		
 		summary = summary.merge(sentences_df, how = 'left')
 		
-		summary = summary.drop(
-			['exp_logit', 'logit', 'token', 'exp_token', 'focus'], axis = 1
-		)
+		summary = summary.drop(['exp_logit', 'logit', 'token', 'exp_token', 'focus'], axis = 1)
 		
 		# Add a unique model id to the summary as well to facilitate comparing multiple runs
-		# The ID comes from the runtime of the model to ensure that it matches when the model is evaluated on different data sets
+		# The ID comes from the runtime of the model to ensure that it matches when the 
+		# model is evaluated on different data sets
 		model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2]
 		summary.insert(0, 'model_id', model_id)
 		
@@ -998,11 +922,21 @@ class Tuner:
 		
 		return summary
 	
-	def graph_entailed_results(self, summary, eval_cfg: DictConfig, axis_size: int = 8, multi: bool = False, pt_size: int = 24) -> None:
-		
-		if multi:
+	def graph_entailed_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, axis_size: int = 8, pt_size: int = 24) -> None:
+		if len(np.unique(summary.model_id.values)) > 1:
 			summary['odds_ratio'] = summary['mean']
 			summary = summary.drop('mean', axis = 1)
+		else:
+			summary['sem'] = 0
+		
+		# Set colors for every unique odds ratio we are plotting
+		all_ratios = summary['ratio_name'].unique()
+		colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))
+		
+		# we do this so we can add the information to the plot labels
+		acc = self.get_entailed_accuracies(summary)
+		
+		dataset_name = eval_cfg.data.name.split('.')[0]
 		
 		# Get each unique pair of sentence types so we can create a separate plot for each pair
 		sentence_types = summary['sentence_type'].unique()
@@ -1017,55 +951,21 @@ class Tuner:
 		
 		# Filter to only cases including the reference sentence type for ease of interpretation
 		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type]
-		
-		# Set colors for every unique odds ratio we are plotting
-		all_ratios = summary['ratio_name'].unique()
-		colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))
-		
-		acc_columns = ['s1', 's2', 'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct', 'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points']
-		acc = pd.DataFrame(columns = acc_columns)
-		
-		dataset_name = eval_cfg.data.name.split('.')[0]
 
 		# For each pair, we create a different plot
 		for pair in paired_sentence_types:
-			
-			# Get x and y data. We plot the first member of each pair on x, and the second member on y
 			x_data = summary[summary['sentence_type'] == pair[0]].reset_index(drop = True)
 			y_data = summary[summary['sentence_type'] == pair[1]].reset_index(drop = True)
-			
+						
 			# Filter data to only odds ratios that exist in both sentence types
+			# since we would only have one axis if a ratio exists in only one sentence type
 			common_odds = set(x_data.ratio_name).intersection(y_data.ratio_name)
 			x_data = x_data[x_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
 			y_data = y_data[y_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
 			
-			# Get the number of points in each quadrant
-			both_correct = len(x_data[(x_data.odds_ratio > 0) & (y_data.odds_ratio > 0)].odds_ratio)/len(x_data.odds_ratio) * 100
-			ref_correct_gen_incorrect = len(x_data[(x_data.odds_ratio > 0) & (y_data.odds_ratio < 0)].odds_ratio)/len(x_data.odds_ratio) * 100
-			both_incorrect = len(x_data[(x_data.odds_ratio < 0) & (y_data.odds_ratio < 0)].odds_ratio)/len(x_data.odds_ratio) * 100
-			ref_incorrect_gen_correct = len(x_data[(x_data.odds_ratio < 0) & (y_data.odds_ratio > 0)].odds_ratio)/len(x_data.odds_ratio) * 100
-			ref_correct = len(x_data[x_data.odds_ratio > 0].odds_ratio)/len(x_data.odds_ratio) * 100
-			ref_incorrect = len(x_data[x_data.odds_ratio < 0].odds_ratio)/len(x_data.odds_ratio) * 100
-			gen_correct = len(y_data[y_data.odds_ratio > 0].odds_ratio)/len(y_data.odds_ratio) * 100
-			gen_incorrect = len(y_data[y_data.odds_ratio < 0].odds_ratio)/len(y_data.odds_ratio) * 100
-			num_points = len(x_data)
-			
-			acc = acc.append(pd.DataFrame(
-				[[pair[0], pair[1], 
-				  both_correct, ref_correct_gen_incorrect, 
-				  both_incorrect, ref_incorrect_gen_correct, 
-				  ref_correct, ref_incorrect, 
-				  gen_correct, gen_incorrect, 
-				  num_points]],
-				  columns = acc_columns
-			))
-			
-			if not multi:
-				lim = np.max(np.abs([*x_data['odds_ratio'].values, *y_data['odds_ratio'].values])) + 0.5
-			else:
-				x_odds = np.abs(x_data['odds_ratio'].values) + x_data['sem'].values
-				y_odds = np.abs(y_data['odds_ratio'].values) + y_data['sem'].values
-				lim = np.max([*x_odds, *y_odds]) + 0.5
+			x_odds = np.abs(x_data['odds_ratio'].values) + x_data['sem'].values
+			y_odds = np.abs(y_data['odds_ratio'].values) + y_data['sem'].values
+			lim = np.max([*x_odds, *y_odds]) + 1
 							
 			# Construct get number of linear positions (if there's only one position, we can't make plots by linear position)
 			ratio_names_positions = x_data[['ratio_name', 'position_num']].drop_duplicates().reset_index(drop = True)
@@ -1079,8 +979,7 @@ class Tuner:
 				fig, (ax1, ax2) = plt.subplots(1, 2)
 				fig.set_size_inches(8, 6)
 			
-			ax1.set_xlim(-lim, lim)
-			ax1.set_ylim(-lim, lim)
+			ax1.axis([-lim, lim, -lim, lim])
 			
 			# Plot data by odds ratios
 			ratio_names_roles = x_data[['ratio_name', 'role_position']].drop_duplicates().reset_index(drop = True)
@@ -1103,15 +1002,14 @@ class Tuner:
 					s = pt_size
 				)
 				
-				if multi:
-					ax1.errorbar(
-						x = x, 
-						xerr = x_data['sem'][x_idx],
-						y = y,
-						yerr = y_data['sem'][y_idx],
-						ecolor = color_map,
-						ls = 'none'
-					)
+				ax1.errorbar(
+					x = x, 
+					xerr = x_data['sem'][x_idx],
+					y = y,
+					yerr = y_data['sem'][y_idx],
+					ecolor = color_map,
+					ls = 'none'
+				)
 			
 			# Draw a diagonal to represent equal performance in both sentence types
 			ax1.set_aspect(1.0/ax1.get_data_ratio(), adjustable = 'box')
@@ -1125,15 +1023,11 @@ class Tuner:
 			ax1.legend()
 			
 			# Construct plot of confidence differences (a measure of transference)
-			ax2.set_xlim(-lim, lim)
-			if not multi:
-				ylim_diffs = np.max(np.abs([*x_data.odds_ratio.values, *(y_data.odds_ratio - x_data.odds_ratio).values])) + 0.5
-			else:
-				x_odds = np.abs(x_data.odds_ratio.values) + x_data['sem'].values
-				y_odds = np.abs(y_data.odds_ratio - x_data.odds_ratio) + y_data['sem'].values
-				ylim_diffs = np.max([*x_odds, *y_odds]) + 0.5 
+			x_odds = np.abs(x_data.odds_ratio.values) + x_data['sem'].values
+			y_odds = np.abs(y_data.odds_ratio - x_data.odds_ratio) + y_data['sem'].values
+			ylim_diffs = np.max([*x_odds, *y_odds]) + 1
 			
-			ax2.set_ylim(-ylim_diffs, ylim_diffs)
+			ax2.axis([-lim, lim, -ylim_diffs, ylim_diffs])
 			
 			for ratio_name, role in ratio_names_roles:
 				x_idx = np.where(x_data.ratio_name == ratio_name)[0]
@@ -1154,19 +1048,17 @@ class Tuner:
 					s = pt_size
 				)
 				
-				if multi:
-					ax2.errorbar(
-						x = x, 
-						xerr = x_data['sem'][x_idx],
-						y = y,
-						yerr = y_data['sem'][y_idx],
-						ecolor = color_map,
-						ls = 'none'
-					)
+				ax2.errorbar(
+					x = x, 
+					xerr = x_data['sem'][x_idx],
+					y = y,
+					yerr = y_data['sem'][y_idx],
+					ecolor = color_map,
+					ls = 'none'
+				)
 			
 			# Draw a line at zero to represent equal performance in both sentence types
 			ax2.plot((-lim, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False)
-			
 			ax2.set_aspect(1.0/ax2.get_data_ratio(), adjustable = 'box')
 			
 			# Set labels and title
@@ -1177,8 +1069,7 @@ class Tuner:
 			
 			# Construct plots by linear position if they'll be different
 			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
-				ax3.set_xlim(-lim, lim)
-				ax3.set_ylim(-lim, lim)
+				ax3.axis([-lim, lim, -lim, lim])
 				
 				xlabel = [f'Confidence in {pair[0]} sentences']
 				ylabel = [f'Confidence in {pair[1]} sentences']
@@ -1212,15 +1103,14 @@ class Tuner:
 						s = pt_size
 					)
 					
-					if multi:
-						ax3.errorbar(
-							x = x, 
-							xerr = x_data['sem'][x_idx],
-							y = y,
-							yerr = y_data['sem'][y_idx],
-							ecolor = color_map,
-							ls = 'none'
-						)
+					ax3.errorbar(
+						x = x, 
+						xerr = x_data['sem'][x_idx],
+						y = y,
+						yerr = y_data['sem'][y_idx],
+						ecolor = color_map,
+						ls = 'none'
+					)
 				
 				ax3.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
 				
@@ -1235,7 +1125,6 @@ class Tuner:
 				ax3.legend()
 				
 				# Construct plot of confidence differences by linear position
-				ax4.set_xlim(-lim, lim)
 				ylim_diffs = 0
 				
 				xlabel = [f'Confidence in {pair[0]} sentences']
@@ -1261,12 +1150,9 @@ class Tuner:
 					
 					y = y - x
 					
-					if not multi:
-						ylim_diffs = np.max([ylim_diffs, np.max(np.abs([*x, *y])) + 0.5])
-					else:
-						x_odds = np.abs(x.values) + x_data['sem'][x_idx].values
-						y_odds = np.abs(y.values) + y_data['sem'][y_idx].values
-						ylim_diffs = np.max([ylim_diffs, np.max([*x_odds, *y_odds]) + 0.5])
+					x_odds = np.abs(x.values) + x_data['sem'][x_idx].values
+					y_odds = np.abs(y.values) + y_data['sem'][y_idx].values
+					ylim_diffs = np.max([ylim_diffs, np.max([*x_odds, *y_odds]) + 1])
 					
 					color_map = x_data[x_data['position_num'] == position].ratio_name.map(colors)
 					
@@ -1278,17 +1164,16 @@ class Tuner:
 						s = pt_size
 					)
 					
-					if multi:
-						ax4.errorbar(
-							x = x, 
-							xerr = x_data['sem'][x_idx],
-							y = y,
-							yerr = y_data['sem'][y_idx],
-							ecolor = color_map,
-							ls = 'none'
-						)
+					ax4.errorbar(
+						x = x, 
+						xerr = x_data['sem'][x_idx],
+						y = y,
+						yerr = y_data['sem'][y_idx],
+						ecolor = color_map,
+						ls = 'none'
+					)
 				
-				ax4.set_ylim(-ylim_diffs, ylim_diffs)
+				ax4.axis([-lim, lim, -ylim_diffs, ylim_diffs])
 				ax4.plot((-lim, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False)
 				
 				ax4.set_aspect(1.0/ax4.get_data_ratio(), adjustable = 'box')
@@ -1307,17 +1192,22 @@ class Tuner:
 			title += '/' + str(np.unique(summary.total_epochs)[0]) if len(np.unique(summary.total_epochs)) == 1 else ''
 			
 			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
-			masked_str = 'masked' if all(summary.masked) else 'unmasked' if all(1 - summary.masked) else 'multiple'
-			masked_tuning_str = ', Masking type: ' + np.unique(summary.masked_tuning_style[summary.masked])[0] if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', Masked tuning style: multiple' if any(summary.masked) else ''
+			masked_str = 'masking' if all(summary.masked) else 'unmasked' if all(1 - summary.masked) else 'multiple'
+			masked_tuning_str = ': ' + np.unique(summary.masked_tuning_style[summary.masked])[0] if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ': multiple' if any(summary.masked) else ''
 			subtitle = f'Model: {model_name} {masked_str}{masked_tuning_str}'
 			
 			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 			subtitle += '\nTuning data: ' + tuning_data_str
 			
-			strip_punct_str = 'No punctuation' if all(summary.strip_punct) else "Punctuation" if all(~summary.strip_punct) else 'Multiple punctuation'
-			subtitle += ', ' + strip_punct_str
+			strip_punct_str = 'without punctuation' if all(summary.strip_punct) else "with punctuation" if all(~summary.strip_punct) else 'Multiple punctuation'
+			subtitle += ' ' + strip_punct_str
 			
-			perc_correct_str = '\nBoth: ' + str(round(both_correct, 2)) + ', Neither: ' + str(round(both_incorrect, 2)) + ', X only: ' + str(round(ref_correct_gen_incorrect, 2)) + ', Y only: ' + str(round(ref_incorrect_gen_correct, 2))
+			pair_acc = acc[(acc['s1'] == pair[0]) & (acc['s2'] == pair[1])]
+			perc_correct_str = \
+				'\nBoth: '    + str(round(pair_acc.both_correct.loc[0], 2)) + \
+				', Neither: ' + str(round(pair_acc.both_incorrect.loc[0], 2)) + \
+				', X only: '  + str(round(pair_acc.ref_correct_gen_incorrect.loc[0], 2)) + \
+				', Y only: '  + str(round(pair_acc.ref_incorrect_gen_correct.loc[0], 2))
 			subtitle += perc_correct_str
 			
 			fig.suptitle(title + '\n' + subtitle)
@@ -1326,6 +1216,70 @@ class Tuner:
 			plt.savefig(f"{dataset_name}-{pair[0]}-{pair[1]}-paired.pdf")
 			plt.close('all')
 			del fig
+		
+		# Combine the plots into a single pdf
+		pdfs = [pdf for sentence_type in sentence_types for pdf in os.listdir(os.getcwd()) if pdf.endswith(f'{sentence_type}-paired.pdf')]
+		
+		# Filter out duplicate file names
+		pdfs = list(set(pdfs))
+		keydict = eval_cfg.data.sentence_types
+		keydict = {k : v for v, k in enumerate(keydict)}
+		
+		pdfs = sorted(pdfs, key = lambda pdf: keydict[pdf.replace(dataset_name + '-' + self.reference_sentence_type + '-', '').replace('.pdf', '').replace('-paired', '')])
+		
+		all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
+		merge_pdfs(pdfs, f'{dataset_name}-{all_epochs}-plots.pdf')
+	
+	def get_entailed_accuracies(self, summary: pd.DataFrame) -> pd.DataFrame:
+		# Get each unique pair of sentence types so we can create a separate plot for each pair
+		sentence_types = summary['sentence_type'].unique()
+		paired_sentence_types = list(itertools.combinations(sentence_types, 2))
+		
+		# Sort so that the trained cases are first
+		paired_sentence_types = [
+			sorted(pair, 
+				   key = lambda x: str(-int(x == self.reference_sentence_type)) + x) 
+			for pair in paired_sentence_types
+		]
+		
+		# Filter to only cases including the reference sentence type for ease of interpretation
+		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type]
+		
+		acc_columns = ['s1', 's2', 'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct', 'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points']
+		acc = pd.DataFrame(columns = acc_columns)
+		
+		for pair in paired_sentence_types:
+			x_data = summary[summary['sentence_type'] == pair[0]].reset_index(drop = True)
+			y_data = summary[summary['sentence_type'] == pair[1]].reset_index(drop = True)
+			
+			# Filter data to only odds ratios that exist in both sentence types
+			common_odds = set(x_data.ratio_name).intersection(y_data.ratio_name)
+			x_data = x_data[x_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
+			y_data = y_data[y_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
+			
+			refs_correct = x_data.odds_ratio > 0
+			gens_correct = y_data.odds_ratio > 0
+			num_points = len(x_data.index)
+			
+			# Get the number of points in each quadrant
+			both_correct = sum(refs_correct * gens_correct)/num_points * 100
+			ref_correct_gen_incorrect = sum(refs_correct * -gens_correct)/num_points * 100
+			both_incorrect = sum(-refs_correct * -gens_correct)/num_points * 100
+			ref_incorrect_gen_correct = sum(-refs_correct * gens_correct)/num_points * 100
+			ref_correct = sum(refs_correct)/num_points * 100
+			ref_incorrect = sum(-refs_correct)/num_points * 100
+			gen_correct = sum(gens_correct)/num_points * 100
+			gen_incorrect = sum(-gens_correct)/num_points * 100
+			
+			acc = acc.append(pd.DataFrame(
+				[[pair[0], pair[1], 
+				  both_correct, ref_correct_gen_incorrect, 
+				  both_incorrect, ref_incorrect_gen_correct, 
+				  ref_correct, ref_incorrect, 
+				  gen_correct, gen_incorrect, 
+				  num_points]],
+				  columns = acc_columns
+			))
 		
 		acc['eval_epoch'] = np.unique(summary.eval_epoch)[0] if len(np.unique(summary.eval_epoch)) == 1 else 'multi'
 		acc['total_epochs'] = np.unique(summary.total_epochs)[0] if len(np.unique(summary.total_epochs)) == 1 else 'multi'
@@ -1337,34 +1291,7 @@ class Tuner:
 		acc['masked_tuning_style'] = np.unique(summary.masked_tuning_style)[0] if len(np.unique(summary.masked_tuning_style)) == 1 else 'multi'
 		acc['strip_punct'] = np.unique(summary.strip_punct)[0] if len(np.unique(summary.strip_punct)) == 1 else 'multi'
 		
-		all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
-		
-		acc.to_csv(f'{dataset_name}-{all_epochs}-accuracy.csv', index = False)
-		
-		# Combine the plots into a single pdf
-		pdfs = []
-		for sentence_type in sentence_types:
-			pdfs.append([pdf for pdf in os.listdir(os.getcwd()) if pdf.endswith(f'{sentence_type}-paired.pdf')])
-		
-		pdfs = [pdf for sublist in pdfs for pdf in sublist]
-		
-		# Filter out duplicate file names
-		pdfs = list(set(pdfs))
-		keydict = eval_cfg.data.sentence_types
-		keydict = {k : v for v, k in enumerate(keydict)}
-		
-		pdfs = sorted(pdfs, key = lambda pdf: keydict[pdf.replace(dataset_name + '-' + self.reference_sentence_type + '-', '').replace('.pdf', '').replace('-paired', '')])
-		merged_plots = PdfFileMerger()
-		
-		for pdf in pdfs:
-			with open(pdf, 'rb') as f:
-				merged_plots.append(PdfFileReader(f))
-				
-		merged_plots.write(f'{dataset_name}-{all_epochs}-plots.pdf')
-		
-		# Clean up
-		for pdf in pdfs:
-			os.remove(pdf)
+		return acc
 	
 	
 	def eval_new_verb(self, eval_cfg: DictConfig, args_cfg: DictConfig, checkpoint_dir: str, epoch: int = None) -> None:
@@ -1396,29 +1323,19 @@ class Tuner:
 							s_dict['sentence'] = s
 							s_dict['results'] = {}
 							for arg2 in args_cfg:
-								#if not self.model_bert_name == 'roberta':
-								s_dict['results'][arg2] = filler(s, targets = args_cfg[arg2])
-								"""else:
-									targets = args_cfg[arg2]
-									# if we're using roberta and the mask token is not at the beginning of the string,
-									# add the weird "space before me" character to the targets
-									if not re.findall(rf'^{self.mask_tok}', s):
-										targets = ['\u0120' + arg for arg in targets]
-									
-									###########################################################
-									# roberta's filler doesn't deal with new words correctly, #
-									# it blanks them out ######################################
-									###########################################################
-									# need to figure out how to fix this ######################
-									###########################################################
-									s_dict['results'][arg2] = filler(s, targets = targets)
-									for i, d in s_dict['results'][arg2].iteritems():
-										# Remove the preceding blanks so we can match them up later
-										s_dict['results'][arg2][i]['token_str'] = s_dict['results'][arg2][i]['token_str'].strip()"""
+								targets = args_cfg[arg2]
+								if self.model_bert_name == 'roberta':
+									targets = [' ' + t for t in targets]
+								
+								s_dict['results'][arg2] = filler(s, targets = targets)
+								
+								for i, d in s_dict['results'][arg2].iteritems():
+									# Remove the preceding blanks so we can match them up later
+									s_dict['results'][arg2][i]['token_str'] = s_dict['results'][arg2][i]['token_str'].replace(' ', '')
 								
 								s_dict['results'][arg2] = sorted(
 									s_dict['results'][arg2],
-									key = lambda x: args_cfg[arg2].index(x['token_str'].replace(' ', ''))
+									key = lambda x: args_cfg[arg2].index(x['token_str'])
 								)
 								
 						results[arg][eval_cfg.data.sentence_types[i]].append(s_dict)
@@ -1427,43 +1344,30 @@ class Tuner:
 		
 		results = {**get_probs(epoch = 0), **get_probs(epoch = epoch)}
 		
-		print(f"SAVING TO: {os.getcwd()}")
-		
 		summary = self.get_new_verb_summary(results, args_cfg, eval_cfg)
-		
-		# Print the summary
-		# Disabled for now, as this is not actually super useful
-		"""for (eval_epoch, target_position_name, predicted_token_type, sentence_type), summary_slice \
-			in summary.groupby(['eval_epoch', 'predicted_token_type', 'target_position_name', 'sentence_type'], sort = False):
-			surprisals = [round(float(sur), 2) for sur in list(summary_slice.surprisal.values)]
-			predicted_token_type = predicted_token_type.replace('_', ' ')
-			target_position_name = target_position_name.replace('_', ' ')
-			print(f'\n{eval_epoch[0].upper() + eval_epoch[1:]} surprisals of {predicted_token_type} arguments in {target_position_name} position in {sentence_type}s:\n\t{surprisals}')
-			print('')"""
 		
 		# Save the summary
 		dataset_name = eval_cfg.data.friendly_name
 		epoch = max(results.keys())
 		
+		log.info(f"SAVING TO: {os.getcwd()}")
 		summary.to_pickle(f"{dataset_name}-0-{epoch}-scores.pkl")
 		summary.to_csv(f"{dataset_name}-0-{epoch}-scores.csv", index = False)
-
+		
 		# Create graphs
 		log.info('Creating plots')
 		self.graph_new_verb_results(summary, eval_cfg)
+		
 		log.info('Evaluation complete')
 		print('')
 	
 	def load_eval_verb_file(self, args_cfg: DictConfig, data_path: str, replacing: Dict[str, str]) -> Dict[str, List[str]]:
 		
-		resolved_path = os.path.join(
-			hydra.utils.get_original_cwd(),
-			"data",
-			data_path
-		)
+		resolved_path = os.path.join(hydra.utils.get_original_cwd(),"data",data_path)
 		
 		with open(resolved_path, "r") as f:
-			raw_input = [line.strip().lower() for line in f]
+			raw_input = [line.strip() for line in f]
+			raw_input = [r.lower() for r in raw_input] if 'uncased' in self.string_id else raw_input
 		
 		if self.cfg.hyperparameters.strip_punct:
 			raw_input = [strip_punct(line) for line in raw_input]
@@ -1535,7 +1439,8 @@ class Tuner:
 										summary_ = pd.DataFrame()
 										pred_seq = prediction['sequence']
 										mask_seq = sentence['sentence']
-										# replace the internal tokens with the visible one
+										
+										# replace the internal token(s) with the visible one
 										for eval_group in eval_cfg.data.eval_groups:
 											pred_seq = pred_seq.replace(
 												eval_cfg.data.eval_groups[eval_group],
@@ -1561,7 +1466,6 @@ class Tuner:
 										summary_['eval_epoch'] = eval_epoch
 										summary_['total_epochs'] = total_epochs
 										
-										# Get the position number of the masked token
 										mask_pos = mask_seq.index(self.mask_tok)
 										
 										arg_positions = {}
@@ -1612,11 +1516,13 @@ class Tuner:
 		
 		return summary
 	
-	def graph_new_verb_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, axis_size: int = 10, multi: bool = False, pt_size: int = 24) -> None:
+	def graph_new_verb_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, axis_size: int = 10, pt_size: int = 24) -> None:
 		
-		if multi:
+		if len(np.unique(summary.model_id.values)) > 1:
 			summary['surprisal'] = summary['mean']
 			summary = summary.drop('mean', axis = 1)
+		else:
+			summary['sem'] = 0
 		
 		# Get each sentence type to compare them on pre- and post-tuning data
 		sentence_types = summary['sentence_type'].unique()
@@ -1641,12 +1547,7 @@ class Tuner:
 			x_data = summary.loc[(summary.eval_epoch == x_epoch) & (summary['sentence_type'] == sentence_type)].reset_index(drop = True)
 			y_data = summary.loc[(summary.eval_epoch == y_epoch) & (summary['sentence_type'] == sentence_type)].reset_index(drop = True)
 			
-			if not multi:
-				lim = np.max(np.abs([*x_data['surprisal'].values, *y_data['surprisal'].values])) + 0.5
-			else:
-				x_sur = np.abs(x_data['surprisal'].values) + x_data['sem'].values
-				y_sur = np.abs(y_data['surprisal'].values) + y_data['sem'].values
-				lim = np.max([*x_sur, *y_sur]) + 0.5
+			lim = np.max([*[np.abs(x_data['surprisal'].values) + x_data['sem'].values], *[np.abs(y_data['surprisal'].values) + y_data['sem'].values]]) + 1
 			
 			# Get number of linear positions (if there's only one position, we can't make plots by linear position)
 			sur_names_positions = x_data[['surprisal_gf_label', 'target_position_num']].drop_duplicates().reset_index(drop = True)
@@ -1679,15 +1580,14 @@ class Tuner:
 				ax = ax1
 			)
 			
-			if multi:
-				ax1.errorbar(
-					x = x_data.surprisal, 
-					xerr = x_data['sem'],
-					y = y_data.surprisal,
-					yerr = y_data['sem'],
-					ecolor = colors[:num_gfs],
-					ls = 'none'
-				)
+			ax1.errorbar(
+				x = x_data.surprisal, 
+				xerr = x_data['sem'],
+				y = y_data.surprisal,
+				yerr = y_data['sem'],
+				ecolor = colors[:num_gfs],
+				ls = 'none'
+			)
 			
 			# Set labels and title
 			ax1.set_xlabel(f"Surprisal @ epoch {np.unique(x_data.eval_epoch)[0]}", fontsize = axis_size)
@@ -1703,12 +1603,9 @@ class Tuner:
 			
 			# Construct plot of surprisal differences (a measure of transference)
 			ax2.set_xlim(-1, lim)
-			if not multi:
-				ylim_diffs = np.max(np.abs([*x_data.surprisal.values, *(y_data.surprisal - x_data.surprisal).values])) + 1
-			else:
-				x_surs = np.abs(x_data.surprisal.values) + x_data['sem'].values
-				y_surs = np.abs(y_data.surprisal - x_data.surprisal) + y_data['sem'].values
-				ylim_diffs = np.max([*x_surs, *y_surs]) + 1
+			x_surs = np.abs(x_data.surprisal.values) + x_data['sem'].values
+			y_surs = np.abs(y_data.surprisal - x_data.surprisal) + y_data['sem'].values
+			ylim_diffs = np.max([*x_surs, *y_surs]) + 1
 			
 			ax2.set_ylim(-ylim_diffs, ylim_diffs)
 			
@@ -1723,15 +1620,14 @@ class Tuner:
 				ax = ax2
 			)
 			
-			if multi:
-				ax2.errorbar(
-					x = x, 
-					xerr = x_data['sem'],
-					y = y_data.surprisal - x_data.surprisal,
-					yerr = y_data['sem'],
-					ecolor = colors[:num_gfs],
-					ls = 'none'
-				)
+			ax2.errorbar(
+				x = x, 
+				xerr = x_data['sem'],
+				y = y_data.surprisal - x_data.surprisal,
+				yerr = y_data['sem'],
+				ecolor = colors[:num_gfs],
+				ls = 'none'
+			)
 			
 			# Set labels and title
 			ax2.set_xlabel(f"Surprisal @ epoch {np.unique(x_data.eval_epoch)[0]}", fontsize = axis_size)
@@ -1782,34 +1678,21 @@ class Tuner:
 			del fig
 		
 		# Combine the plots into a single pdf
-		pdfs = []
-		for sentence_type in sentence_types:
-			pdfs.append([pdf for pdf in os.listdir(os.getcwd()) if pdf.endswith(f'{sentence_type}.pdf')])
+		pdfs = [pdf for sentence_type in sentence_types for pdf in os.listdir(os.getcwd()) if pdf.endswith(f'{sentence_type}.pdf')]
 		
-		pdfs = [pdf for sublist in pdfs for pdf in sublist]
-		
-		# Filter out duplicate file names in case some sentence types are contained within others
+		# Filter out duplicate file names in case some sentence types are contained within others,
+		# and sort so that the most relevant plot appears at the top
 		pdfs = list(set(pdfs))
 		keydict = eval_cfg.data.sentence_types
 		keydict = {k : v for v, k in enumerate(keydict)}
 		
 		pdfs = sorted(pdfs, key = lambda pdf: keydict[pdf.replace(dataset_name + '-', '').replace('.pdf', '')])
-		merged_plots = PdfFileMerger()
-		
-		for pdf in pdfs:
-			with open(pdf, 'rb') as f:
-				merged_plots.append(PdfFileReader(f))
 		
 		all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
-		
-		merged_plots.write(f'{dataset_name}-{all_epochs}-plots.pdf')
-		
-		# Clean up
-		for pdf in pdfs:
-			os.remove(pdf)
+		merge_pdfs(pdfs, f'{dataset_name}-{all_epochs}-plots.pdf')
 	
 	
-	# no longer used
+	# no longer used anywhere
 	"""def collect_entailed_results(self, inputs, eval_groups, outputs):
 		
 		results_arr = []
@@ -1819,8 +1702,8 @@ class Tuner:
 			results = {}
 			
 			logits = outputs[j].logits
-			probabilities = torch.nn.functional.softmax(logits, dim=2)
-			log_probabilities = torch.nn.functional.log_softmax(logits, dim=2)
+			probabilities = nn.functional.softmax(logits, dim=2)
+			log_probabilities = nn.functional.log_softmax(logits, dim=2)
 			predicted_ids = torch.argmax(log_probabilities, dim=2)
 			
 			for i, _ in enumerate(predicted_ids):
@@ -1839,7 +1722,7 @@ class Tuner:
 				idx_results[group] = group_mean
 				
 				sentence_results[idx] = {
-				'mean grouped log_probability' : idx_results,
+				'mean grouped log probability' : idx_results,
 				'log_probabilities' : log_probabilities[:,idx,:][i,:],
 				'probabilities' : probabilities[:,idx,:][i,:],
 				'logits': logits[:,idx,:][i,:]
@@ -1850,7 +1733,7 @@ class Tuner:
 		
 		return results_arr"""
 	
-	# no longer used
+	# no longer used anywhere
 	"""def summarize_entailed_results(self, results_arr, labels_arr):
 		
 		# Define theme and recipient ids
@@ -1879,7 +1762,7 @@ class Tuner:
 			for idx in active_result:
 			
 			target = active_label[idx.item()]
-			scores = active_result[idx]['mean grouped log_probability']
+			scores = active_result[idx]['mean grouped log probability']
 			
 			token_conf = scores['theme'] - scores['recipient']
 			
@@ -1893,7 +1776,7 @@ class Tuner:
 			for idx in passive_result:
 			
 			target = passive_label[idx.item()]
-			scores = passive_result[idx]['mean grouped log_probability']
+			scores = passive_result[idx]['mean grouped log probability']
 			
 			# print(scores)
 			# raise SystemExit

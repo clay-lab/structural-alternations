@@ -2,6 +2,7 @@ name: inchoative
 
 reference_sentence_type: inchoative past
 new_verb: false
+entail: true
 
 to_mask:
   "THAX" : "[unused2]"

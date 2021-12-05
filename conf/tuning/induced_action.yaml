@@ -2,6 +2,7 @@ name: induced_action
 
 reference_sentence_type: induced action
 new_verb: false
+entail: true
 
 to_mask:
   "AGEX" : "[unused1]"
