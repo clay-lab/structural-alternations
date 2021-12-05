@@ -3,6 +3,8 @@ defaults:
   - model: distilbert
   - tuning: dative_DO_give
 
+n_jobs: 1 # how many subprocesses to run?
+
 n: 0 # How many models to fit? Only used when --multirun/-m is set. Specified as 'n=range(0,i)'
 
 hyperparameters:
