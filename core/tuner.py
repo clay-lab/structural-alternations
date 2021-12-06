@@ -379,12 +379,26 @@ class Tuner:
 		log.info(f"Saving weights for each of {epochs} epochs")
 		with open('weights.pkl', 'wb') as f:
 			pkl.dump(saved_weights, f)
-			
-		log.info(f"Saving metrics")
-		metrics.to_csv("metrics.csv", index = False)
 		
 		log.info(f'Plotting metrics')
 		self.plot_metrics(metrics)
+		
+		metrics = pd.melt(
+			metrics, 
+			id_vars = ['epoch'], 
+			value_vars = [c for c in metrics.columns if not c == 'epoch'], 
+			var_name = 'metric'
+		).assign(
+			model_id = os.path.split(os.getcwd())[1],
+			model_name = self.model_bert_name,
+			tuning = self.cfg.tuning.name,
+			masked = self.masked,
+			masked_tuning_style = self.masked_tuning_style,
+			strip_punct = self.cfg.hyperparameters.strip_punct
+		)
+		
+		log.info(f"Saving metrics")
+		metrics.to_csv("metrics.csv", index = False)
 		
 		writer.flush()
 		writer.close()
@@ -491,8 +505,8 @@ class Tuner:
 			
 			new_min = target_num_ticks - 1
 			new_max = target_num_ticks + 1
-			while not highest % target_num_ticks == 0:
-				if highest % new_min == 0:
+			while not highest % target_num_ticks == 1:
+				if highest % new_min == 1:
 					target_num_ticks = new_min
 					break
 				else:
@@ -502,7 +516,7 @@ class Tuner:
 					if new_min == 1:
 						break
 				
-				if highest % new_max == 0:
+				if highest % new_max == 1:
 					target_num_ticks = new_max
 					break
 				elif not new_max >= highest/2:
@@ -548,7 +562,7 @@ class Tuner:
 			sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax)
 			plt.xticks(xticks)
 			
-			title = f'{self.model_bert_name} {metric}, '
+			title = f'{self.model_bert_name} {metric}\n'
 			title += f'tuning: {self.cfg.tuning.name}, '
 			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
 			title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}'

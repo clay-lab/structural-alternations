@@ -7,11 +7,10 @@ target_freq: 4000 # only consider candidates within ${range} of this value
 range: 1000
 strip_punct: false # consider sentences with or without punctuation?
 n_sets: 1 # how many sets of nouns to automatically generate + evaluate
-n_jobs: 0 # how many processes to run in parallel? 0 runs one process for each model type
 
 hydra:
   run: 
-    dir: './outputs/${tuning.name}/get_args/${now:%Y-%m-%d_%H-%M-%S}'
+    dir: './outputs/${tuning.name}/gen_args/${now:%Y-%m-%d_%H-%M-%S}'
   sweep:
     dir: './outputs'
-    subdir: '${tuning.name}/get_args/${now:%Y-%m-%d_%H-%M-%S}-${hydra:job.num}'
+    subdir: '${tuning.name}/gen_args/${now:%Y-%m-%d_%H-%M-%S}-${hydra:job.num}'
