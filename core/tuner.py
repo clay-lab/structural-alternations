@@ -3,7 +3,6 @@
 # Tunes a model on training data and provides functions for evaluation
 import os
 import re
-import sys
 import hydra
 import torch
 from torch.distributions import Categorical
@@ -22,12 +21,14 @@ import pickle as pkl
 import seaborn as sns
 import torch.nn as nn
 
+from math import ceil
 from tqdm import trange
 from typing import Dict, List, Tuple
 from omegaconf import DictConfig, OmegaConf
 from PyPDF2 import PdfFileMerger, PdfFileReader
 from transformers import logging as lg
 from transformers import DistilBertForMaskedLM, DistilBertTokenizer, RobertaForMaskedLM, RobertaTokenizer, BertForMaskedLM, BertTokenizer
+from transformers.tokenization_utils import AddedToken
 
 lg.set_verbosity_error()
 
@@ -99,17 +100,17 @@ class Tuner:
 	
 	@property
 	def tuning_data(self) -> List[str]:
-		data = []
-		for s in self.cfg.tuning.data:
-			if self.cfg.hyperparameters.strip_punct:
-				s = strip_punct(s)
-				
-			for key in self.tokens_to_mask:
-				s = s.replace(key, self.tokens_to_mask[key])
-			
-			data.append(s)
-		
+		data = [strip_punct(s) for s in self.cfg.tuning.data] if self.cfg.hyperparameters.strip_punct else list(self.cfg.tuning.data)
 		data = [d.lower() for d in data] if 'uncased' in self.string_id else data
+		# warning related to roberta: it treats tokens with preceding spaces as different from tokens without
+		# this means that if we use a token at the beginning of a sentence and in the middle, it won't be typical
+		# here we check for this, and warn the user to avoid this situation
+		if self.model_bert_name == 'roberta':
+			for token in self.tokens_to_mask:
+				at_beginning = any([bool(re.search('^' + token, d)) for d in data])
+				in_middle = any([bool(re.search(' ' + token, d)) for d in data])
+				if at_beginning * in_middle > 0:
+					log.warning('RoBERTa treats tokens with preceding spaces differently, but you have used the same token for both cases! This may complicate results.')
 		
 		return data
 	
@@ -122,14 +123,14 @@ class Tuner:
 			if self.cfg.hyperparameters.strip_punct:
 				s = strip_punct(s)
 			
-			for val in list(self.tokens_to_mask.values()):
+			for tok in self.tokens_to_mask:
 				r = np.random.random()
 				# Bert tuning regimen
 				# Masked tokens are masked 80% of the time, 
 				# original 10% of the time,
 				# and random word 10% of the time
 				if r < 0.8:
-					s = s.replace(val.lower(), self.mask_tok) if 'uncased' in self.string_id else s.replace(val, self.mask_tok)
+					s = s.replace(tok, self.mask_tok)
 				elif 0.8 <= r < 0.9:
 					pass
 				elif 0.9 <= r:
@@ -137,15 +138,17 @@ class Tuner:
 						# we do this to ensure that the random word is tokenized as one word so that it doesn't throw off the lengths and halt tuning
 						random_word = np.random.choice(list(self.tokenizer.get_vocab().keys()))
 						random_word = random_word.replace(chr(288), '')
-						# if the sentence doesn't begin with our target to replace, we need to add a space before it since that can throw off tokenization
-						if not s.lower().startswith(val.lower()):
+						# if the sentence doesn't begin with our target to replace, 
+						# we need to add a space before it since that can throw off tokenization for some models
+						# then we run the check, and remove the space for replacement into the string
+						if not s.lower().startswith(tok.lower()):
 							random_word = ' ' + random_word
 					
 						if len(self.tokenizer.tokenize(random_word)) == 1:
 							random_word = random_word.strip()
 							break			
 					
-					s = s.replace(val.lower(), random_word) if 'uncased' in self.string_id else s.replace(val, random_word)
+					s = s.replace(tok, random_word)
 			
 			data.append(s)
 		
@@ -159,8 +162,8 @@ class Tuner:
 		for s in to_mask:
 			if self.cfg.hyperparameters.strip_punct:
 				s = strip_punct(s)
-			for val in list(self.tokens_to_mask.values()):
-				s = s.replace(val.lower(), self.mask_tok) if 'uncased' in self.string_id else s.replace(val, self.mask_tok)
+			for tok in self.tokens_to_mask:
+				s = s.replace(tok, self.mask_tok)
 			
 			data.append(s)
 		
@@ -196,27 +199,25 @@ class Tuner:
 		}
 	
 	@property
-	def tokens_to_mask(self) -> Dict[str, str]:
-		return self.cfg.tuning.to_mask
+	def tokens_to_mask(self) -> List[str]:
+		return [t.lower() for t in self.cfg.tuning.to_mask] if 'uncased' in self.string_id else list(self.cfg.tuning.to_mask)
 	
 	# END Computed Properties
 	
-	def __init__(self, cfg: DictConfig, eval: bool = False) -> None:
+	def __init__(self, cfg: DictConfig) -> None:
 		self.cfg = cfg
 		
 		if self.string_id != 'multi':
 			
-			log.info(f"Initializing Tokenizer: {self.cfg.model.tokenizer}")
-			
+			log.info(f"Initializing Tokenizer:\t{self.cfg.model.tokenizer}")
 			self.tokenizer = self.tokenizer_class.from_pretrained(self.string_id, do_basic_tokenize=False, local_files_only=True)
 			
-			log.info(f"Initializing Model: {self.cfg.model.base_class}")
-			self.model = self.model_class.from_pretrained(self.string_id,local_files_only=True)
+			log.info(f"Initializing Model:\t{self.cfg.model.base_class}")
+			self.model = self.model_class.from_pretrained(self.string_id, local_files_only=True)
 			
-			if self.tokens_to_mask:
-				added_tokens = list(self.tokens_to_mask.values())
-				num_added_toks = self.tokenizer.add_tokens(added_tokens)
-				self.model.resize_token_embeddings(len(self.tokenizer))
+			self.tokenizer.add_tokens(self.tokens_to_mask)
+			self.model.resize_token_embeddings(len(self.tokenizer))
+			breakpoint()
 	
 	def tune(self) -> None:
 		"""
@@ -226,8 +227,7 @@ class Tuner:
 		# function to return the weight updates so we can save them every epoch
 		def get_updated_weights():
 			updated_weights = {}
-			for key in self.tokens_to_mask:
-				tok = self.tokens_to_mask[key]
+			for tok in self.tokens_to_mask:
 				tok_id = self.tokenizer(tok, return_tensors='pt')['input_ids'][:,1]
 				
 				updated_weights[int(tok_id)] = getattr(
@@ -254,12 +254,10 @@ class Tuner:
 			log.info(f"Seed set to {seed}")
 			
 			nn.init.normal_(new_embeds.weight, mean=mean, std=std)
-				
-			for i, key in enumerate(self.tokens_to_mask):
-				tok = self.tokens_to_mask[key]
+			for i, tok in enumerate(self.tokens_to_mask):
 				tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
 				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id] = new_embeds.weight[i]
-		
+			
 		if not self.tuning_data:
 			log.info(f'Saving randomly initialized weights')
 			with open('weights.pkl', 'wb') as f:
@@ -273,13 +271,13 @@ class Tuner:
 		
 		# Store the old embeddings so we can verify that only the new ones get updated
 		self.old_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
-					
+		
 		# Freeze parameters
 		log.info(f"Freezing model parameters")
 		for name, param in self.model.named_parameters():
 			if 'word_embeddings' not in name:
 				param.requires_grad = False
-			
+		
 			if param.requires_grad:
 				assert 'word_embeddings' in name, f"{name} is not frozen!"
 		
@@ -301,13 +299,16 @@ class Tuner:
 			inputs_data = self.mixed_tuning_data
 		elif not self.masked:
 			inputs_data = self.tuning_data
-			
+		
 		labels_data = self.verb_tuning_data['data'] if self.cfg.tuning.new_verb else self.tuning_data
 		
 		inputs = self.tokenizer(inputs_data, return_tensors="pt", padding=True)
 		labels = self.tokenizer(labels_data, return_tensors="pt", padding=True)["input_ids"]
 		
-		log.info(f"Training model @ '{os.getcwd()}'")
+		# used to calculate metrics during training
+		masked_inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
+		
+		log.info(f"Training model @ '{os.getcwd().replace(hydra.utils.get_original_cwd(), '')}'")
 		
 		self.model.train()
 		
@@ -320,6 +321,7 @@ class Tuner:
 		with trange(epochs) as t:
 			current_epoch = 0
 			for epoch in t:
+				
 				optimizer.zero_grad()
 				
 				# If we are using roberta-style masking, get new randomly changed inputs each epoch
@@ -328,24 +330,25 @@ class Tuner:
 				
 				# Compute loss
 				outputs = self.model(**inputs, labels=labels)
-				
 				loss = outputs.loss
-				t.set_postfix(loss=loss.item())
-				metrics.loc[epoch,'loss'] = loss.item()
+				t.set_postfix(loss='{0:5.2f}'.format(loss.item()))
 				loss.backward()
 				
 				# Log results
+				metrics.loc[epoch,'loss'] = loss.item()
 				writer.add_scalar(f"loss/{self.model_bert_name}", loss, epoch)
-				masked_input = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
-				results = self.collect_results(masked_input, labels, self.tokens_to_mask, outputs)
+				
+				results = self.collect_results(masked_inputs, labels, self.tokens_to_mask, outputs)
 				
 				# get metrics for plotting
 				epoch_metrics = self.get_epoch_metrics(results)
 				
 				for metric in epoch_metrics:
 					for token in epoch_metrics[metric]:
-						metrics.loc[epoch, f'{token} {metric} in expected position'] = epoch_metrics[metric][token]
-						writer.add_scalar(f"{token} {metric} in expected position/{self.model_bert_name}", epoch_metrics[metric][token], epoch)
+						# do this to make things prettier if we are using an uncased model
+						tok_str = token.upper() if 'uncased' in self.string_id else token
+						metrics.loc[epoch, f'{tok_str} mean {metric} in expected position'] = epoch_metrics[metric][token]
+						writer.add_scalar(f"{tok_str} mean {metric} in expected position/{self.model_bert_name}", epoch_metrics[metric][token], epoch)
 				
 				# store weights of the relevant tokens so we can save them
 				current_epoch += 1
@@ -357,7 +360,7 @@ class Tuner:
 				# the embeddings of the novel tokens. To do this, we zero-out
 				# all gradients except for those at these token indices.
 				nz_grad = {}
-				for token in list(self.tokens_to_mask.values()):
+				for token in self.tokens_to_mask:
 					token_id = self.tokenizer(token, return_tensors='pt')['input_ids'][:,1]
 					nz_grad[token_id] = getattr(self.model,self.model_bert_name).embeddings.word_embeddings.weight.grad[token_id].clone()
 				
@@ -404,7 +407,6 @@ class Tuner:
 		writer.close()
 	
 	def collect_results(self, masked_inputs, labels, eval_groups, outputs) -> Dict:
-		
 		results = {}
 		
 		logits = outputs.logits
@@ -417,31 +419,33 @@ class Tuner:
 			sentence_results = {}
 			
 			# Foci = indices where input sentences have a [mask] token
-			foci = torch.nonzero(masked_inputs["input_ids"][sentence_num]==self.mask_tok_id, as_tuple=True)[0]
+			foci = torch.nonzero(masked_inputs["input_ids"][sentence_num] == self.mask_tok_id, as_tuple=True)[0]
 			
 			for focus in foci:
 				focus_results = {}
-				for group in eval_groups:
-					tokens = eval_groups[group]
-					if isinstance(tokens, str):
-						tokens = [tokens]
-					
-					group_mean = []
-					surprisal_mean = []
-					for token in tokens:
-						token_id = self.tokenizer(token, return_tensors="pt")["input_ids"][:,1]
-						if self.cfg.tuning.entail and labels[sentence_num,focus] == token_id or not self.cfg.tuning.entail:
-							group_mean.append(log_probabilities[sentence_num,focus,token_id].item())
-							surprisal_mean.append(surprisals[sentence_num,focus,token_id].item())
-					
-					label = ','.join(group) if isinstance(group, list) else group
-					focus_results[label] = {}
-					
-					focus_results[label]['mean grouped log probability'] = np.mean(group_mean) if group_mean else None
-					focus_results[label]['mean grouped surprisal'] = np.mean(surprisal_mean) if surprisal_mean else None
+				# this will need to be changed to deal with the ptb experiments
+				# because in that case the eval_groups needs to be the values of the dict
+				# rather than the keys
+				for token in eval_groups:
+					token_id = self.tokenizer(token, return_tensors="pt")["input_ids"][:,1]
+					if self.cfg.tuning.entail and labels[sentence_num,focus] == token_id:
+						focus_results[token] = {}
+						focus_results[token]['log probability'] = log_probabilities[sentence_num,focus,token_id].item()
+						focus_results[token]['surprisal'] = surprisals[sentence_num,focus,token_id].item()
+					elif not self.cfg.tuning.entail:
+						focus_results[token] = {}
+						logprob_means = []
+						surprisal_means = []
+						for word in eval_groups[token]:
+							token_id = self.tokenizer(word, return_tensors="pt")["input_ids"][:,1]
+							logprob_means.append(log_probabilities[sentence_num,focus,token_id].item())
+							surprisal_means.append(surprisals[sentence_num,focus,token_id].item())
+							
+						focus_results[token]['mean grouped log probability'] = np.mean(logprob_means)
+						focus_results[token]['mean grouped surprisal'] = np.mean(surprisal_means)
 				
-				sentence_results[focus] = {
-					'means' : focus_results,
+				sentence_results[focus.item()] = {
+					'focus metrics' : focus_results,
 					'log probabilities' : log_probabilities[sentence_num,focus],
 					'probabilities' : probabilities[sentence_num,focus],
 					'logits': logits[sentence_num,focus]
@@ -454,27 +458,19 @@ class Tuner:
 	def get_epoch_metrics(self, results: Dict) -> Dict:
 		# calculate the mean of the metrics across all the sentences in the results
 		epoch_metrics = {}
-		epoch_metrics['log probability'] = {}
-		epoch_metrics['surprisal'] = {}
-		for token in self.tokens_to_mask:
-			epoch_metrics['log probability'][token] = []
-			epoch_metrics['surprisal'][token] = []
 		
 		for sentence in results:
 			for focus in results[sentence]:
-				for token in results[sentence][focus]['means']:
-					logprob = results[sentence][focus]['means'][token]['mean grouped log probability']
-					if logprob:
-						epoch_metrics['log probability'][token].append(logprob)
-					
-					surprisal = results[sentence][focus]['means'][token]['mean grouped surprisal']
-					if surprisal:
-						epoch_metrics['surprisal'][token].append(surprisal)
-				
+				for token in results[sentence][focus]['focus metrics']:
+					for metric in results[sentence][focus]['focus metrics'][token]:
+						epoch_metrics[metric] = {} if not metric in epoch_metrics.keys() else epoch_metrics[metric]
+						epoch_metrics[metric][token] = [] if not token in epoch_metrics[metric].keys() else epoch_metrics[metric][token]
+						epoch_metrics[metric][token].append(results[sentence][focus]['focus metrics'][token][metric])
+		
 		for metric in epoch_metrics:
 			for token in epoch_metrics[metric]:
 				epoch_metrics[metric][token] = np.mean(epoch_metrics[metric][token])
-			
+		
 		return epoch_metrics
 	
 	def restore_weights(self, checkpoint_dir, epoch: int = None) -> Tuple[int, int]:
@@ -505,24 +501,24 @@ class Tuner:
 			
 			new_min = target_num_ticks - 1
 			new_max = target_num_ticks + 1
-			while not highest % target_num_ticks == 1:
+			while not highest % target_num_ticks == 0:
 				if highest % new_min == 1:
 					target_num_ticks = new_min
 					break
 				else:
 					new_min -= 1
-					# if we get here, it means highest is a prime and there's no good solution,
+					# if we get here, it metrics highest is a prime and there's no good solution,
 					# so we'll just brute force something later
 					if new_min == 1:
 						break
 				
-				if highest % new_max == 1:
+				if highest % new_max == 0:
 					target_num_ticks = new_max
 					break
 				elif not new_max >= highest/2:
 					new_max += 1
 			
-			int_xticks = [int(i) for i in list(range(lowest - 1, highest + 1, int(round(highest/target_num_ticks, 0))))]
+			int_xticks = [int(i) for i in list(range(lowest - 1, highest + 1, int(ceil(highest/target_num_ticks))))]
 			int_xticks = [i for i in int_xticks if i in metrics.epoch.values]
 			
 			return int_xticks
@@ -541,8 +537,8 @@ class Tuner:
 					m1 = metric
 					m2 = m
 					for token in self.tokens_to_mask:
-						m1 = m1.replace(token, '')
-						m2 = m2.replace(token, '')
+						m1 = m1.replace(token.upper(), '') # use .upper() to deal with uncased models
+						m2 = m2.replace(token.upper(), '') # use .upper() to deal with uncased models
 					
 					if m1 == m2:
 						like_metrics.append(m)
@@ -554,16 +550,20 @@ class Tuner:
 				ulim = np.max([ulim, *metrics[m].values])
 				llim = np.min([llim, *metrics[m].values])
 			
-			adj = np.abs(ulim - llim)/40
+			adj = max(np.abs(ulim - llim)/40, 0.05)
 			
 			fig, ax = plt.subplots(1)
 			fig.set_size_inches(12, 6)
 			ax.set_ylim(llim - adj, ulim + adj)
-			sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax)
+			if len(metrics[metric].index) > 1:
+				sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax)
+			else:
+				sns.scatterplot(data = metrics, x = 'epoch', y = metric, ax = ax)
+			
 			plt.xticks(xticks)
 			
 			title = f'{self.model_bert_name} {metric}\n'
-			title += f'tuning: {self.cfg.tuning.name}, '
+			title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
 			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
 			title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}'
 			title += f'\nmax @ {metrics.sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics.sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
@@ -612,17 +612,13 @@ class Tuner:
 		with open(resolved_path, "r") as f:
 			raw_sentences = [line.strip() for line in f]
 			raw_sentences = [r.lower() for r in raw_sentences] if 'uncased' in self.string_id else raw_sentences
-			sentences = []
-			for s in raw_sentences:
-				for key in replacing:
-					s = s.replace(key, self.tokens_to_mask[replacing[key]])
-				sentences.append(s)
+			sentences = raw_sentences
 		
 		masked_sentences = []
 		for s in sentences:
 			m = s
-			for val in list(self.tokens_to_mask.values()):
-				m = m.replace(val.lower(), self.mask_tok) if 'uncased' in self.string_id else m.replace(val, self.mask_tok)
+			for tok in self.tokens_to_mask:
+				m = m.replace(tok, self.mask_tok)
 			masked_sentences.append(m)
 		
 		inputs = self.tokenizer(masked_sentences, return_tensors="pt", padding=True)
@@ -635,8 +631,11 @@ class Tuner:
 		summary = {}
 		
 		# Define theme and recipient ids
-		ricket = self.tokenizer(self.tokens_to_mask["RICKET"], return_tensors="pt")["input_ids"][:,1]
-		thax = self.tokenizer(self.tokens_to_mask["THAX"], return_tensors="pt")["input_ids"][:,1]
+		ricket = 'RICKET' if not 'uncased' in self.string_id else 'ricket'
+		thax = 'THAX' if not 'uncased' in self.string_id else 'thax'
+		
+		ricket = self.tokenizer(ricket, return_tensors="pt")["input_ids"][:,1]
+		thax = self.tokenizer(thax, return_tensors="pt")["input_ids"][:,1]
 		
 		# Cumulative log probabilities for <token> in <position>
 		theme_in_theme = []
@@ -763,9 +762,10 @@ class Tuner:
 			outputs = [self.model(**i) for i in inputs]
 			
 		summary = self.get_entailed_summary(sentences, outputs, labels, eval_cfg)
-		summary['eval_epoch'] = epoch
-		summary['total_epochs'] = total_epochs
-		
+		summary = summary.assign(
+			eval_epoch = epoch,
+			total_epochs = total_epochs
+		)
 		# save the summary as a pickle and as a csv so that we have access to the original tensors
 		# these get converted to text in the csv, but the csv is easier to work with otherwise
 		dataset_name = eval_cfg.data.friendly_name
@@ -779,7 +779,7 @@ class Tuner:
 		self.graph_entailed_results(summary, eval_cfg)
 		
 		acc = self.get_entailed_accuracies(summary)
-		acc.to_csv(f'{dataset_name}-{epoch}-scores.csv', index = False)
+		acc.to_csv(f'{dataset_name}-{epoch}-accuracies.csv', index = False)
 		
 		log.info('Evaluation complete')
 		print('')
@@ -794,25 +794,16 @@ class Tuner:
 			
 			if self.cfg.hyperparameters.strip_punct:
 				raw_input = [strip_punct(line) for line in raw_input]
-			
-			for r in raw_input:
-				line = []
-				s_splits = r.split(',')
-				for s in s_splits:
-					for key in replacing:
-						s = s.replace(key, self.tokens_to_mask[replacing[key]])
-					
-					line.append(s.strip())
 				
-				sentences.append(line)
+			sentences = [[s.strip() for s in r.split(',')] for r in raw_input]
 		
 		masked_sentences = []
 		for s_group in sentences:
 			m_group = []
 			for s in s_group:
 				m = s
-				for val in list(self.tokens_to_mask.values()):
-					m = m.replace(val.lower(), self.mask_tok) if 'uncased' in self.string_id else m.replace(val, self.mask_tok)
+				for val in self.tokens_to_mask:
+					m = m.replace(val, self.mask_tok)
 				
 				m_group.append(m)
 			
@@ -849,8 +840,8 @@ class Tuner:
 		
 		# Get the positions of the tokens in each sentence of each type
 		tokens_indices = dict(zip(
-			self.tokens_to_mask.keys(), 
-			self.tokenizer.convert_tokens_to_ids(list(self.tokens_to_mask.values()))
+			self.tokens_to_mask, 
+			self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask)
 		))
 		
 		# Get the expected positions for each token in the eval data
@@ -866,10 +857,13 @@ class Tuner:
 			for sentence_type, label in tuple(zip(sentence_types, labels)):
 				token_summary = pd.DataFrame(columns = cols)
 				if (indices := torch.where(label == tokens_indices[token])[1]).nelement() != 0:
-					token_summary['focus'] = indices
-					token_summary['exp_token'] = token
-					token_summary['sentence_type'] = sentence_type
-					token_summary['sentence_num'] = list(range(len(token_summary)))
+					token_summary = token_summary.assign(
+						focus = indices,
+						exp_token = token,
+						sentence_type = sentence_type,
+						sentence_num = lambda df: list(range(len(df.index)))
+					)
+					
 					token_summary = token_summary.merge(all_combinations, how = 'left').fillna(0)
 					logits = []
 					exp_logits = []
@@ -884,16 +878,22 @@ class Tuner:
 						idx_exp_row_token = tokens_indices[exp_row_token]
 						exp_logits.append(sentence_type_logprobs[sentence_type][row_sentence_num,idx,idx_exp_row_token])
 					
-					token_summary['logit'] = logits
-					token_summary['exp_logit'] = exp_logits
-					token_summary = token_summary.query('exp_token != token').copy()
-					token_summary['ratio_name'] = token_summary["exp_token"] + '/' + token_summary["token"]
-					token_summary['odds_ratio'] = token_summary['exp_logit'] - token_summary['logit']
+					token_summary = token_summary.assign(
+						logit = logits,
+						exp_logit = exp_logits,
+						# convert the case of the token columns to deal with uncased models; 
+						# otherwise we won't be able to directly
+						# compare them to cased models since the tokens will be different
+						exp_token = [token.upper() for token in token_summary['exp_token']],
+						token = [token.upper() for token in token_summary['token']]
+					).query('exp_token != token').copy().assign(
+						ratio_name = lambda df: df["exp_token"] + '/' + df["token"],
+						odds_ratio = lambda df: df['exp_logit'] - df['logit']
+					)
 				
 				summary = summary.append(token_summary, ignore_index = True)
 		
-		tokens_roles = dict(zip(list(eval_cfg.data.to_mask.values()), list(eval_cfg.data.to_mask.keys())))
-		tokens_roles = { k : v.strip('[]') for k, v in tokens_roles.items() }
+		tokens_roles = { tok : eval_cfg.data.eval_groups[tok] for tok in eval_cfg.data.to_mask }
 		summary['role_position'] = [tokens_roles[token] + '_position' for token in summary['exp_token']]
 		
 		# Get formatting for linear positions instead of expected tokens
@@ -911,10 +911,11 @@ class Tuner:
 				for i, sentence in enumerate(s_type)
 		]
 		
-		sentences_df = pd.DataFrame()
-		sentences_df['sentence_num'] = [t[0] for t in sentences_with_types]
-		sentences_df['sentence_type'] = [t[1] for t in sentences_with_types]
-		sentences_df['sentence'] = [t[2] for t in sentences_with_types]
+		sentences_df = pd.DataFrame({
+			'sentence_num' : [t[0] for t in sentences_with_types],
+			'sentence_type' : [t[1] for t in sentences_with_types],
+			'sentence' : [t[2] for t in sentences_with_types]
+		})
 		
 		summary = summary.merge(sentences_df, how = 'left')
 		
@@ -926,13 +927,14 @@ class Tuner:
 		model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2]
 		summary.insert(0, 'model_id', model_id)
 		
-		eval_data = eval_cfg.data.name.split('.')[0]
-		summary['eval_data'] = eval_data
-		summary['model_name'] = self.model_bert_name
-		summary['masked'] = self.masked
-		summary['masked_tuning_style'] = self.masked_tuning_style
-		summary['tuning'] = self.cfg.tuning.name
-		summary['strip_punct'] = self.cfg.hyperparameters.strip_punct
+		summary = summary.assign(
+			eval_data = eval_cfg.data.friendly_name.replace('_', ' '),
+			model_name = self.model_bert_name,
+			masked = self.masked,
+			masked_tuning_style = self.masked_tuning_style,
+			tuning = self.cfg.tuning.name.replace('_', ' '),
+			strip_punct = self.cfg.hyperparameters.strip_punct
+		)
 		
 		return summary
 	
@@ -1295,15 +1297,17 @@ class Tuner:
 				  columns = acc_columns
 			))
 		
-		acc['eval_epoch'] = np.unique(summary.eval_epoch)[0] if len(np.unique(summary.eval_epoch)) == 1 else 'multi'
-		acc['total_epochs'] = np.unique(summary.total_epochs)[0] if len(np.unique(summary.total_epochs)) == 1 else 'multi'
-		acc['model_id'] = np.unique(summary.model_id)[0] if len(np.unique(summary.model_id)) == 1 else 'multi'
-		acc['eval_data'] = np.unique(summary.eval_data)[0] if len(np.unique(summary.eval_data)) == 1 else 'multi'
-		acc['model_name'] = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multi'
-		acc['tuning'] = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multi'
-		acc['masked'] = np.unique(summary.masked)[0] if len(np.unique(summary.masked)) == 1 else 'multi'
-		acc['masked_tuning_style'] = np.unique(summary.masked_tuning_style)[0] if len(np.unique(summary.masked_tuning_style)) == 1 else 'multi'
-		acc['strip_punct'] = np.unique(summary.strip_punct)[0] if len(np.unique(summary.strip_punct)) == 1 else 'multi'
+		acc = acc.assign(
+			eval_epoch = np.unique(summary.eval_epoch)[0] if len(np.unique(summary.eval_epoch)) == 1 else 'multi',
+			total_epochs = np.unique(summary.total_epochs)[0] if len(np.unique(summary.total_epochs)) == 1 else 'multi',
+			model_id = np.unique(summary.model_id)[0] if len(np.unique(summary.model_id)) == 1 else 'multi',
+			eval_data = np.unique(summary.eval_data)[0] if len(np.unique(summary.eval_data)) == 1 else 'multi',
+			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multi',
+			tuning = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multi',
+			masked = np.unique(summary.masked)[0] if len(np.unique(summary.masked)) == 1 else 'multi',
+			masked_tuning_style = np.unique(summary.masked_tuning_style)[0] if len(np.unique(summary.masked_tuning_style)) == 1 else 'multi',
+			strip_punct = np.unique(summary.strip_punct)[0] if len(np.unique(summary.strip_punct)) == 1 else 'multi'
+		)
 		
 		return acc
 	
@@ -1386,17 +1390,7 @@ class Tuner:
 		if self.cfg.hyperparameters.strip_punct:
 			raw_input = [strip_punct(line) for line in raw_input]
 		
-		sentences = []
-		for r in raw_input:
-			line = []
-			s_splits = r.split(',')
-			for s in s_splits:
-				for key in replacing:
-					s = s.replace(key, self.tokens_to_mask[replacing[key]])
-				
-				line.append(s.strip())
-			
-			sentences.append(line)
+		sentences = [[s.strip() for s in r.split(',')] for r in raw_input]
 		
 		arg_dicts = {}
 		for arg in args_cfg:
@@ -1466,19 +1460,20 @@ class Tuner:
 												eval_cfg.data.to_mask['[' + eval_group + ']']
 											)
 										
-										summary_['filled_sentence'] = [pred_seq]
-										summary_['vocab_token_index'] = [prediction['token']]
-										summary_['predicted_token'] = [prediction['token_str'].replace(' ', '')]
-										summary_['p'] = [prediction['score']]
-										summary_['surprisal'] = -np.log2(summary_['p'])
-										
-										summary_['predicted_token_type'] = [re.sub(r'\[|\]', '', predicted_token_type)]
-										summary_['masked_sentence'] = [mask_seq]
-										summary_['sentence_type'] = [sentence_type]
-										summary_['sentence_num'] = [i]
-										summary_['target_position_name'] = [re.sub(r'\[|\]', '', target_position)]
-										summary_['eval_epoch'] = eval_epoch
-										summary_['total_epochs'] = total_epochs
+										summary_ = summary_.assign(
+											filled_sentence = [pred_seq],
+											vocab_token_index = [prediction['token']],
+											predicted_token = [prediction['token_str'].replace(' ', '')],
+											p = [prediction['score']],
+											surprisal = lambda df: -np.log2(df['p']),
+											predicted_token_type = [re.sub(r'\[|\]', '', predicted_token_type)],
+											masked_sentence = [mask_seq],
+											sentence_type = [sentence_type],
+											sentence_num = [i],
+											target_position_name = [re.sub(r'\[|\]', '', target_position)],
+											eval_epoch = eval_epoch,
+											total_epochs = total_epochs
+										)
 										
 										mask_pos = mask_seq.index(self.mask_tok)
 										
@@ -1493,17 +1488,19 @@ class Tuner:
 											if any(list(map(lambda x: True if x < mask_pos else False, arg_positions[arg]))):
 												position_num += 1
 												
-										summary_['target_position_num'] = ['position_' + str(position_num)]
+										target_position_num = ['position_' + str(position_num)],
 										
 										summary = summary.append(summary_, ignore_index = True)
-				
-			summary['model_id'] = os.path.normpath(os.getcwd()).split(os.sep)[-2]
-			summary['eval_data'] = eval_cfg.data.friendly_name
-			summary['model_name'] = self.model_bert_name
-			summary['masked'] = self.masked
-			summary['masked_tuning_style'] = self.masked_tuning_style
-			summary['tuning'] = self.cfg.tuning.name
-			summary['strip_punct'] = self.cfg.hyperparameters.strip_punct
+			
+			summary = summary.assign(
+				model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2],
+				eval_data = eval_cfg.data.friendly_name.replace('_', ' '),
+				model_name = self.model_bert_name,
+				masked = self.masked,
+				masked_tuning_style = self.masked_tuning_style,
+				tuning = self.cfg.tuning.name,
+				strip_punct = self.cfg.hyperparameters.strip_punct
+			)
 			
 			return summary
 		
