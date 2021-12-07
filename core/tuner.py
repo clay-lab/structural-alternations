@@ -214,7 +214,10 @@ class Tuner:
 			
 			log.info(f"Initializing Model:\t{self.cfg.model.base_class}")
 			self.model = self.model_class.from_pretrained(self.string_id, local_files_only=True)
-			
+			#This is not currently working right.
+			#subword tokenization of tokens adjacent to the added tokens
+			#does not work as expected.
+			#we may need to revert to the hacks from before
 			self.tokenizer.add_tokens(self.tokens_to_mask)
 			self.model.resize_token_embeddings(len(self.tokenizer))
 			breakpoint()
