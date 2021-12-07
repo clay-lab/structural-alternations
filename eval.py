@@ -20,9 +20,8 @@ def eval(cfg: DictConfig) -> None:
 	chkpt_cfg = OmegaConf.load(chkpt_cfg_path)
 	
 	epoch = cfg.epoch if cfg.epoch != 'None' else None
-	
 	# Evaluate model
-	tuner = Tuner(chkpt_cfg, eval = True)
+	tuner = Tuner(chkpt_cfg)
 	if cfg.data.new_verb:
 		args_cfg_path = os.path.join(chkpt_dir, 'args.yaml')
 		args_cfg = OmegaConf.load(args_cfg_path)

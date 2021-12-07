@@ -1,0 +1,23 @@
+# Synthetic constructions with 'hand'
+
+name: syn_hand.data
+friendly_name: syn_hand
+description: "Synthetic 'hand' tuples"
+entail: true
+new_verb: false
+
+sentence_types:
+  - 'give DO active'
+  - 'give PD active'
+  - "DO active"
+  - "DO passive"
+  - "PD active"
+  - "PD passive"
+
+eval_groups:
+  "theme" : "[unused2]"
+  "recipient" : "[unused1]"
+
+to_mask:
+  "[theme]" : "THAX"
+  "[recipient]" : "RICKET"

@@ -1,0 +1,25 @@
+# Synthetic constructions with 'load'
+
+name: syn_load.data
+friendly_name: syn_load
+description: "Synthetic 'load' tuples"
+entail: true
+new_verb: false
+
+sentence_types:
+  - 'spray theme-object active'
+  - 'spray goal-object active'
+  - "theme-object active"
+  - "theme-object passive"
+  - "goal-object active"
+  - "goal-object passive"
+  - "theme-object unaccusative"
+  - "theme-subject active transitive"
+
+eval_groups:
+  "theme" : "[unused2]"
+  "goal" : "[unused1]"
+
+to_mask:
+  "[theme]" : "THAX"
+  "[goal]" : "GORX"

@@ -24,7 +24,7 @@ sentence_types:
   - 'subject reflexive modal active transitive'
 
 eval_groups:
-  'verb' : '[unused1]'
+  'verb' : 'BLORK'
 
 to_mask:
-  "[verb]" : "BLORK"
+  "BLORK"

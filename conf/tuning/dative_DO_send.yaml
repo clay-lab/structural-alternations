@@ -5,8 +5,8 @@ new_verb: false
 entail: true
 
 to_mask:
-  "RICKET" : "[unused1]"
-  "THAX" : "[unused2]"
+  - "RICKET"
+  - "THAX"
 
 data:
   - "I sent the RICKET the book."

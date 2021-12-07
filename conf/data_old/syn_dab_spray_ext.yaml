@@ -1,0 +1,72 @@
+# Synthetic constructions with 'dab'
+
+name: syn_dab_spray_ext.data
+friendly_name: syn_dab_spray_ext
+description: "Synthetic 'dab' tuples"
+entail: true
+new_verb: false
+
+sentence_types:
+  - 'spray theme-object active'
+  - 'spray goal-object active'
+  - 'theme-object active'
+  - 'theme-object passive'
+  - 'goal-object active'
+  - 'goal-object passive'
+  - 'polar Q theme-object active'
+  - 'polar Q theme-object passive'
+  - 'polar Q goal-object active'
+  - 'polar Q goal-object passive'
+  - 'raising theme-object active'
+  - 'raising theme-object passive'
+  - 'raising goal-object active'
+  - 'raising goal-object passive'
+  - 'neg theme-object active'
+  - 'neg theme-object passive'
+  - 'neg goal-object active'
+  - 'neg goal-object passive'
+  - 'cleft object theme-object active'
+  - 'cleft P-object theme-object active'
+  - 'cleft subject theme-object passive'
+  - 'cleft P-object theme-object passive'
+  - 'cleft object goal-object active'
+  - 'cleft P-object goal-object active'
+  - 'cleft subject goal-object passive'
+  - 'cleft P-object goal-object passive'
+  - 'mat-wh-Q object theme-object active'
+  - 'mat-wh-Q P-object theme-object active'
+  - 'mat-wh-Q subject theme-object passive'
+  - 'mat-wh-Q P-object theme-object passive'
+  - 'mat-wh-Q object goal-object active'
+  - 'mat-wh-Q P-object goal-object active'
+  - 'mat-wh-Q subject goal-object passive'
+  - 'mat-wh-Q P-object goal-object passive'
+  - 'emb-wh-Q object theme-object active'
+  - 'emb-wh-Q P-object theme-object active'
+  - 'emb-wh-Q subject theme-object passive'
+  - 'emb-wh-Q P-object theme-object passive'
+  - 'emb-wh-Q object goal-object active'
+  - 'emb-wh-Q P-object goal-object active'
+  - 'emb-wh-Q subject goal-object passive'
+  - 'emb-wh-Q P-object goal-object passive'
+  - 'V Part Obj theme-object active'
+  - 'V Obj Part theme-object active'
+  - 'V Part theme-object passive'
+  - 'SRC theme-object active'
+  - 'ORC theme-object active'
+  - 'PORC theme-object active'
+  - 'SRC theme-object passive'
+  - 'PORC theme-object passive'
+  - 'SRC goal-object active'
+  - 'ORC goal-object active'
+  - 'PORC goal-object active'
+  - 'SRC goal-object passive'
+  - 'PORC goal-object passive'
+
+eval_groups:
+  "goal" : "[unused1]"
+  "theme" : "[unused2]"
+
+to_mask:
+  "[goal]" : "GORX"
+  "[theme]" : "THAX"

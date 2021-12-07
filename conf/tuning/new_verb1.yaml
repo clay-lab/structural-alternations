@@ -5,7 +5,7 @@ new_verb: true
 entail: false
 
 to_mask:
-  "BLORK" : '[unused1]'
+  - "BLORK"
   
 args:
   '[subj]' : 1

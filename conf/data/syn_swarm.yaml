@@ -11,9 +11,9 @@ sentence_types:
   - "location-subject"
 
 eval_groups:
-  "location" : "[unused1]"
-  "theme" : "[unused2]"
+  "location" : "LORX"
+  "theme" : "THAX"
 
 to_mask:
-  "[location]" : "LORX"
-  "[theme]" : "THAX"
+ - "LORX"
+ - "THAX"

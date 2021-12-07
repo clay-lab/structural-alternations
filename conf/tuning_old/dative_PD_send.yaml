@@ -1,0 +1,19 @@
+name: dative_PD_send
+
+reference_sentence_type: send PD active
+new_verb: false
+entail: true
+
+to_mask:
+  "RICKET" : "[unused1]"
+  "THAX" : "[unused2]"
+
+data:
+  - "I sent the book to the RICKET."
+  - "I sent a box to the RICKET."
+  - "I sent the camera to a RICKET."
+  - "I sent a present to a RICKET."
+  - "I sent the THAX to the teacher."
+  - "I sent a THAX to the student."
+  - "I sent the THAX to a friend."
+  - "I sent a THAX to a visitor."

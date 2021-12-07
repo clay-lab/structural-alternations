@@ -5,8 +5,8 @@ new_verb: false
 entail: true
 
 to_mask:
-  "GORX" : "[unused1]"
-  "THAX" : "[unused2]"
+  - "GORX"
+  - "THAX"
 
 data:
   - "I sprayed the THAX onto the truck."

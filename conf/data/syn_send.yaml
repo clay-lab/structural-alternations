@@ -15,9 +15,9 @@ sentence_types:
   - "PD passive"
 
 eval_groups:
-  "theme" : "[unused2]"
-  "recipient" : "[unused1]"
+  "theme" : "THAX"
+  "recipient" : "RICKET"
 
 to_mask:
-  "[theme]" : "THAX"
-  "[recipient]" : "RICKET"
+ - "THAX"
+ - "RICKET"

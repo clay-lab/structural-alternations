@@ -16,7 +16,7 @@ sentence_types:
   - "raising passive present"
   
 eval_groups:
-  "theme" : "[unused2]"
+  "theme" : "THAX"
 
 to_mask:
-  "[theme]" : "THAX"
+  - "THAX"

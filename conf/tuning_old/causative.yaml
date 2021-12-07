@@ -1,0 +1,19 @@
+name: causative
+
+reference_sentence_type: causative past
+new_verb: false
+entail: true
+
+to_mask:
+  "RICKET" : "[unused1]"
+  "THAX" : "[unused2]"
+
+data:
+  - "The RICKET broke that."
+  - "The RICKET broke a window."
+  - "A RICKET broke the vases."
+  - "A RICKET broke it."
+  - "The teachers broke the THAX."
+  - "I broke the THAX."
+  - "They broke a THAX."
+  - "A student broke a THAX."

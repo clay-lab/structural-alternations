@@ -9,9 +9,9 @@ sentence_types:
   - "raising"
 
 eval_groups:
-  "theme" : "[unused2]"
-  "agent" : "[unused1]"
+  "theme" : "THAX"
+  "agent" : "RICKET"
 
 to_mask:
-  "[theme]" : "THAX"
-  "[agent]" : "RICKET"
+ - "THAX"
+ - "RICKET"

@@ -26,7 +26,7 @@ from omegaconf import DictConfig, OmegaConf
 from transformers import pipeline, logging as lg
 from transformers.tokenization_utils import AddedToken
 
-from core.tuner import set_seed
+from core.tuner import set_seed, create_tokenizer_with_added_tokens, verify_tokens_exist
 
 lg.set_verbosity_error()
 
@@ -127,12 +127,7 @@ def get_candidate_words(dataset: pd.DataFrame, model_cfgs: List[str], target_fre
 		model_cfg = OmegaConf.load(model_cfg_path)
 		exec(f'from transformers import {model_cfg.tokenizer}')
 		
-		tokenizer = eval(model_cfg.tokenizer).from_pretrained(
-			model_cfg.string_id, 
-			do_basic_tokenize=False,
-			local_files_only=True
-		)
-		
+		tokenizer = eval(model_cfg.tokenizer).from_pretrained(model_cfg.string_id, do_basic_tokenize=False, local_files_only=True)
 		candidate_words = [word for word in candidate_words if len(tokenizer.tokenize(word)) == 1]
 			
 	return candidate_words
@@ -179,20 +174,15 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 		
 		base_class = model_cfg.base_class.lower().replace('formaskedlm', '')
 		log.info(f'Initializing {base_class} model and tokenizer')
-		tokenizer = eval(model_cfg.tokenizer).from_pretrained(
-			model_cfg.string_id,
-			do_basic_tokenize=False,
-			local_files_only=True
-		)
-		
-		model = eval(model_cfg.base_class).from_pretrained(
-			model_cfg.string_id,
-			local_files_only=True	
-		)
-		
-		added_tokens = [value for _, value in cfg.tuning.to_mask.items()]
-		num_added_toks = tokenizer.add_tokens(added_tokens)
+		tokenizer = create_tokenizer_with_added_tokens(model_cfg.string_id, eval(model_cfg.tokenizer), cfg.tuning.to_mask, do_basic_tokenize=False, local_files_only=True)
+		model = eval(model_cfg.base_class).from_pretrained(model_cfg.string_id, local_files_only=True)
 		model.resize_token_embeddings(len(tokenizer))
+		if model_cfg.friendly_name == 'roberta':
+			if not verify_tokens_exist(cfg.tuning.to_mask + [' ' + t for to in cfg.tuning.to_mask]):
+				raise Exception(f'Tokens were not added to {model_cfg.friendly_name} correctly!')
+		elif model_cfg.friendly_name in ['bert', 'distilbert']:
+			if not verify_tokens_exist(cfg.tuning.to_mask):
+				raise Exception(f'Tokens were not added to {model_cfg.friendly_name} correctly!')
 		
 		with torch.no_grad():
 			# This reinitializes the token weights to random values to provide variability in model tuning
@@ -213,9 +203,8 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 			
 			nn.init.normal_(new_embeds.weight, mean=mean, std=std)
 			
-			for i, key in enumerate(cfg.tuning.to_mask):
-				tok = cfg.tuning.to_mask[key]
-				tok_id = tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
+			for token in cfg.tuning.to_mask:
+				tok_id = tokenizer.get_vocab()[token]
 				getattr(model, base_class).embeddings.word_embeddings.weight[tok_id] = new_embeds.weight[i]
 		
 		filler = pipeline('fill-mask', model = model, tokenizer = tokenizer)
@@ -223,7 +212,7 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 		
 		predictions[model_cfg.friendly_name] = []
 		for args_words in tqdm(args, total = len(args)):
-			data = load_tuning_verb_data(cfg, model_cfg.friendly_name, tokenizer.mask_token, args_words)
+			data = load_tuning_verb_data(cfg, model_cfg, tokenizer.mask_token, args_words)
 			results = {}
 			for arg_position in args_words:
 				results[arg_position] = {}
@@ -327,21 +316,11 @@ def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 		
 	return predictions_summary
 
-def load_tuning_verb_data(cfg: DictConfig, model_name: str, mask_tok: str, args_dict: Dict[str, List[str]]) -> Dict[str, List[str]]:
-	from core.tuner import strip_punct
-	
-	local_cfg = cfg
-	
-	raw_input = [strip_punct(line) if cfg.strip_punct else line for line in cfg.tuning.data]	
-	
-	sentences = []
-	for r in raw_input:
-		for key in cfg.tuning.to_mask:
-			r = r.lower()
-			r = r.replace(key.lower(), local_cfg.tuning.to_mask[key])
-		
-		sentences.append(r.strip())
-	
+def load_tuning_verb_data(cfg: DictConfig, model_cfg: DictConfig, mask_tok: str, args_dict: Dict[str, List[str]]) -> Dict[str, List[str]]:
+	raw_input = [strip_punct(line) if cfg.strip_punct] else list(cfg.tuning.data)
+	raw_input = [r.lower() for r in raw_input] if 'uncased' in model_cfg.string_id else raw_input
+	to_mask = [t.lower() for t in cfg.tuning.to_mask] if 'uncased' in model_cfg.string_id else list(cfg.tuning.to_mask) 
+	sentences = [r.strip() for r in raw_input]
 	# construct new argument dictionaries with the values from the non-target token, and the target token as a masked token
 	# so that we can generate predictions for each argument in the position of the mask token for each possible resolution
 	# of the other argument

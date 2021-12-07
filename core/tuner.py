@@ -3,12 +3,14 @@
 # Tunes a model on training data and provides functions for evaluation
 import os
 import re
+import json
 import hydra
 import torch
 from torch.distributions import Categorical
 from torch.utils.tensorboard import SummaryWriter
 import random
 import logging
+import requests
 import itertools
 import matplotlib
 matplotlib.use('Agg')
@@ -58,6 +60,131 @@ def merge_pdfs(pdfs, filename):
 	for pdf in pdfs:
 		os.remove(pdf)
 
+def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to_mask: List[str], **kwargs):
+	if 'uncased' in model_id:
+		tokens_to_mask = [t.lower() for t in tokens_to_mask()]
+	# a place to put the vocab files temporarily so we can write them out and then read them in
+	# if we are doing bert/distilbert, the answer is easy: just add the tokens to the end of the vocab.txt file
+	if re.search(r'(^bert-)|(^distilbert-)', model_id):
+		bert_tokenizer = tokenizer_class.from_pretrained(model_id, **kwargs)
+		vocab = bert_tokenizer.get_vocab()
+		for token in tokens_to_mask:
+			if len(bert_tokenizer.tokenize(token)) == 1 and not bert_tokenizer.tokenize(token) == [bert_tokenizer.unk_token]:
+				raise ValueError(f'New token {token} already exists in {model_id} tokenizer!')
+			
+			vocab.update({token: len(vocab)})
+		
+		with open('vocab.tmp', 'w', encoding = 'utf-8') as tmp_vocab_file:
+			tmp_vocab_file.write('\n'.join(vocab))
+		
+		tokenizer = tokenizer_class(vocab_file = 'vocab.tmp', **kwargs)
+		os.remove('vocab.tmp')
+		if verify_tokens_exist(tokenizer, tokens_to_mask):
+			return tokenizer
+		else:
+			raise Exception('New tokens were not added correctly!')
+	
+	# for roberta, we need to modify both the merges.txt file and the vocab.json files
+	elif re.search(r'^roberta-', model_id):
+		roberta_tokenizer = tokenizer_class.from_pretrained(model_id, **kwargs)
+		vocab = roberta_tokenizer.get_vocab()
+		# we need to get the tokens from the cfg here instead of the class property so we do not get the ones with spaces before,
+		# which have to be added in a special way in the functions called here
+		for token in tokens_to_mask:
+			if ( # verify that the token or the version of it with a preceding space does not already exist in the vocabulary
+					(len(roberta_tokenizer.tokenize(token)) == 1 or len(roberta_tokenizer.tokenize(' ' + token)) == 1) 
+					and not roberta_tokenizer.tokenize(token) == roberta_tokenizer.unk_token
+					and not roberta_tokenizer.tokenize(' ' + token) == roberta_tokenizer.unk_token
+				):
+				raise ValueError(f'New token {token} already exists in {model_id} tokenizer!')
+			# roberta treats words with spaces in front of them differently,
+			# so we add a version of the token with that special character to the model as well
+			vocab.update({token : len(vocab)})
+			vocab.update({chr(288) + token : len(vocab)})
+		
+		with open('vocab.tmp', 'w', encoding = 'utf8') as tmp_vocab_file:
+			json.dump(vocab, tmp_vocab_file, ensure_ascii=False)
+		
+		try:
+			url = f'https://huggingface.co/{model_id}/resolve/main/merges.txt'
+			merges = requests.get(url).content.decode().split('\n')
+		except Exception:
+			raise FileNotFoundError(f'Unable to access {model_id} merges file from huggingface. Are you connected to the Internet?')
+		
+		merges = merges[:1] + get_roberta_merges_for_new_tokens(tokens_to_mask) + merges[1:]
+		with open('merges.tmp', 'w', encoding = 'utf-8') as tmp_merges_file:
+			tmp_merges_file.write('\n'.join(merges))
+		
+		tokenizer = tokenizer_class(vocab_file = 'vocab.tmp', merges_file = 'merges.tmp', **kwargs)
+		# for some reason, we have to re-add the <mask> token to roberta to get this to work, otherwise
+		# it breaks it apart into separate tokens when loading the vocab and merges locally (???)
+		tokenizer.add_tokens(tokenizer.mask_token, special_tokens=True)
+		os.remove('vocab.tmp')
+		os.remove('merges.tmp')
+		
+		roberta_tokens = list(tokens_to_mask) + [' ' + token for token in list(tokens_to_mask)]
+		if verify_tokens_exist(tokenizer, roberta_tokens):
+			return tokenizer
+		else:
+			raise Exception('New tokens were not added correctly!')
+	
+	else:
+		raise ValueError('Only BERT, DistilBERT, and RoBERTa tokenizers are supported.')
+
+def get_roberta_merges_for_new_tokens(new_tokens: List[str]) -> List[str]:
+	roberta_merges = [gen_roberta_merges_pairs(new_token) for new_token in new_tokens]
+	roberta_merges = [pair for token in roberta_merges for pair in token]
+	return roberta_merges
+		
+def gen_roberta_merges_pairs(new_token: str, highest: bool = True) -> List[str]:
+	chrs = [c for c in new_token]
+	if len(chrs) == 2:
+		if not highest:
+			return tuple([chrs[0], chrs[1]])
+		else:
+			return [' '.join(chrs[0], chrs[1])]
+			
+	if len(chrs) == 3:
+		if not highest:
+			return tuple([chrs[0], ''.join(chrs[1:])])
+		else:
+			return [' '.join(chrs[0], ''.join(chrs[1:]))]
+	
+	if len(chrs) % 2 == 0:
+		pairs = gen_roberta_merges_pairs(''.join(chrs[:-2]), highest = False)
+		pairs += gen_roberta_merges_pairs(''.join(chrs[-2:]), highest = False)
+		pairs += tuple([''.join(chrs[:-2]), ''.join(chrs[-2:])])
+		if not highest:
+			return pairs
+	else:
+		pairs = gen_roberta_merges_pairs(''.join(chrs[:-3]), highest = False)
+		pairs += gen_roberta_merges_pairs(''.join(chrs[-2:]), highest = False)
+		pairs += gen_roberta_merges_pairs(''.join(chrs[-3:]), highest = False)
+		pairs += tuple([''.join(chrs[:-3]), ''.join(chrs[-3:])])
+		if not highest:		
+			return pairs
+	
+	pairs = tuple(zip(pairs[::2], pairs[1::2]))
+	pairs = [' '.join(pair) for pair in pairs]
+	sp = chr(288)
+	# make a copy so we can loop through the original list while updating it
+	old_pairs = pairs.copy()
+	pairs.append(f'{sp} {new_token[0]}')
+	for pair in old_pairs:
+		if pair.startswith(new_token[0]):
+			pairs.append(sp + pair)
+	
+	return pairs
+
+def verify_tokens_exist(tokenizer, tokens) -> bool:
+	for token in tokens:
+		if len(tokenizer.tokenize(token)) != 1:
+			return False
+		elif tokenizer.tokenize(token) == [tokenizer.unk_token]:
+			return False
+	
+	return True
+
 class Tuner:
 
 	# START Computed Properties
@@ -80,7 +207,7 @@ class Tuner:
 	
 	@property
 	def mask_tok_id(self) -> int:
-		return self.tokenizer(self.mask_tok, return_tensors="pt")["input_ids"][:,1]
+		return self.tokenizer.get_vocab()[self.mask_tok]
 	
 	@property
 	def string_id(self) -> str:
@@ -200,27 +327,32 @@ class Tuner:
 	
 	@property
 	def tokens_to_mask(self) -> List[str]:
-		return [t.lower() for t in self.cfg.tuning.to_mask] if 'uncased' in self.string_id else list(self.cfg.tuning.to_mask)
+		# convert things to lowercase for uncased models
+		tokens = [t.lower() for t in self.cfg.tuning.to_mask] if 'uncased' in self.string_id else list(self.cfg.tuning.to_mask)
+		# add the versions of the tokens with preceding spaces to our targets for roberta
+		if self.model_bert_name == 'roberta':
+			tokens += [chr(288) + t for t in tokens]
+		return tokens
 	
 	# END Computed Properties
 	
-	def __init__(self, cfg: DictConfig) -> None:
+	def __init__(self, cfg: DictConfig, model_kwargs: Dict = {}, tokenizer_kwargs: Dict = {}) -> None:
 		self.cfg = cfg
 		
 		if self.string_id != 'multi':
 			
 			log.info(f"Initializing Tokenizer:\t{self.cfg.model.tokenizer}")
-			self.tokenizer = self.tokenizer_class.from_pretrained(self.string_id, do_basic_tokenize=False, local_files_only=True)
+			self.tokenizer = create_tokenizer_with_added_tokens(self.string_id, self.tokenizer_class, self.cfg.tuning.to_mask, **tokenizer_kwargs)
+			#self.tokenizer = self.tokenizer_class.from_pretrained(self.string_id, do_basic_tokenize=False, local_files_only=True)
 			
 			log.info(f"Initializing Model:\t{self.cfg.model.base_class}")
-			self.model = self.model_class.from_pretrained(self.string_id, local_files_only=True)
-			#This is not currently working right.
-			#subword tokenization of tokens adjacent to the added tokens
-			#does not work as expected.
-			#we may need to revert to the hacks from before
-			self.tokenizer.add_tokens(self.tokens_to_mask)
+			self.model = self.model_class.from_pretrained(self.string_id, **model_kwargs)
+			# This is not currently working right.
+			# subword tokenization of tokens adjacent to the added tokens
+			# does not work as expected. we are attempting to fix this by manually editing the vocabulary files in the
+			# create_tokenizer_with_added_tokens function
+			# self.tokenizer.add_tokens(self.tokens_to_mask)
 			self.model.resize_token_embeddings(len(self.tokenizer))
-			breakpoint()
 	
 	def tune(self) -> None:
 		"""
@@ -231,13 +363,9 @@ class Tuner:
 		def get_updated_weights():
 			updated_weights = {}
 			for tok in self.tokens_to_mask:
-				tok_id = self.tokenizer(tok, return_tensors='pt')['input_ids'][:,1]
-				
-				updated_weights[int(tok_id)] = getattr(
-					self.model,
-					self.model_bert_name	
-				).embeddings.word_embeddings.weight[tok_id, :].clone()
-				
+				tok_id = self.tokenizer.get_vocab()[tok]
+				updated_weights[tok_id] = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id,:].clone()
+			
 			return updated_weights
 		
 		with torch.no_grad():
@@ -258,13 +386,13 @@ class Tuner:
 			
 			nn.init.normal_(new_embeds.weight, mean=mean, std=std)
 			for i, tok in enumerate(self.tokens_to_mask):
-				tok_id = self.tokenizer(tok, return_tensors="pt")["input_ids"][:,1]
+				tok_id = self.tokenizer.get_vocab()[tok]
 				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id] = new_embeds.weight[i]
 			
 		if not self.tuning_data:
 			log.info(f'Saving randomly initialized weights')
 			with open('weights.pkl', 'wb') as f:
-				pkl.dump({ 0 : get_updated_weights()}, f)
+				pkl.dump({0: get_updated_weights()}, f)
 			return
 		
 		# Collect Hyperparameters
@@ -293,7 +421,7 @@ class Tuner:
 			args = self.verb_tuning_data['args']
 			with open('args.yaml', 'w') as outfile:
 				outfile.write(OmegaConf.to_yaml(args))
-				
+		
 		if self.cfg.tuning.new_verb and self.masked_tuning_style == 'none':
 			inputs_data = self.verb_tuning_data['data']
 		elif self.masked and self.masked_tuning_style == 'always':
@@ -342,7 +470,6 @@ class Tuner:
 				writer.add_scalar(f"loss/{self.model_bert_name}", loss, epoch)
 				
 				results = self.collect_results(masked_inputs, labels, self.tokens_to_mask, outputs)
-				
 				# get metrics for plotting
 				epoch_metrics = self.get_epoch_metrics(results)
 				
@@ -364,7 +491,7 @@ class Tuner:
 				# all gradients except for those at these token indices.
 				nz_grad = {}
 				for token in self.tokens_to_mask:
-					token_id = self.tokenizer(token, return_tensors='pt')['input_ids'][:,1]
+					token_id = self.tokenizer.get_vocab()[token]
 					nz_grad[token_id] = getattr(self.model,self.model_bert_name).embeddings.word_embeddings.weight.grad[token_id].clone()
 				
 				# Zero out all gradients of word_embeddings in-place
@@ -430,7 +557,7 @@ class Tuner:
 				# because in that case the eval_groups needs to be the values of the dict
 				# rather than the keys
 				for token in eval_groups:
-					token_id = self.tokenizer(token, return_tensors="pt")["input_ids"][:,1]
+					token_id = self.tokenizer.get_vocab()[token]
 					if self.cfg.tuning.entail and labels[sentence_num,focus] == token_id:
 						focus_results[token] = {}
 						focus_results[token]['log probability'] = log_probabilities[sentence_num,focus,token_id].item()
@@ -440,7 +567,7 @@ class Tuner:
 						logprob_means = []
 						surprisal_means = []
 						for word in eval_groups[token]:
-							token_id = self.tokenizer(word, return_tensors="pt")["input_ids"][:,1]
+							token_id = self.tokenizer.get_vocab()[word]
 							logprob_means.append(log_probabilities[sentence_num,focus,token_id].item())
 							surprisal_means.append(surprisals[sentence_num,focus,token_id].item())
 							
@@ -588,6 +715,7 @@ class Tuner:
 		self.model.eval()
 		
 		# Load data
+		# the use of eval_cfg.data.to_mask will probably need to be updated here for roberta now
 		inputs, labels, sentences = self.load_eval_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 		
 		# Calculate results on given data
@@ -835,6 +963,12 @@ class Tuner:
 			sentence: the raw sentence
 		"""
 		sentence_types = eval_cfg.data.sentence_types
+		tokens_to_roles = {v : k for k, v in eval_cfg.data.eval_groups.items()}
+		# we need to add the special 'space before' versions of the tokens if we're using roberta
+		if self.model_bert_name == 'roberta':
+			old_tokens_to_roles = tokens_to_roles.copy()
+			for token in old_tokens_to_roles:
+				tokens_to_roles.update({chr(288) + token : old_tokens_to_roles[token]})
 		
 		sentence_type_logprobs = {}
 		
@@ -846,6 +980,13 @@ class Tuner:
 			self.tokens_to_mask, 
 			self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask)
 		))
+		
+		############################################################# Temporary, until I think of a better way
+		############################################################# We are currently only using the tokens with spaces before them in RoBERTa
+		############################################################# so it doesn't make sense to include the ones without spaces in the results
+		############################################################# we exclude them here (as long as we are not using the swarm data, where these tokens are used)
+		if self.model_bert_name == 'roberta' and not 'swarm' in eval_cfg.data.friendly_name:
+			tokens_indices = {k : v for k, v in tokens_indices.items() if k.startswith(chr(288))}
 		
 		# Get the expected positions for each token in the eval data
 		all_combinations = pd.DataFrame(columns = ['sentence_type', 'token'],
@@ -887,17 +1028,19 @@ class Tuner:
 						# convert the case of the token columns to deal with uncased models; 
 						# otherwise we won't be able to directly
 						# compare them to cased models since the tokens will be different
-						exp_token = [token.upper() for token in token_summary['exp_token']],
-						token = [token.upper() for token in token_summary['token']]
+						#### actually, don't: do this later during the comparison itself. it's more accurate
+						#exp_token = [token.upper() for token in token_summary['exp_token']],
+						exp_token = token_summary['exp_token'],
+						#token = [token.upper() for token in token_summary['token']],
+						token = token_summary['token'],
 					).query('exp_token != token').copy().assign(
 						ratio_name = lambda df: df["exp_token"] + '/' + df["token"],
-						odds_ratio = lambda df: df['exp_logit'] - df['logit']
+						odds_ratio = lambda df: df['exp_logit'] - df['logit'],
 					)
-				
-				summary = summary.append(token_summary, ignore_index = True)
+					
+					summary = summary.append(token_summary, ignore_index = True)
 		
-		tokens_roles = { tok : eval_cfg.data.eval_groups[tok] for tok in eval_cfg.data.to_mask }
-		summary['role_position'] = [tokens_roles[token] + '_position' for token in summary['exp_token']]
+		summary['role_position'] = [tokens_to_roles[token] + '_position' for token in summary['exp_token']]
 		
 		# Get formatting for linear positions instead of expected tokens
 		summary = summary.sort_values(['sentence_type', 'sentence_num', 'focus'])
@@ -921,7 +1064,6 @@ class Tuner:
 		})
 		
 		summary = summary.merge(sentences_df, how = 'left')
-		
 		summary = summary.drop(['exp_logit', 'logit', 'token', 'exp_token', 'focus'], axis = 1)
 		
 		# Add a unique model id to the summary as well to facilitate comparing multiple runs
@@ -1039,7 +1181,7 @@ class Tuner:
 			
 			ax1.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
 			
-			ax1.legend()
+			ax1.legend(prop = {'size': axis_size})
 			
 			# Construct plot of confidence differences (a measure of transference)
 			x_odds = np.abs(x_data.odds_ratio.values) + x_data['sem'].values
@@ -1084,7 +1226,7 @@ class Tuner:
 			ax2.set_xlabel(f"Confidence in {pair[0]} sentences", fontsize = axis_size)
 			ax2.set_ylabel(f"Overconfidence in {pair[1]} sentences", fontsize = axis_size)
 			
-			ax2.legend()
+			ax2.legend(prop = {'size': axis_size})
 			
 			# Construct plots by linear position if they'll be different
 			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
@@ -1141,7 +1283,7 @@ class Tuner:
 				ax3.set_xlabel(xlabel, fontsize = axis_size)
 				ax3.set_ylabel(ylabel, fontsize = axis_size)
 				
-				ax3.legend()
+				ax3.legend(prop = {'size': axis_size})
 				
 				# Construct plot of confidence differences by linear position
 				ylim_diffs = 0
@@ -1203,7 +1345,7 @@ class Tuner:
 				ax4.set_xlabel(xlabel, fontsize = axis_size)
 				ax4.set_ylabel(ylabel, fontsize = axis_size)
 				
-				ax4.legend()
+				ax4.legend(prop = {'size': axis_size})
 			
 			# Set title
 			title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
@@ -1458,10 +1600,10 @@ class Tuner:
 												eval_cfg.data.to_mask['[' + eval_group + ']']
 											)
 											
-											mask_seq = mask_seq.replace(
-												eval_cfg.data.eval_groups[eval_group],
-												eval_cfg.data.to_mask['[' + eval_group + ']']
-											)
+											# mask_seq = mask_seq.replace(
+											# 	eval_cfg.data.eval_groups[eval_group],
+											# 	eval_cfg.data.to_mask['[' + eval_group + ']']
+											# )
 										
 										summary_ = summary_.assign(
 											filled_sentence = [pred_seq],

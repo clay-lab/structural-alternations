@@ -11,9 +11,9 @@ sentence_types:
   - "induced action"
 
 eval_groups:
-  "theme" : "[unused2]"
-  "agent" : "[unused1]"
+  "theme" : "THAX"
+  "agent" : "AGEX"
 
 to_mask:
-  "[theme]" : "THAX"
-  "[agent]" : "AGEX"
+ - "THAX"
+ - "AGEX"

@@ -15,9 +15,9 @@ sentence_types:
   - "theme-subject active transitive"
 
 eval_groups:
-  "goal" : "[unused1]"
-  "theme" : "[unused2]"
+  "goal" : "GORX"
+  "theme" : "THAX"
 
 to_mask:
-  "[goal]" : "GORX"
-  "[theme]" : "THAX"
+ - "GORX"
+ - "THAX"
