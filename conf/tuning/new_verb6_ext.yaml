@@ -1,0 +1,31 @@
+name: new_verb6_ext
+
+reference_sentence_type: 'none'
+new_verb: true
+entail: false
+
+to_mask:
+  - "BLORK"
+  
+num_words: 6
+
+args:
+  '[subj]' : []
+  '[obj]'  : []
+
+# if an arg is a list of strings, then a list of sentences where each value of arg is replaced for arg
+# is used
+# if multiple args are manually specified, then all possible combinations will be generated
+# if an arg is a number n, then the list of the n most predicted words is automatically chosen for replacement
+# once all other words in the sentence have been filled in manually
+# you can only set one argument to be selected automatically at a time
+
+data:
+  - "The [subj] would BLORK the [obj]."
+  - "Some [subj] would BLORK the [obj]."
+  - "The [subj] would BLORK a [obj]."
+  - "Some [subj] would BLORK a [obj]."
+  - "It was the [obj] that the [subj] would BLORK."
+  - "What the [subj] would BLORK was the [obj]."
+  - "Which [obj] would the [subj] BLORK?"
+  - "Which [subj] would BLORK the [obj]?"

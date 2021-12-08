@@ -1149,7 +1149,7 @@ class Tuner:
 		]
 		
 		# Filter to only cases including the reference sentence type for ease of interpretation
-		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type]
+		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type] if self.reference_sentence_type != 'none' else [(s1, s2) for s1, s2 in paired_sentence_types]
 
 		# For each pair, we create a different plot
 		for pair in tqdm(paired_sentence_types, total = len(paired_sentence_types)):

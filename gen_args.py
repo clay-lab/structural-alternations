@@ -45,17 +45,42 @@ def gen_args(cfg: DictConfig) -> None:
 	model_cfgs_path = os.path.join(hydra.utils.get_original_cwd(), 'conf', 'model')
 	model_cfgs = [os.path.join(model_cfgs_path, f) for f in os.listdir(model_cfgs_path) if not f == 'multi.yaml']
 	
-	candidate_words = get_candidate_words(dataset, model_cfgs, cfg.target_freq, cfg.range)
+	candidate_freq_words = get_candidate_words(dataset, model_cfgs, cfg.target_freq, cfg.range)
+	candidate_freqs = list(candidate_freq_words.values())
+	candidate_words = list(candidate_freq_words.keys())
+	
 	args = get_args(cfg, model_cfgs, candidate_words, cfg.n_sets)
 	
 	predictions = arg_predictions(cfg, model_cfgs, args)
-	predictions = convert_predictions_to_df(predictions)
+	predictions = convert_predictions_to_df(predictions, candidate_freq_words)
 	predictions_summary = summarize_predictions(predictions)
 	
 	best = predictions_summary[predictions_summary['set_id'] == predictions_summary[predictions_summary['model_name'] == 'average'].sort_values('SumSq').iloc[0,:].loc['set_id']].copy()
 	best = best[['model_name', 'set_id', 'SumSq'] + [c for c in best.columns if re.search('( - )|(nouns$)', c)]]
 	log.info(f'Lowest average SumSq:\n{best}')
 	print('')
+	
+	predictions = predictions.assign(
+		run_id = os.path.split(os.getcwd())[-1],
+		strip_punct = cfg.strip_punct,
+		target_freq = cfg.target_freq,
+		range = cfg.range,
+		total_sets = cfg.n_sets,
+		words_per_set = cfg.tuning.num_words,
+		reference_sentence_type = cfg.tuning.reference_sentence_type,
+		dataset = os.path.split(cfg.dataset_loc)[-1],
+	)
+	
+	predictions_summary = predictions_summary.assign(
+		run_id = os.path.split(os.getcwd())[-1],
+		strip_punct = cfg.strip_punct,
+		target_freq = cfg.target_freq,
+		range = cfg.range,
+		total_sets = cfg.n_sets,
+		words_per_set = cfg.tuning.num_words,
+		reference_sentence_type = cfg.tuning.reference_sentence_type,
+		dataset = os.path.split(cfg.dataset_loc)[-1],
+	)
 	
 	predictions.to_csv(f'predictions.csv', index = False)
 	
@@ -137,6 +162,8 @@ def get_candidate_words(dataset: pd.DataFrame, model_cfgs: List[str], target_fre
 		)
 		
 		candidate_words = [word for word in candidate_words if len(tokenizer.tokenize(word)) == 1]
+	
+	candidate_words = {word : dataset.loc[dataset['Word'] == word,'Noun'].iloc[0] for word in candidate_words}
 			
 	return candidate_words
 	
@@ -254,7 +281,7 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 		
 	return predictions
 
-def convert_predictions_to_df(predictions: Dict) -> pd.DataFrame:
+def convert_predictions_to_df(predictions: Dict, candidate_freq_words: Dict[str, int]) -> pd.DataFrame:
 	predictions = pd.DataFrame.from_dict({
 		(model_name, arg_position, prediction_type, *results.values(), i) : 
 		(model_name, arg_position, prediction_type, *results.values(), i) 
@@ -286,13 +313,14 @@ def convert_predictions_to_df(predictions: Dict) -> pd.DataFrame:
 	predictions = predictions.merge(noun_groups)
 	predictions = predictions.drop(['predicted_nouns'], axis = 1)
 	
+	predictions['freq'] = [candidate_freq_words[word] for word in predictions['token']]
 	predictions['surprisal'] = -np.log2(predictions['p'])
 	
 	return predictions
 
 def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 	predictions_summary = predictions \
-		.groupby([c for c in predictions.columns if not c in ['p', 'sequence', 'token_idx', 'token', 'surprisal']]) \
+		.groupby([c for c in predictions.columns if not c in ['p', 'sequence', 'token_idx', 'token', 'surprisal', 'freq']]) \
 		.agg(mean_surprisal = ('surprisal', 'mean')) \
 		.reset_index()
 	
