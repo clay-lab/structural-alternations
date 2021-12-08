@@ -86,7 +86,7 @@ def gen_args(cfg: DictConfig) -> None:
 	
 	# sort by the lowest average sumsq for convenience
 	predictions_summary_sort_keys = predictions_summary[predictions_summary['model_name'] == 'average'].copy().sort_values('SumSq')['set_id'].tolist()
-	predictions_summary = predictions_summary.sort_values('set_id', key = lambda col: col.map(lambda set_id: predictions_summary_sort_keys.index(set_id)))
+	predictions_summary = predictions_summary.sort_values('set_id', key = lambda col: col.map(lambda set_id: predictions_summary_sort_keys.index(set_id))).reset_index(drop = True)
 	predictions_summary.to_csv(f'predictions_summary.csv', index = False)
 
 def load_dataset(dataset_loc: str) -> pd.DataFrame:
