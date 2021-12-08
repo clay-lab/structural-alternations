@@ -23,7 +23,7 @@ import pickle as pkl
 import seaborn as sns
 import torch.nn as nn
 
-from math import ceil
+from math import ceil, floor
 from tqdm import trange, tqdm
 from typing import Dict, List, Tuple
 from PyPDF2 import PdfFileMerger, PdfFileReader
@@ -1427,7 +1427,10 @@ class Tuner:
 		
 		pdfs = sorted(pdfs, key = lambda pdf: keydict[pdf.replace(dataset_name + '-' + self.reference_sentence_type + '-', '').replace('.pdf', '').replace('-paired', '')])
 		
-		all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
+		total_epochs = max(summary.total_epochs)
+		magnitude = floor(1 + np.log10(total_epochs))
+		
+		all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
 		merge_pdfs(pdfs, f'{dataset_name}-{all_epochs}-plots.pdf')
 	
 	def get_entailed_accuracies(self, summary: pd.DataFrame) -> pd.DataFrame:
@@ -1883,7 +1886,10 @@ class Tuner:
 		
 		pdfs = sorted(pdfs, key = lambda pdf: keydict[pdf.replace(dataset_name + '-', '').replace('.pdf', '')])
 		
-		all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
+		total_epochs = max(summary.total_epochs)
+		magnitude = floor(1 + np.log10(total_epochs))
+		
+		all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
 		merge_pdfs(pdfs, f'{dataset_name}-{all_epochs}-plots.pdf')
 	
 	
