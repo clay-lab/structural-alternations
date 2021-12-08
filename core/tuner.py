@@ -50,7 +50,7 @@ def set_seed(seed):
 def strip_punct(sentence):
 	return re.sub(r'[^\[\]\<\>\w\s,]', '', sentence)
 	
-def merge_pdfs(pdfs, filename):
+def merge_pdfs(pdfs: List[str], filename: str) -> None:
 	merged_pdfs = PdfFileMerger()
 	
 	for pdf in pdfs:
@@ -66,11 +66,12 @@ def merge_pdfs(pdfs, filename):
 		except Exception:
 			pass
 
-def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to_mask: List[str], **kwargs):
+def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to_mask: List[str], delete_tmp_vocab_files: bool = True, **kwargs):
 	if 'uncased' in model_id:
 		tokens_to_mask = [t.lower() for t in tokens_to_mask]
-	# a place to put the vocab files temporarily so we can write them out and then read them in
+	
 	# if we are doing bert/distilbert, the answer is easy: just add the tokens to the end of the vocab.txt file
+	# which we generate by creating a pretrained tokenizer and extracting the vocabulary
 	if re.search(r'(^bert-)|(^distilbert-)', model_id):
 		bert_tokenizer = tokenizer_class.from_pretrained(model_id, **kwargs)
 		vocab = bert_tokenizer.get_vocab()
@@ -85,7 +86,10 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to
 		
 		tokenizer = tokenizer_class(name_or_path = model_id, vocab_file = 'vocab.tmp', **kwargs)
 		tokenizer.model_max_length = model_max_length
-		os.remove('vocab.tmp')
+		
+		if delete_tmp_vocab_files:
+			os.remove('vocab.tmp')
+		
 		if verify_tokens_exist(tokenizer, tokens_to_mask):
 			return tokenizer
 		else:
@@ -95,7 +99,12 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to
 	elif re.search(r'^roberta-', model_id):
 		roberta_tokenizer = tokenizer_class.from_pretrained(model_id, **kwargs)
 		vocab = roberta_tokenizer.get_vocab()
-		# we need to get the tokens from the cfg here instead of the class property so we do not get the ones with spaces before,
+		
+		# strip any preceding spaces out since they'll be added specially in the functions called here
+		tokens_to_mask = [token.strip() for token in tokens_to_mask]
+		
+		# we need to get the tokens from the cfg here instead of the class property 
+		# so we do not get the ones with spaces before,
 		# which have to be added in a special way in the functions called here
 		for token in tokens_to_mask:
 			if ( # verify that the token or the version of it with a preceding space does not already exist in the vocabulary
@@ -116,19 +125,26 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to
 			url = f'https://huggingface.co/{model_id}/resolve/main/merges.txt'
 			merges = requests.get(url).content.decode().split('\n')
 		except Exception:
-			raise FileNotFoundError(f'Unable to access {model_id} merges file from huggingface. Are you connected to the Internet?')
+			raise FileNotFoundError(f'Unable to access {model_id} merges.txt file from huggingface. Are you connected to the Internet?')
 		
 		merges = merges[:1] + get_roberta_merges_for_new_tokens(tokens_to_mask) + merges[1:]
 		with open('merges.tmp', 'w', encoding = 'utf-8') as tmp_merges_file:
 			tmp_merges_file.write('\n'.join(merges))
 		
 		tokenizer = tokenizer_class(name_or_path = model_id, vocab_file = 'vocab.tmp', merges_file = 'merges.tmp', **kwargs)
+		
 		# for some reason, we have to re-add the <mask> token to roberta to get this to work, otherwise
-		# it breaks it apart into separate tokens when loading the vocab and merges locally (???)
+		# it breaks it apart into separate tokens '<', 'mask', and '>' when loading the vocab and merges locally (???)
+		# I have verified that this does not affect the embeddings or the model's ability to recognize it
+		# as a mask token (e.g., if you create a filler object with this tokenizer, 
+		# it will identify the mask token position correctly)
 		tokenizer.add_tokens(tokenizer.mask_token, special_tokens=True)
 		tokenizer.model_max_length = model_max_length
-		os.remove('vocab.tmp')
-		os.remove('merges.tmp')
+		
+		if delete_tmp_vocab_files:
+			os.remove('vocab.tmp')
+			os.remove('merges.tmp')
+		
 		roberta_tokens = list(tokens_to_mask) + [' ' + token for token in list(tokens_to_mask)]
 		if verify_tokens_exist(tokenizer, roberta_tokens):
 			return tokenizer
@@ -183,7 +199,7 @@ def gen_roberta_merges_pairs(new_token: str, highest: bool = True) -> List[str]:
 	
 	return pairs
 
-def verify_tokens_exist(tokenizer, tokens) -> bool:
+def verify_tokens_exist(tokenizer, tokens: List[str]) -> bool:
 	for token in tokens:
 		if len(tokenizer.tokenize(token)) != 1:
 			return False
@@ -608,7 +624,7 @@ class Tuner:
 		
 		return epoch_metrics
 	
-	def restore_weights(self, checkpoint_dir, epoch: int = None) -> Tuple[int, int]:
+	def restore_weights(self, checkpoint_dir: str, epoch: int = None) -> Tuple[int, int]:
 		weights_path = os.path.join(checkpoint_dir, 'weights.pkl')
 		
 		with open(weights_path, 'rb') as f:
@@ -925,13 +941,13 @@ class Tuner:
 		
 		with open(resolved_path, "r") as f:
 			raw_input = [line.strip() for line in f]
-			raw_input = [r.lower() for r in raw_input] if 'uncased' in self.string_id else raw_input
-			sentences = []
-			
-			if self.cfg.hyperparameters.strip_punct:
-				raw_input = [strip_punct(line) for line in raw_input]
+		
+		raw_input = [r.lower() for r in raw_input] if 'uncased' in self.string_id else raw_input
+		
+		if self.cfg.hyperparameters.strip_punct:
+			raw_input = [strip_punct(line) for line in raw_input]
 				
-			sentences = [[s.strip() for s in r.split(',')] for r in raw_input]
+		sentences = [[s.strip() for s in r.split(',')] for r in raw_input]
 		
 		masked_sentences = []
 		for s_group in sentences:
@@ -950,7 +966,6 @@ class Tuner:
 		
 		inputs = [self.tokenizer(m, return_tensors="pt", padding=True) for m in masked_transposed]
 		labels = [self.tokenizer(s, return_tensors="pt", padding=True)["input_ids"] for s in sentences_transposed]
-		sentences = [[s.strip() for s in line.split(',')] for line in raw_input]
 		
 		return {"inputs" : inputs, "labels" : labels, "sentences" : sentences}
 	
@@ -980,7 +995,7 @@ class Tuner:
 		
 		sentence_type_logprobs = {}
 		
-		for output, sentence_type in tuple(zip(outputs, sentence_types)):
+		for output, sentence_type in zip(outputs, sentence_types):
 			sentence_type_logprobs[sentence_type] = nn.functional.log_softmax(output.logits, dim = 2)
 		
 		# Get the positions of the tokens in each sentence of each type
@@ -1006,7 +1021,7 @@ class Tuner:
 		
 		summary = pd.DataFrame(columns = cols)
 		for token in tokens_indices:
-			for sentence_type, label in tuple(zip(sentence_types, labels)):
+			for sentence_type, label in zip(sentence_types, labels):
 				token_summary = pd.DataFrame(columns = cols)
 				if (indices := torch.where(label == tokens_indices[token])[1]).nelement() != 0:
 					token_summary = token_summary.assign(

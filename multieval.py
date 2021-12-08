@@ -42,6 +42,10 @@ def multieval(cfg: DictConfig) -> None:
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
 	chkpt_dirs = [os.path.split(f)[0] for f in glob(chkpt_dirs, recursive = True) if f.endswith('weights.pkl')]
 	
+	if not chkpt_dirs:
+		print(f'No model information found in checkpoint_dir {cfg.checkpoint_dir}. Did you put in the right directory path?')
+		sys.exit(1)
+	
 	# filter paths based on criteria
 	criteria = cfg.criteria.split(',')
 	criteria = [''] if criteria == ['all'] else criteria # do this to give us a reasonable dir name
@@ -174,6 +178,7 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	Combines entailment summaries over multiple models and plots them
 	"""
 	# Summarize info here and then figure out how to plot it
+	
 	summary_of_summaries = summaries. \
 		groupby(['model_id', 'eval_data', 
 				 'sentence_type', 'ratio_name', 

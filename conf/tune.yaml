@@ -7,7 +7,7 @@ n: 0 # How many models to fit? Only used when --multirun/-m is set. Specified as
 
 hyperparameters:
   lr: 0.001
-  epochs: 70 # how many epochs should the model tune for
+  epochs: 20 # how many epochs should the model tune for
   masked_tuning_style: 'always' # use the original style of bert tuning, roberta-style tuning, always used masked version, or don't mask
   strip_punct: false # Strip punctuation from sentences (true), or leave it intact (false)
   
