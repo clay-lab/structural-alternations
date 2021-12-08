@@ -273,9 +273,13 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 			return results
 			#predictions[model_cfg.friendly_name].append(results)
 		
-		log.info(f'Getting predictions for {len(args)} set(s) of arguments for {model_cfg.friendly_name} (n_jobs={cfg.n_jobs})')
-		with tqdm_joblib(tqdm(desc="", total = len(args))) as progress_bar:
-			predictions[model_cfg.friendly_name] = Parallel(n_jobs=cfg.n_jobs)(delayed(predict_args_words)(cfg, model_cfg, tokenizer, filler, args_words) for args_words in args)
+		try:
+			log.info(f'Getting predictions for {len(args)} set(s) of arguments for {model_cfg.friendly_name} (n_jobs={cfg.n_jobs})')
+			with tqdm_joblib(tqdm(desc="", total = len(args))) as progress_bar:
+				predictions[model_cfg.friendly_name] = Parallel(n_jobs=cfg.n_jobs)(delayed(predict_args_words)(cfg, model_cfg, tokenizer, filler, args_words) for args_words in args)
+		except Exception:
+			log.warning(f'Multithreading failed! Reattempting without multithreading.')
+			predictions[model_cfg.friendly_name] = [predict_args_words(cfg, model_cfg, tokenizer, filler, args_words) for args_words in tqdm(args, total = len(args))]
 		
 		print('')
 		
