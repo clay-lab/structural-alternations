@@ -55,7 +55,7 @@ def gen_args(cfg: DictConfig) -> None:
 	predictions = convert_predictions_to_df(predictions, candidate_freq_words)
 	predictions_summary = summarize_predictions(predictions)
 	
-	best = predictions_summary[predictions_summary['set_id'] == predictions_summary[predictions_summary['model_name'] == 'average'].sort_values('SumSq').iloc[0,:].loc['set_id']].copy()
+	best = predictions_summary[predictions_summary['set_id'] == predictions_summary[predictions_summary['model_name'] == 'average'].sort_values('SumSq').iloc[0,:].loc['set_id']].copy().reset_index(drop = True)
 	best = best[['model_name', 'set_id', 'SumSq'] + [c for c in best.columns if re.search('( - )|(nouns$)', c)]]
 	log.info(f'Lowest average SumSq:\n{best}')
 	print('')
@@ -86,7 +86,7 @@ def gen_args(cfg: DictConfig) -> None:
 	
 	# sort by the lowest average sumsq for convenience
 	predictions_summary_sort_keys = predictions_summary[predictions_summary['model_name'] == 'average'].copy().sort_values('SumSq')['set_id'].tolist()
-	predictions_summary = predictions_summary.sort_values('set_id', key = lambda col: col.map(lambda set_id: predictions_summary_sort_keys.index(set_id))).reset_index(drop = True)
+	predictions_summary = predictions_summary.sort_values('set_id', key = lambda col: col.map(lambda set_id: predictions_summary_sort_keys.index(set_id)))
 	predictions_summary.to_csv(f'predictions_summary.csv', index = False)
 
 def load_dataset(dataset_loc: str) -> pd.DataFrame:
