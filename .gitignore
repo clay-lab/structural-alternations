@@ -136,3 +136,6 @@ dmypy.json
 
 # R
 *.r
+
+# old files
+*_old/

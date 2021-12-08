@@ -1,9 +1,0 @@
-name: multi
-
-reference_sentence_type: ''
-new_verb: false
-
-to_mask:
-  na : ''
-
-data: []

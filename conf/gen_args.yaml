@@ -7,6 +7,7 @@ target_freq: 4000 # only consider candidates within ${range} of this value
 range: 1000
 strip_punct: false # consider sentences with or without punctuation?
 n_sets: 1 # how many sets of nouns to automatically generate + evaluate
+n_jobs: 5 # how many sets of nouns to evaluate in parallel?
 
 hydra:
   run: 

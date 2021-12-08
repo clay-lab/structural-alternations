@@ -65,7 +65,7 @@ def multieval(cfg: DictConfig) -> None:
 			os.chdir(eval_dir)
 				
 			# Eval model
-			tuner = Tuner(chkpt_cfg, eval = True)
+			tuner = Tuner(chkpt_cfg)
 			
 			if cfg.data.new_verb:
 				args_cfg_path = os.path.join(chkpt_dir, 'args.yaml')
@@ -160,7 +160,7 @@ def adjust_cfg(cfg: DictConfig, source_dir: str, summary: pd.DataFrame) -> DictC
 		model_cfg_path = os.path.join(source_dir, config_path, 'model', f'{model_name}.yaml')
 		cfg.model = OmegaConf.load(model_cfg_path)
 		
-		tuning_name = summary['tuning'].unique()[0] if len(summary['tuning'].unique()) == 1 else 'multi'
+		tuning_name = '_'.join(summary['tuning'].unique()[0].split()) if len(summary['tuning'].unique()) == 1 else 'multi'
 		tuning_cfg_path = os.path.join(source_dir, config_path, 'tuning', f'{tuning_name}.yaml')
 		cfg.tuning = OmegaConf.load(tuning_cfg_path)
 	
@@ -190,7 +190,8 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	cfg = adjust_cfg(cfg, source_dir, summary_of_summaries)
 	
 	# Plot the overall results
-	tuner = Tuner(cfg, eval = True)
+	tuner = Tuner(cfg)
+	print(f'Plotting results from {len(summary_of_summaries.model_id.unique())} models')
 	tuner.graph_entailed_results(summary_of_summaries, cfg)
 
 def multi_eval_new_verb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:

@@ -24,13 +24,16 @@ import seaborn as sns
 import torch.nn as nn
 
 from math import ceil
-from tqdm import trange
+from tqdm import trange, tqdm
 from typing import Dict, List, Tuple
-from omegaconf import DictConfig, OmegaConf
 from PyPDF2 import PdfFileMerger, PdfFileReader
+from omegaconf import DictConfig, OmegaConf
 from transformers import logging as lg
-from transformers import DistilBertForMaskedLM, DistilBertTokenizer, RobertaForMaskedLM, RobertaTokenizer, BertForMaskedLM, BertTokenizer
-from transformers.tokenization_utils import AddedToken
+from transformers import BertForMaskedLM, BertTokenizer
+from transformers import RobertaForMaskedLM, RobertaTokenizer
+from transformers import DistilBertForMaskedLM, DistilBertTokenizer
+
+model_max_length = 512
 
 lg.set_verbosity_error()
 
@@ -56,13 +59,16 @@ def merge_pdfs(pdfs, filename):
 	
 	merged_pdfs.write(filename)
 	
-	# Clean up
+	# Clean up (if the os doesn't happen to lock the file)
 	for pdf in pdfs:
-		os.remove(pdf)
+		try:
+			os.remove(pdf)
+		except Exception:
+			pass
 
 def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to_mask: List[str], **kwargs):
 	if 'uncased' in model_id:
-		tokens_to_mask = [t.lower() for t in tokens_to_mask()]
+		tokens_to_mask = [t.lower() for t in tokens_to_mask]
 	# a place to put the vocab files temporarily so we can write them out and then read them in
 	# if we are doing bert/distilbert, the answer is easy: just add the tokens to the end of the vocab.txt file
 	if re.search(r'(^bert-)|(^distilbert-)', model_id):
@@ -77,7 +83,8 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to
 		with open('vocab.tmp', 'w', encoding = 'utf-8') as tmp_vocab_file:
 			tmp_vocab_file.write('\n'.join(vocab))
 		
-		tokenizer = tokenizer_class(vocab_file = 'vocab.tmp', **kwargs)
+		tokenizer = tokenizer_class(name_or_path = model_id, vocab_file = 'vocab.tmp', **kwargs)
+		tokenizer.model_max_length = model_max_length
 		os.remove('vocab.tmp')
 		if verify_tokens_exist(tokenizer, tokens_to_mask):
 			return tokenizer
@@ -115,13 +122,13 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to
 		with open('merges.tmp', 'w', encoding = 'utf-8') as tmp_merges_file:
 			tmp_merges_file.write('\n'.join(merges))
 		
-		tokenizer = tokenizer_class(vocab_file = 'vocab.tmp', merges_file = 'merges.tmp', **kwargs)
+		tokenizer = tokenizer_class(name_or_path = model_id, vocab_file = 'vocab.tmp', merges_file = 'merges.tmp', **kwargs)
 		# for some reason, we have to re-add the <mask> token to roberta to get this to work, otherwise
 		# it breaks it apart into separate tokens when loading the vocab and merges locally (???)
 		tokenizer.add_tokens(tokenizer.mask_token, special_tokens=True)
+		tokenizer.model_max_length = model_max_length
 		os.remove('vocab.tmp')
 		os.remove('merges.tmp')
-		
 		roberta_tokens = list(tokens_to_mask) + [' ' + token for token in list(tokens_to_mask)]
 		if verify_tokens_exist(tokenizer, roberta_tokens):
 			return tokenizer
@@ -342,18 +349,16 @@ class Tuner:
 		if self.string_id != 'multi':
 			
 			log.info(f"Initializing Tokenizer:\t{self.cfg.model.tokenizer}")
+			# we do this we the self.cfg.tuning.to_mask data so that the versions with preceding spaces can be automatically added to roberta correctly
+			# and returned from self.tokens_to_mask
 			self.tokenizer = create_tokenizer_with_added_tokens(self.string_id, self.tokenizer_class, self.cfg.tuning.to_mask, **tokenizer_kwargs)
 			#self.tokenizer = self.tokenizer_class.from_pretrained(self.string_id, do_basic_tokenize=False, local_files_only=True)
 			
 			log.info(f"Initializing Model:\t{self.cfg.model.base_class}")
 			self.model = self.model_class.from_pretrained(self.string_id, **model_kwargs)
-			# This is not currently working right.
-			# subword tokenization of tokens adjacent to the added tokens
-			# does not work as expected. we are attempting to fix this by manually editing the vocabulary files in the
-			# create_tokenizer_with_added_tokens function
 			# self.tokenizer.add_tokens(self.tokens_to_mask)
 			self.model.resize_token_embeddings(len(self.tokenizer))
-	
+			
 	def tune(self) -> None:
 		"""
 		Fine-tunes the model on the provided tuning data. Saves model state to disk.
@@ -875,7 +880,7 @@ class Tuner:
 		where credit for a correct prediction on sentence 2[, 3, ...] is contingent on
 		also correctly predicting sentence 1
 		"""
-		log.info(f"SAVING TO: {os.getcwd()}")
+		log.info(f"SAVING TO: {os.getcwd().replace(hydra.utils.get_original_cwd(), '')}")
 		
 		# Load model
 		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
@@ -964,6 +969,9 @@ class Tuner:
 		"""
 		sentence_types = eval_cfg.data.sentence_types
 		tokens_to_roles = {v : k for k, v in eval_cfg.data.eval_groups.items()}
+		# convert the tokens to lowercase if we are using an uncased model
+		if 'uncased' in self.string_id:
+			tokens_to_roles = {k.lower() : v for k, v in tokens_to_roles.items()}
 		# we need to add the special 'space before' versions of the tokens if we're using roberta
 		if self.model_bert_name == 'roberta':
 			old_tokens_to_roles = tokens_to_roles.copy()
@@ -1040,12 +1048,12 @@ class Tuner:
 					
 					summary = summary.append(token_summary, ignore_index = True)
 		
-		summary['role_position'] = [tokens_to_roles[token] + '_position' for token in summary['exp_token']]
+		summary['role_position'] = [tokens_to_roles[token] + ' position' for token in summary['exp_token']]
 		
 		# Get formatting for linear positions instead of expected tokens
 		summary = summary.sort_values(['sentence_type', 'sentence_num', 'focus'])
 		summary['position_num'] = summary.groupby(['sentence_num', 'sentence_type'])['focus'].cumcount() + 1
-		summary['position_num'] = ['position_' + str(num) for num in summary['position_num']]
+		summary['position_num'] = ['position ' + str(num) for num in summary['position_num']]
 		summary = summary.sort_index()
 		
 		# Add the actual sentences to the summary
@@ -1067,13 +1075,14 @@ class Tuner:
 		summary = summary.drop(['exp_logit', 'logit', 'token', 'exp_token', 'focus'], axis = 1)
 		
 		# Add a unique model id to the summary as well to facilitate comparing multiple runs
-		# The ID comes from the runtime of the model to ensure that it matches when the 
+		# The ID comes from the runtime of the model plus the first letter of its
+		# model name to ensure that it matches when the 
 		# model is evaluated on different data sets
-		model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2]
+		model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2] + '-' + self.model_bert_name[0]
 		summary.insert(0, 'model_id', model_id)
 		
 		summary = summary.assign(
-			eval_data = eval_cfg.data.friendly_name.replace('_', ' '),
+			eval_data = eval_cfg.data.friendly_name,
 			model_name = self.model_bert_name,
 			masked = self.masked,
 			masked_tuning_style = self.masked_tuning_style,
@@ -1087,6 +1096,35 @@ class Tuner:
 		if len(np.unique(summary.model_id.values)) > 1:
 			summary['odds_ratio'] = summary['mean']
 			summary = summary.drop('mean', axis = 1)
+			
+			# if we are dealing with multiple models, we want to compare them by removing the idiosyncratic variation in how
+			# tokenization works. bert and distilbert are uncased, which means the tokens are converted to lower case.
+			# here, we convert them back to upper case so they can be plotted in the same group as the roberta tokens,
+			# which remain uppercase
+			summary.loc[(summary['model_name'] == 'bert') | (summary['model_name'] == 'distilbert'), 'ratio_name'] = \
+			summary[(summary['model_name'] == 'bert') | (summary['model_name'] == 'distilbert')]['ratio_name'].str.upper()
+			
+			# for roberta, strings with spaces in front of them are tokenized differently from strings without spaces
+			# in front of them. so we need to remove the special characters that signals that, and add a new character
+			# signifying 'not a space in front' to the appropriate cases instead
+			
+			# first, check whether doing this will alter information
+			if not summary[summary['model_name'] == 'roberta'].empty:
+				roberta_summary = summary[summary['model_name'] == 'roberta'].copy()
+				num_tokens_in_summary = len(set(list(itertools.chain(*[ratio_name.split('/') for ratio_name in roberta_summary.ratio_name.unique().tolist()]))))
+				roberta_summary['ratio_name'] = [re.sub(chr(288), '', ratio_name) for ratio_name in roberta_summary['ratio_name']]
+				num_tokens_after_change = len(set(list(itertools.chain(*[ratio_name.split('/') for ratio_name in roberta_summary.ratio_name.unique().tolist()]))))
+				if num_tokens_in_summary != num_tokens_after_change:
+					# this isn't going to actually get rid of any info, but it's worth logging
+					log.warning('RoBERTa tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
+				
+				# first, replace the ones that don't start with spaces before with a preceding ^
+				summary.loc[(summary['model_name'] == 'roberta') & ~(summary['ratio_name'].str.startswith(chr(288))), 'ratio_name'] = \
+				summary[(summary['model_name'] == 'roberta') & ~(summary['ratio_name'].str.startswith(chr(288)))].replace({r'((^\w)|(?<=\/)\w)' : r'^\1'})
+				
+				# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
+				summary.loc[(summary['model_name'] == 'roberta') & (summary['ratio_name'].str.startswith(chr(288))), 'ratio_name'] = \
+				[re.sub(chr(288), '', ratio_name) for ratio_name in summary[(summary['model_name'] == 'roberta') & (summary['ratio_name'].str.startswith(chr(288)))].ratio_name]
 		else:
 			summary['sem'] = 0
 		
@@ -1114,7 +1152,7 @@ class Tuner:
 		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type]
 
 		# For each pair, we create a different plot
-		for pair in paired_sentence_types:
+		for pair in tqdm(paired_sentence_types, total = len(paired_sentence_types)):
 			x_data = summary[summary['sentence_type'] == pair[0]].reset_index(drop = True)
 			y_data = summary[summary['sentence_type'] == pair[1]].reset_index(drop = True)
 						
@@ -1131,7 +1169,7 @@ class Tuner:
 			# Construct get number of linear positions (if there's only one position, we can't make plots by linear position)
 			ratio_names_positions = x_data[['ratio_name', 'position_num']].drop_duplicates().reset_index(drop = True)
 			ratio_names_positions = list(ratio_names_positions.to_records(index = False))
-			ratio_names_positions = sorted(ratio_names_positions, key = lambda x: int(x[1].replace('position_', '')))
+			ratio_names_positions = sorted(ratio_names_positions, key = lambda x: int(x[1].replace('position ', '')))
 				
 			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
 				fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
@@ -1242,7 +1280,8 @@ class Tuner:
 					
 					x_expected_token = x_data.loc[x_idx].ratio_name.unique()[0].split('/')[0]
 					y_expected_token = y_data.loc[y_idx].ratio_name.unique()[0].split('/')[0]
-					position_label = position.replace('position_', 'position ')
+					position_label = position
+					#position_label = position.replace('position_', 'position ')
 					
 					xlabel.append(f"Expected {x_expected_token} in {position_label}")
 					ylabel.append(f"Expected {y_expected_token} in {position_label}")
@@ -1298,7 +1337,7 @@ class Tuner:
 					
 					x_expected_token = x_data.loc[x_idx].ratio_name.unique()[0].split('/')[0]
 					y_expected_token = y_data.loc[y_idx].ratio_name.unique()[0].split('/')[0]
-					position_label = position.replace('position_', 'position ')
+					#position_label = position.replace('position_', 'position ')
 					
 					xlabel.append(f"Expected {x_expected_token} in {position_label}")
 					ylabel.append(f"Expected {y_expected_token} in {position_label}")
@@ -1353,9 +1392,9 @@ class Tuner:
 			title += '/' + str(np.unique(summary.total_epochs)[0]) if len(np.unique(summary.total_epochs)) == 1 else ''
 			
 			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
-			masked_str = 'masking' if all(summary.masked) else 'unmasked' if all(1 - summary.masked) else 'multiple'
+			masked_str = ', masking' if all(summary.masked) else 'unmasked' if all(1 - summary.masked) else 'multiple'
 			masked_tuning_str = ': ' + np.unique(summary.masked_tuning_style[summary.masked])[0] if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ': multiple' if any(summary.masked) else ''
-			subtitle = f'Model: {model_name} {masked_str}{masked_tuning_str}'
+			subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
 			
 			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 			subtitle += '\nTuning data: ' + tuning_data_str
@@ -1633,13 +1672,13 @@ class Tuner:
 											if any(list(map(lambda x: True if x < mask_pos else False, arg_positions[arg]))):
 												position_num += 1
 												
-										target_position_num = ['position_' + str(position_num)],
+										target_position_num = ['position ' + str(position_num)],
 										
 										summary = summary.append(summary_, ignore_index = True)
 			
 			summary = summary.assign(
 				model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2],
-				eval_data = eval_cfg.data.friendly_name.replace('_', ' '),
+				eval_data = eval_cfg.data.friendly_name,
 				model_name = self.model_bert_name,
 				masked = self.masked,
 				masked_tuning_style = self.masked_tuning_style,
@@ -1697,7 +1736,7 @@ class Tuner:
 		y_epoch = max(summary.eval_epoch)
 
 		# For each sentence type, we create a different plot
-		for sentence_type in sentence_types:
+		for sentence_type in tqdm(sentence_types, total = len(sentence_types)):
 			
 			# Get x and y data. We plot the first member of each pair on x, and the second member on y
 			x_data = summary.loc[(summary.eval_epoch == x_epoch) & (summary['sentence_type'] == sentence_type)].reset_index(drop = True)
@@ -1708,7 +1747,7 @@ class Tuner:
 			# Get number of linear positions (if there's only one position, we can't make plots by linear position)
 			sur_names_positions = x_data[['surprisal_gf_label', 'target_position_num']].drop_duplicates().reset_index(drop = True)
 			sur_names_positions = list(sur_names_positions.to_records(index = False))
-			sur_names_positions = sorted(sur_names_positions, key = lambda x: int(x[1].replace('position_', ' ')))
+			sur_names_positions = sorted(sur_names_positions, key = lambda x: int(x[1].replace('position ', ' ')))
 			
 			# If there's more than one position, we'll create a
 			fig, (ax1, ax2) = plt.subplots(1, 2)
