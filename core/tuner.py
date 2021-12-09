@@ -139,7 +139,7 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to
 			raise FileNotFoundError(f'Unable to access {model_id} merges.txt file from huggingface. Are you connected to the Internet?')
 		
 		merges = merges[:1] + get_roberta_merges_for_new_tokens(tokens_to_mask) + merges[1:]
-		merges = list(dict.fromkeys()) # drop the duplicates while preserving order
+		merges = list(dict.fromkeys(merges)) # drop the duplicates while preserving order
 		with open('merges.tmp', 'w', encoding = 'utf-8') as tmp_merges_file:
 			tmp_merges_file.write('\n'.join(merges))
 		
@@ -229,6 +229,45 @@ def verify_tokens_exist(tokenizer, tokens: List[str]) -> bool:
 			return False
 		elif tokenizer.tokenize(token) == [tokenizer.unk_token]:
 			return False
+	
+	return True
+
+def verify_tokenization_of_sentences(tokenizer, sentences: List[str], tokens_to_mask: List[str] = None, **kwargs) -> bool:
+	"""
+	verify that a custom tokenizer and one created using from_pretrained behave identically except on the tokens to mask
+	"""
+	tokenizer_id = tokenizer.name_or_path
+	tokenizer_one = tokenizer
+	tokenizer_two = eval(tokenizer_one.__class__.__name__).from_pretrained(tokenizer_id, **kwargs)
+	
+	# flatten a list of lists of strings without breaking string into characters
+	# from https://stackoverflow.com/questions/5286541/how-can-i-flatten-lists-without-splitting-strings
+	flatten = lambda y: [k for j in ([i] if not isinstance(i,list) else flatten(i) for i in y) for k in j]
+	sentences = flatten(sentences)
+	
+	if tokens_to_mask:
+		masked_sentences = []
+		for sentence in sentences:
+			for token in tokens_to_mask:
+				sentence = sentence.replace(token, tokenizer.mask_token)
+			
+			masked_sentences.append(sentence)
+		
+		sentences = masked_sentences
+	
+	tokenizations_one = [tokenizer_one.tokenize(sentence) for sentence in sentences]
+	tokenizations_two = [tokenizer_two.tokenize(sentence) for sentence in sentences]
+	
+	comparisons = [True if tokenization_one == tokenization_two else False for tokenization_one, tokenization_two in zip(tokenizations_one, tokenizations_two)]
+	if not all(comparisons):
+		mismatches = [i for i, comparison in enumerate(comparisons) if comparison != True]
+		mismatches_pairs = [[tokenization_one[i], tokenization_two[i]] for mismatch in mismatches]
+		log.warning(f'The following sentences did not match for {tokenizer_id}!')
+		for mismatch_pair in mismatches_pairs:
+			log.warning('tokenizer_one: ' + ', '.join(mismatch_pair[0]))
+			log.warning('tokenizer_two: ' + ', '.join(mismatch_pair[1]))
+		
+		return False
 	
 	return True
 
@@ -478,6 +517,11 @@ class Tuner:
 		
 		labels_data = self.verb_tuning_data['data'] if self.cfg.tuning.new_verb else self.tuning_data
 		
+		if not (verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, do_basic_tokenize = False, local_files_only = True) and \
+			    verify_tokenization_of_sentences(self.tokenizer, labels_data, self.tokens_to_mask, do_basic_tokenize = False, local_files_only = True)):
+			log.error('The new tokens added affected the tokenization of other elements in the inputs! Try using different strings.')
+			return
+		
 		inputs = self.tokenizer(inputs_data, return_tensors="pt", padding=True)
 		labels = self.tokenizer(labels_data, return_tensors="pt", padding=True)["input_ids"]
 		
@@ -503,6 +547,10 @@ class Tuner:
 				# If we are using roberta-style masking, get new randomly changed inputs each epoch
 				if self.masked_tuning_style == 'roberta':
 					inputs = self.tokenizer(self.mixed_tuning_data, return_tensors="pt", padding=True)
+					# we only need to do this for the inputs; the labels were checked before and remain the same
+					if not verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, do_basic_tokenize = False, local_files_only = True):
+						log.error('The new tokens added affected the tokenization of other elements in the inputs! Try using different strings.')
+						return
 				
 				# Compute loss
 				outputs = self.model(**inputs, labels=labels)
@@ -800,6 +848,10 @@ class Tuner:
 		inputs = self.tokenizer(masked_sentences, return_tensors="pt", padding=True)
 		labels = self.tokenizer(sentences, return_tensors="pt", padding=True)["input_ids"]
 		
+		if not verify_tokenization_of_sentences(self.tokenizer, [sentences] + [masked_sentences], self.tokens_to_mask, do_basic_tokenize=False, local_files_only=True):
+			log.warning('Tokenization of sentences was affected by the new tokens! Try choosing a new string.')
+			return
+		
 		return inputs, labels, sentences
 	
 	def summarize_results(self, results: Dict, labels) -> Dict:
@@ -990,6 +1042,10 @@ class Tuner:
 		
 		inputs = [self.tokenizer(m, return_tensors="pt", padding=True) for m in masked_transposed]
 		labels = [self.tokenizer(s, return_tensors="pt", padding=True)["input_ids"] for s in sentences_transposed]
+		
+		if not verify_tokenization_of_sentences(self.tokenizer, [sentences] + [masked_sentences], self.tokens_to_mask, do_basic_tokenize=False, local_files_only=True):
+			log.warning('Tokenization of sentences was affected by the new tokens! Try choosing a new string.')
+			return
 		
 		return {"inputs" : inputs, "labels" : labels, "sentences" : sentences}
 	
@@ -1650,6 +1706,10 @@ class Tuner:
 		for arg in filled_sentences:
 			filled_sentences[arg] = list(map(list, zip(*filled_sentences[arg])))
 			filled_sentences[arg] = [list(itertools.chain(*sublist)) for sublist in filled_sentences[arg]]
+		
+		if not verify_tokenization_of_sentences(self.tokenizer, filled_sentences, self.tokens_to_mask, do_basic_tokenize=False, local_files_only=True):
+			log.warning('Tokenization of sentences was affected by the new tokens! Try choosing a new string.')
+			return
 		
 		return filled_sentences
 	
