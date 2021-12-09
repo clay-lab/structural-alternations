@@ -51,6 +51,9 @@ def strip_punct(sentence):
 	return re.sub(r'[^\[\]\<\>\w\s,]', '', sentence)
 	
 def merge_pdfs(pdfs: List[str], filename: str) -> None:
+	if not pdfs:
+		return
+	
 	merged_pdfs = PdfFileMerger()
 	
 	for pdf in pdfs:
@@ -85,6 +88,14 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to
 			tmp_vocab_file.write('\n'.join(vocab))
 		
 		tokenizer = tokenizer_class(name_or_path = model_id, vocab_file = 'vocab.tmp', **kwargs)
+		tokenizer.model_max_length = model_max_length
+		
+		# for some reason, we have to re-add the [MASK] token to bert to get this to work, otherwise
+		# it breaks it apart into separate tokens '[', 'mask', and ']' when loading the vocab locally (???)
+		# I have verified that this does not affect the embedding or the model's ability to recognize it
+		# as a mask token (e.g., if you create a filler object with this tokenizer, 
+		# it will identify the mask token position correctly)
+		tokenizer.add_tokens(tokenizer.mask_token, special_tokens=True)
 		tokenizer.model_max_length = model_max_length
 		
 		if delete_tmp_vocab_files:
@@ -128,6 +139,7 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to
 			raise FileNotFoundError(f'Unable to access {model_id} merges.txt file from huggingface. Are you connected to the Internet?')
 		
 		merges = merges[:1] + get_roberta_merges_for_new_tokens(tokens_to_mask) + merges[1:]
+		merges = list(dict.fromkeys()) # drop the duplicates while preserving order
 		with open('merges.tmp', 'w', encoding = 'utf-8') as tmp_merges_file:
 			tmp_merges_file.write('\n'.join(merges))
 		
@@ -165,13 +177,13 @@ def gen_roberta_merges_pairs(new_token: str, highest: bool = True) -> List[str]:
 		if not highest:
 			return tuple([chrs[0], chrs[1]])
 		else:
-			return [' '.join(chrs[0], chrs[1])]
+			return [' '.join([chrs[0], chrs[1]])]
 			
 	if len(chrs) == 3:
 		if not highest:
 			return tuple([chrs[0], ''.join(chrs[1:])])
 		else:
-			return [' '.join(chrs[0], ''.join(chrs[1:]))]
+			return gen_roberta_merges_pairs(chrs[1:]) + [' '.join([chrs[0], ''.join(chrs[1:])])]
 	
 	if len(chrs) % 2 == 0:
 		pairs = gen_roberta_merges_pairs(''.join(chrs[:-2]), highest = False)
@@ -190,12 +202,24 @@ def gen_roberta_merges_pairs(new_token: str, highest: bool = True) -> List[str]:
 	pairs = tuple(zip(pairs[::2], pairs[1::2]))
 	pairs = [' '.join(pair) for pair in pairs]
 	sp = chr(288)
-	# make a copy so we can loop through the original list while updating it
-	old_pairs = pairs.copy()
-	pairs.append(f'{sp} {new_token[0]}')
-	for pair in old_pairs:
-		if pair.startswith(new_token[0]):
-			pairs.append(sp + pair)
+	# # make a copy so we can loop through the original list while updating it
+	# old_pairs = pairs.copy()
+	# pairs.append(f'{sp} {new_token[0]}')
+	# for pair in old_pairs:
+	# 	#if pair.startswith(new_token[0]):
+	# 	if re.search(r'^' + ''.join(pair.split(' ')), new_token):
+	# 		pairs.append(sp + pair)
+	
+	# pairs with the preceding special token
+	g_pairs = []
+	for pair in pairs:
+		if re.search(r'^' + ''.join(pair.split(' ')), new_token):
+			g_pairs.append(chr(288) + pair)
+	
+	pairs = g_pairs + pairs
+	pairs = [f'{sp} {new_token[0]}'] + pairs
+	
+	pairs = list(dict.fromkeys(pairs)) # remove any duplicates
 	
 	return pairs
 
@@ -1185,7 +1209,7 @@ class Tuner:
 			ratio_names_positions = x_data[['ratio_name', 'position_num']].drop_duplicates().reset_index(drop = True)
 			ratio_names_positions = list(ratio_names_positions.to_records(index = False))
 			ratio_names_positions = sorted(ratio_names_positions, key = lambda x: int(x[1].replace('position ', '')))
-				
+			
 			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
 				fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
 				fig.set_size_inches(8, 10)
