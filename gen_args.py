@@ -28,7 +28,7 @@ from joblib import Parallel, delayed
 from transformers import pipeline, logging as lg
 from transformers.tokenization_utils import AddedToken
 
-from core.tuner import set_seed, strip_punct, create_tokenizer_with_added_tokens
+from core.tuner_utils import *
 
 lg.set_verbosity_error()
 
@@ -216,15 +216,14 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 		model = eval(model_cfg.base_class).from_pretrained(model_cfg.string_id, local_files_only=True)
 		model.resize_token_embeddings(len(tokenizer))
 		
+		tokens_to_mask = [t.lower() for t in cfg.tuning.to_mask] if 'uncased' in model_cfg.string_id else list(cfg.tuning.to_mask)
+		tokens_to_mask = (tokens_to_mask + [chr(288) + t for t in tokens_to_mask]) if model_cfg.friendly_name == 'roberta' else tokens_to_mask	
+		
 		with torch.no_grad():
 			# This reinitializes the token weights to random values to provide variability in model tuning
 			# which matches the experimental conditions
-			
 			model_embedding_weights = getattr(model, base_class).embeddings.word_embeddings.weight
 			model_embedding_dim = getattr(model, base_class).embeddings.word_embeddings.embedding_dim
-			
-			tokens_to_mask = [t.lower() for t in cfg.tuning.to_mask] if 'uncased' in model_cfg.string_id else list(cfg.tuning.to_mask)
-			tokens_to_mask = (tokens_to_mask + [chr(288) + t for t in tokens_to_mask]) if model_cfg.friendly_name == 'roberta' else tokens_to_mask
 			
 			num_new_tokens = len(tokens_to_mask)
 			new_embeds = nn.Embedding(num_new_tokens, model_embedding_dim)
@@ -249,6 +248,11 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 		def predict_args_words(cfg, model_cfg, tokenizer, filler, args_words):
 			data = load_tuning_verb_data(cfg, model_cfg, tokenizer.mask_token, args_words)
 			results = {}
+			
+			if not verify_tokenization_of_sentences(tokenizer, list(data.values()), tokens_to_mask, do_basic_tokenize=False, local_files_only=True):
+				log.warning(f'Tokenization of the set {args_words} was affected by adding {tokens_to_mask}! Skipping this set.')
+				return results
+			
 			for arg_position in args_words:
 				predictions = {}
 				predictions[arg_position] = {}
