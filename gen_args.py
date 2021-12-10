@@ -16,15 +16,18 @@ import itertools
 import numpy as np
 import pandas as pd
 import pickle as pkl
+import seaborn as sns
 import torch.nn as nn
 
 from tqdm import tqdm
 from math import comb, perm, ceil
 from typing import Dict, List, Tuple
+from joblib import Parallel, delayed
 from importlib import import_module
 from omegaconf import DictConfig, OmegaConf
 from statistics import median
-from joblib import Parallel, delayed
+from matplotlib import pyplot as plt
+from scipy.stats import pearsonr
 from transformers import pipeline, logging as lg
 from transformers.tokenization_utils import AddedToken
 
@@ -90,6 +93,9 @@ def gen_args(cfg: DictConfig) -> None:
 	predictions_summary_sort_keys = predictions_summary[predictions_summary['model_name'] == 'average'].copy().sort_values('SumSq')['set_id'].tolist()
 	predictions_summary = predictions_summary.sort_values('set_id', key = lambda col: col.map(lambda set_id: predictions_summary_sort_keys.index(set_id)))
 	predictions_summary.to_csv(f'predictions_summary.csv', index = False)
+	
+	# plot the correlations of the sumsq for each pair of model types and report R**2
+	plot_correlations(cfg, predictions_summary)
 
 def load_dataset(dataset_loc: str) -> pd.DataFrame:
 	if 'subtlex' in dataset_loc.lower():
@@ -411,6 +417,36 @@ def load_tuning_verb_data(cfg: DictConfig, model_cfg: DictConfig, mask_tok: str,
 		filled_sentences[arg] = list(itertools.chain(*filled_sentences[arg]))
 	
 	return filled_sentences
+
+def plot_correlations(cfg: DictConfig, predictions_summary: pd.DataFrame) -> None:
+	corr = predictions_summary[['model_name', 'set_id', 'SumSq']][predictions_summary['model_name'] != 'average'] \
+		.pivot(index='set_id', columns='model_name', values='SumSq')
+	
+	corr = corr.reset_index(drop=True)
+	corr.columns.name = None
+	g = sns.pairplot(corr, kind='reg', corner=True)
+	
+	def corrfunc(x, y, **kwargs):
+		r, _ = pearsonr(x, y)
+		r2 = r**2
+		ax = plt.gca()
+		label = 'R\u00b2 = {:.2f}'.format(r2) if not all(x.values == y.values) else ''
+		if not all(x.values == y.values):
+			log.info('R\u00b2 of SumSq for {:21s}{:.2f}'.format(x.name + ', ' + y.name + ':', r2))
+		ax.annotate(label, xy=(.1,.9), xycoords=ax.transAxes)
+	
+	g.map(corrfunc)
+	title = f'Correlation of SumSq differences'
+	title += ('\nWithout' if all(predictions_summary.strip_punct.values) else '\nWith') + ' punctuation, '
+	title += f'target frequency: {predictions_summary.target_freq.unique()[0]} (\u00B1{predictions_summary.range.unique()[0]})'
+	title += f'\n{predictions_summary.total_sets.unique()[0]} sets with {predictions_summary.words_per_set.unique()[0]} words/set'
+	title += f'\ndataset: {os.path.splitext(predictions_summary.dataset.unique()[0])[0]}'
+	title += f'\nsentence_type: {predictions_summary.reference_sentence_type.unique()[0]}' if predictions_summary.reference_sentence_type.unique()[0] != 'none' else ''
+	title += f'\ndata from {cfg.tuning.name}'
+	g.fig.suptitle(title, y = 0.88, fontsize='medium', x = 0.675)
+	plt.savefig('correlations.pdf')
+	plt.close('all')
+	del g
 
 # This allows us to view a progress bar on the parallel evaluations
 # from https://stackoverflow.com/questions/24983493/tracking-progress-of-joblib-parallel-execution
