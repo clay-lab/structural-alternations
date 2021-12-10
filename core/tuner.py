@@ -1330,6 +1330,8 @@ class Tuner:
 			x_data = x_data[x_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
 			y_data = y_data[y_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
 			
+			breakpoint()
+			
 			refs_correct = x_data.odds_ratio > 0
 			gens_correct = y_data.odds_ratio > 0
 			num_points = len(x_data.index)
