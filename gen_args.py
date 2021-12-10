@@ -38,7 +38,7 @@ log = logging.getLogger(__name__)
 def gen_args(cfg: DictConfig) -> None:
 	if not cfg.tuning.new_verb: 
 		raise ValueError('Can only get args for new verb experiments!')
-		
+	
 	print(OmegaConf.to_yaml(cfg))
 	
 	dataset = load_dataset(cfg.dataset_loc)
@@ -52,6 +52,8 @@ def gen_args(cfg: DictConfig) -> None:
 	args = get_args(cfg, model_cfgs, candidate_words, cfg.n_sets)
 	
 	predictions = arg_predictions(cfg, model_cfgs, args)
+	assert any([set_id for model_name in predictions for set_id in predictions[model_name]]), "No predictions were generated!"
+	
 	predictions = convert_predictions_to_df(predictions, candidate_freq_words)
 	predictions_summary = summarize_predictions(predictions)
 	
@@ -155,11 +157,7 @@ def get_candidate_words(dataset: pd.DataFrame, model_cfgs: List[str], target_fre
 		model_cfg = OmegaConf.load(model_cfg_path)
 		exec(f'from transformers import {model_cfg.tokenizer}')
 		
-		tokenizer = eval(model_cfg.tokenizer).from_pretrained(
-			model_cfg.string_id, 
-			do_basic_tokenize=False,
-			local_files_only=True
-		)
+		tokenizer = eval(model_cfg.tokenizer).from_pretrained(model_cfg.string_id, **model_cfg.tokenizer_kwargs)
 		
 		candidate_words = [word for word in candidate_words if len(tokenizer.tokenize(word)) == 1]
 	
@@ -212,7 +210,7 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 		base_class = model_cfg.base_class.lower().replace('formaskedlm', '')
 		
 		log.info(f'Initializing {base_class} model and tokenizer')
-		tokenizer = create_tokenizer_with_added_tokens(model_cfg.string_id, eval(model_cfg.tokenizer), cfg.tuning.to_mask, do_basic_tokenize=False, local_files_only=True)
+		tokenizer = create_tokenizer_with_added_tokens(model_cfg.string_id, eval(model_cfg.tokenizer), cfg.tuning.to_mask, **model_cfg.tokenizer_kwargs)
 		model = eval(model_cfg.base_class).from_pretrained(model_cfg.string_id, local_files_only=True)
 		model.resize_token_embeddings(len(tokenizer))
 		
@@ -242,14 +240,12 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 				tok_id = tokenizer.get_vocab()[tok]
 				getattr(model, base_class).embeddings.word_embeddings.weight[tok_id] = new_embeds.weight[i]
 		
-		filler = pipeline('fill-mask', model = model, tokenizer = tokenizer)
-		
 		#for args_words in tqdm(args, total = len(args)):
 		def predict_args_words(cfg, model_cfg, tokenizer, filler, args_words):
 			data = load_tuning_verb_data(cfg, model_cfg, tokenizer.mask_token, args_words)
 			results = {}
 			
-			if not verify_tokenization_of_sentences(tokenizer, list(data.values()), tokens_to_mask, do_basic_tokenize=False, local_files_only=True):
+			if not verify_tokenization_of_sentences(tokenizer, list(data.values()), tokens_to_mask, **model_cfg.tokenizer_kwargs):
 				log.warning(f'Tokenization of the set {args_words} was affected by adding {tokens_to_mask}! Skipping this set.')
 				return results
 			
@@ -260,15 +256,15 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 					predictions[arg_position][arg_type] = []
 					for sentence in data[arg_position]:
 						targets = args_words[arg_type]
-						if not re.search(rf'^{tokenizer.mask_token}', sentence) and model_cfg.friendly_name == 'roberta':
-							targets = [' ' + t for t in targets]
-						
 						if 'uncased' in model_cfg.string_id:
 							targets = [t.lower() for t in targets]
 						
+						if not re.search(rf'^{tokenizer.mask_token}', sentence) and model_cfg.friendly_name == 'roberta':
+							targets = [chr(288) + t for t in targets]
+						
 						preds = filler(sentence, targets = targets)
 						for pred in preds:
-							pred.update({arg_type.replace(r"\[|\]", '') + ' nouns': ','.join(targets)})
+							pred.update({arg_type.replace(r"\[|\]", '') + ' nouns': ','.join(targets).replace(chr(288),'')})
 					
 						predictions[arg_position][arg_type].append(preds)
 				
@@ -276,6 +272,8 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 			
 			return results
 			#predictions[model_cfg.friendly_name].append(results)
+		
+		filler = pipeline('fill-mask', model = model, tokenizer = tokenizer)
 		
 		try:
 			log.info(f'Getting predictions for {len(args)} set(s) of arguments for {model_cfg.friendly_name} (n_jobs={cfg.n_jobs})')

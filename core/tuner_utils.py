@@ -6,6 +6,7 @@ import re
 import json
 import torch
 import random
+import logging
 import requests
 import numpy as np
 
@@ -14,6 +15,8 @@ from PyPDF2 import PdfFileMerger, PdfFileReader
 from transformers import BertTokenizer, DistilBertTokenizer, RobertaTokenizer
 
 model_max_length = 512
+
+log = logging.getLogger(__name__)
 
 def set_seed(seed):
 	seed = int(seed)
@@ -231,17 +234,17 @@ def verify_tokenization_of_sentences(tokenizer, sentences: List[str], tokens_to_
 		
 		sentences = masked_sentences
 	
-	tokenizations_one = [tokenizer_one.tokenize(sentence) for sentence in sentences]
-	tokenizations_two = [tokenizer_two.tokenize(sentence) for sentence in sentences]
+	tokenizations_one = tokenizer_one(sentences)['input_ids']
+	tokenizations_two = tokenizer_two(sentences)['input_ids']
 	
 	comparisons = [True if tokenization_one == tokenization_two else False for tokenization_one, tokenization_two in zip(tokenizations_one, tokenizations_two)]
 	if not all(comparisons):
 		mismatches = [i for i, comparison in enumerate(comparisons) if comparison != True]
-		mismatches_pairs = [[tokenizations_one[i], tokenizations_two[i]] for mismatch in mismatches]
-		log.warning(f'The following sentences did not match for {tokenizer_id}!')
-		for mismatch_pair in mismatches_pairs:
-			log.warning('tokenizer_one: ' + ', '.join(mismatch_pair[0]))
-			log.warning('tokenizer_two: ' + ', '.join(mismatch_pair[1]))
+		mismatches_pairs = [[[mismatch] + tokenizer_one.convert_ids_to_tokens(tokenizations_one[mismatch]), [mismatch] + tokenizer_two.convert_ids_to_tokens(tokenizations_two[mismatch])] for mismatch in mismatches]
+		log.warning(f'The following sentences did not match for {tokenizer_id}!\n')
+		for i, mismatch_pair in enumerate(mismatches_pairs):
+			log.warning(f'(evaluation) (s{mismatch_pair[0][0]}): ' + ', '.join(mismatch_pair[0][1:]))
+			log.warning(f'(pretrained) (s{mismatch_pair[1][0]}): ' + ', '.join(mismatch_pair[1][1:]) + '\n')
 		
 		return False
 	

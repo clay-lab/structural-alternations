@@ -2,6 +2,7 @@ defaults:
   - _self_
   - model: distilbert
   - tuning: dative_DO_give
+  - override hydra/job_logging: tuner_log_conf
 
 n: 0 # How many models to fit? Only used when --multirun/-m is set. Specified as 'n=range(0,i)'
 

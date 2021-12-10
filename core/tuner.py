@@ -3,6 +3,7 @@
 # Tunes a model on training data and provides functions for evaluation
 import os
 import re
+import sys
 import hydra
 import torch
 from torch.distributions import Categorical
@@ -186,20 +187,20 @@ class Tuner:
 	
 	# END Computed Properties
 	
-	def __init__(self, cfg: DictConfig, model_kwargs: Dict = {}, tokenizer_kwargs: Dict = {}) -> None:
+	def __init__(self, cfg: DictConfig) -> None:
 		self.cfg = cfg
 		
 		if self.string_id != 'multi':
 			
 			log.info(f"Initializing Tokenizer:\t{self.cfg.model.tokenizer}")
-			# we do this we the self.cfg.tuning.to_mask data so that the versions with preceding spaces can be automatically added to roberta correctly
-			# and returned from self.tokens_to_mask
-			self.tokenizer = create_tokenizer_with_added_tokens(self.string_id, self.tokenizer_class, self.cfg.tuning.to_mask, **tokenizer_kwargs)
-			#self.tokenizer = self.tokenizer_class.from_pretrained(self.string_id, do_basic_tokenize=False, local_files_only=True)
+			
+			# we do this with the self.cfg.tuning.to_mask data so that 
+			# the versions with preceding spaces can be automatically 
+			# added to roberta correctly and returned from self.tokens_to_mask
+			self.tokenizer = create_tokenizer_with_added_tokens(self.string_id, self.tokenizer_class, self.cfg.tuning.to_mask, **self.cfg.model.tokenizer_kwargs)
 			
 			log.info(f"Initializing Model:\t{self.cfg.model.base_class}")
-			self.model = self.model_class.from_pretrained(self.string_id, **model_kwargs)
-			# self.tokenizer.add_tokens(self.tokens_to_mask)
+			self.model = self.model_class.from_pretrained(self.string_id, **self.cfg.model.model_kwargs)
 			self.model.resize_token_embeddings(len(self.tokenizer))
 			
 	def tune(self) -> None:
@@ -281,8 +282,8 @@ class Tuner:
 		
 		labels_data = self.verb_tuning_data['data'] if self.cfg.tuning.new_verb else self.tuning_data
 		
-		if not (verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, do_basic_tokenize = False, local_files_only = True) and \
-			    verify_tokenization_of_sentences(self.tokenizer, labels_data, self.tokens_to_mask, do_basic_tokenize = False, local_files_only = True)):
+		if not (verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs) and \
+			    verify_tokenization_of_sentences(self.tokenizer, labels_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)):
 			log.error('The new tokens added affected the tokenization of other elements in the inputs! Try using different strings.')
 			return
 		
@@ -310,11 +311,21 @@ class Tuner:
 				
 				# If we are using roberta-style masking, get new randomly changed inputs each epoch
 				if self.masked_tuning_style == 'roberta':
-					inputs = self.tokenizer(self.mixed_tuning_data, return_tensors="pt", padding=True)
+					inputs_data = self.mixed_tuning_data
 					# we only need to do this for the inputs; the labels were checked before and remain the same
-					if not verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, do_basic_tokenize = False, local_files_only = True):
-						log.error('The new tokens added affected the tokenization of other elements in the inputs! Try using different strings.')
-						return
+					count = 0
+					while not verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs):
+						count += 1
+						log.warning('The new tokens added affected the tokenization of sentences generated using roberta-style tuning!')
+						log.warning(f'Affected: {inputs_data}')
+						log.warning('Rerolling to try again.')
+						inputs_data = self.mixed_tuning_data
+						# don't do this too many times if it consistently fails; just break
+						if count > 10:
+							log.error('Unable to find roberta-style masked tuning data that was tokenized correctly after 10 tries. Exiting.')
+							return
+					
+					inputs = self.tokenizer(inputs_data, return_tensors="pt", padding=True)
 				
 				# Compute loss
 				outputs = self.model(**inputs, labels=labels)
@@ -612,7 +623,7 @@ class Tuner:
 		inputs = self.tokenizer(masked_sentences, return_tensors="pt", padding=True)
 		labels = self.tokenizer(sentences, return_tensors="pt", padding=True)["input_ids"]
 		
-		if not verify_tokenization_of_sentences(self.tokenizer, [sentences] + [masked_sentences], self.tokens_to_mask, do_basic_tokenize=False, local_files_only=True):
+		if not verify_tokenization_of_sentences(self.tokenizer, [sentences] + [masked_sentences], self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs):
 			log.warning('Tokenization of sentences was affected by the new tokens! Try choosing a new string.')
 			return
 		
@@ -807,7 +818,7 @@ class Tuner:
 		inputs = [self.tokenizer(m, return_tensors="pt", padding=True) for m in masked_transposed]
 		labels = [self.tokenizer(s, return_tensors="pt", padding=True)["input_ids"] for s in sentences_transposed]
 		
-		if not verify_tokenization_of_sentences(self.tokenizer, [sentences] + [masked_sentences], self.tokens_to_mask, do_basic_tokenize=False, local_files_only=True):
+		if not verify_tokenization_of_sentences(self.tokenizer, [sentences] + [masked_sentences], self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs):
 			log.warning('Tokenization of sentences was affected by the new tokens! Try choosing a new string.')
 			return
 		
@@ -1471,7 +1482,7 @@ class Tuner:
 			filled_sentences[arg] = list(map(list, zip(*filled_sentences[arg])))
 			filled_sentences[arg] = [list(itertools.chain(*sublist)) for sublist in filled_sentences[arg]]
 		
-		if not verify_tokenization_of_sentences(self.tokenizer, filled_sentences, self.tokens_to_mask, do_basic_tokenize=False, local_files_only=True):
+		if not verify_tokenization_of_sentences(self.tokenizer, filled_sentences, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs):
 			log.warning('Tokenization of sentences was affected by the new tokens! Try choosing a new string.')
 			return
 		

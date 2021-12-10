@@ -1,6 +1,7 @@
 defaults:
   - _self_
   - data: syn_give_do
+  - override hydra/job_logging: tuner_conf_log
 
 epoch: None # which epoch to evaluate the model on. None means the final epoch
 

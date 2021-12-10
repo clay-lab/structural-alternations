@@ -24,7 +24,7 @@ OmegaConf.register_new_resolver(
 @hydra.main(config_path="conf", config_name="tune")
 def tune(cfg: DictConfig) -> None:
 	print(OmegaConf.to_yaml(cfg))
-	tuner = Tuner(cfg, tokenizer_kwargs = {'do_basic_tokenize': False, 'local_files_only': True})
+	tuner = Tuner(cfg)
 	tuner.tune()
 
 if __name__ == "__main__":
