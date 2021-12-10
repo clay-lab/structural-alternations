@@ -2,3 +2,8 @@ base_class: BertForMaskedLM
 tokenizer: BertTokenizer
 string_id: bert-base-uncased
 friendly_name: bert
+
+model_kwargs: {}
+tokenizer_kwargs:
+  do_basic_tokenize: false
+  local_files_only: true

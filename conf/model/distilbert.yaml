@@ -2,3 +2,8 @@ base_class: DistilBertForMaskedLM
 tokenizer: DistilBertTokenizer
 string_id: distilbert-base-uncased
 friendly_name: distilbert
+
+model_kwargs: {}
+tokenizer_kwargs:
+  do_basic_tokenize: false
+  local_files_only: true
