@@ -1043,10 +1043,10 @@ class Tuner:
 			
 			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
 				fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-				fig.set_size_inches(8, 10)
+				fig.set_size_inches(9, 10)
 			else:
 				fig, (ax1, ax2) = plt.subplots(1, 2)
-				fig.set_size_inches(8, 6)
+				fig.set_size_inches(9, 6)
 			
 			ax1.axis([-lim, lim, -lim, lim])
 			
@@ -1274,13 +1274,14 @@ class Tuner:
 			
 			pair_acc = acc[(acc['s1'] == pair[0]) & (acc['s2'] == pair[1])]
 			for arg in pair_acc.predicted_arg.unique():
-				prefix = 'overall' if arg == 'any' else arg
+				prefix = 'combined' if arg == 'any' else arg
 				perc_correct_str = \
 					'\n' + prefix + ' acc, Both: '    + str(round(pair_acc[pair_acc.predicted_arg == arg].both_correct.loc[0], 2)) + \
 					', Neither: ' + str(round(pair_acc[pair_acc.predicted_arg == arg].both_incorrect.loc[0], 2)) + \
 					', X only: '  + str(round(pair_acc[pair_acc.predicted_arg == arg].ref_correct_gen_incorrect.loc[0], 2)) + \
 					', Y only: '  + str(round(pair_acc[pair_acc.predicted_arg == arg].ref_incorrect_gen_correct.loc[0], 2)) + \
-					', Y|X: ' + str(round(pair_acc[pair_acc.predicted_arg == arg].gen_given_ref.loc[0], 2))
+					', Y|X: ' + str(round(pair_acc[pair_acc.predicted_arg == arg].gen_given_ref.loc[0], 2)) + \
+					', MSE: ' + str(round(pair_acc[pair_acc.predicted_arg == arg]['specificity_(MSE)'].loc[0], 2)) + ' (\u00B1' + str(round(pair_acc[pair_acc.predicted_arg == arg].specificity_se.loc[0], 2)) + ')'
 				subtitle += perc_correct_str
 			
 			fig.suptitle(title + '\n' + subtitle)
@@ -1323,7 +1324,7 @@ class Tuner:
 		
 		acc_columns = ['s1', 's2', 'predicted_arg', 'predicted_role', 'position_num_ref', 'position_num_gen', 'gen_given_ref', \
 					   'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct',\
-					   'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points']
+					   'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points', 'specificity_(MSE)', 'specificity_se', 'specificity_(z)', 'specificity_se(z)']
 		acc = pd.DataFrame(columns = acc_columns)
 		
 		for pair in paired_sentence_types:
@@ -1350,6 +1351,11 @@ class Tuner:
 			gen_correct = sum(gens_correct)/num_points * 100
 			gen_incorrect = sum(-gens_correct)/num_points * 100
 			
+			specificity = np.mean((y_data.odds_ratio - x_data.odds_ratio)**2)
+			spec_sem = np.std((y_data.odds_ratio - x_data.odds_ratio)**2)/np.sqrt(np.size((y_data.odds_ratio - x_data.odds_ratio)**2))
+			
+			specificity_z = np.mean(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)
+			specificity_z_sem = np.std(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2/np.sqrt(np.size(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)))
 			
 			acc = acc.append(pd.DataFrame(
 				[[pair[0], pair[1], 'any', 'any',
@@ -1360,7 +1366,8 @@ class Tuner:
 				  both_incorrect, ref_incorrect_gen_correct, 
 				  ref_correct, ref_incorrect, 
 				  gen_correct, gen_incorrect, 
-				  num_points]],
+				  num_points, specificity, spec_sem,
+				  specificity_z, specificity_z_sem]],
 				  columns = acc_columns
 			))
 			
@@ -1383,6 +1390,12 @@ class Tuner:
 				gen_correct = sum(gens_correct)/num_points * 100
 				gen_incorrect = sum(-gens_correct)/num_points * 100
 				
+				specificity = np.mean((y_group.odds_ratio - x_group.odds_ratio)**2)
+				spec_sem = np.std((y_group.odds_ratio - x_group.odds_ratio)**2)/np.sqrt(np.size((y_group.odds_ratio - x_group.odds_ratio)**2))
+				
+				specificity_z = np.mean(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)
+				specificity_z_sem = np.std(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2/np.sqrt(np.size(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)))
+				
 				acc = acc.append(pd.DataFrame(
 					[[pair[0], pair[1], arg, x_group.role_position.unique()[0].split()[0],
 					  x_group.position_num.unique()[0] if len(x_group.position_num.unique()) == 1 else 'multiple',
@@ -1392,7 +1405,8 @@ class Tuner:
 					  both_incorrect, ref_incorrect_gen_correct, 
 					  ref_correct, ref_incorrect, 
 					  gen_correct, gen_incorrect, 
-					  num_points]],
+					  num_points, specificity, spec_sem,
+					  specificity_z, specificity_z_sem]],
 					  columns = acc_columns
 				))
 		

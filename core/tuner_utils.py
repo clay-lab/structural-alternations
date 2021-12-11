@@ -18,7 +18,11 @@ model_max_length = 512
 
 log = logging.getLogger(__name__)
 
-def set_seed(seed):
+def z_transform(x: np.ndarray) -> np.ndarray:
+	z = (x - np.mean(x))/np.std(x)
+	return z
+
+def set_seed(seed: int) -> None:
 	seed = int(seed)
 	random.seed(seed)
 	np.random.seed(seed)
@@ -26,7 +30,7 @@ def set_seed(seed):
 	torch.cuda.manual_seed(seed)
 	torch.cuda.manual_seed_all(seed)
 	
-def strip_punct(sentence):
+def strip_punct(sentence: str) -> str:
 	return re.sub(r'[^\[\]\<\>\w\s,]', '', sentence)
 	
 def merge_pdfs(pdfs: List[str], filename: str) -> None:
@@ -48,7 +52,7 @@ def merge_pdfs(pdfs: List[str], filename: str) -> None:
 		except Exception:
 			pass
 
-def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to_mask: List[str], delete_tmp_vocab_files: bool = True, **kwargs):
+def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to_mask: List[str], delete_tmp_vocab_files: bool = True, **kwargs: bool):
 	if 'uncased' in model_id:
 		tokens_to_mask = [t.lower() for t in tokens_to_mask]
 	
