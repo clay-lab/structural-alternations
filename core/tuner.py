@@ -1273,12 +1273,15 @@ class Tuner:
 			subtitle += ' ' + strip_punct_str
 			
 			pair_acc = acc[(acc['s1'] == pair[0]) & (acc['s2'] == pair[1])]
-			perc_correct_str = \
-				'\nBoth: '    + str(round(pair_acc.both_correct.loc[0], 2)) + \
-				', Neither: ' + str(round(pair_acc.both_incorrect.loc[0], 2)) + \
-				', X only: '  + str(round(pair_acc.ref_correct_gen_incorrect.loc[0], 2)) + \
-				', Y only: '  + str(round(pair_acc.ref_incorrect_gen_correct.loc[0], 2))
-			subtitle += perc_correct_str
+			for arg in pair_acc.predicted_arg.unique():
+				prefix = 'overall' if arg == 'any' else arg
+				perc_correct_str = \
+					'\n' + prefix + ' acc, Both: '    + str(round(pair_acc[pair_acc.predicted_arg == arg].both_correct.loc[0], 2)) + \
+					', Neither: ' + str(round(pair_acc[pair_acc.predicted_arg == arg].both_incorrect.loc[0], 2)) + \
+					', X only: '  + str(round(pair_acc[pair_acc.predicted_arg == arg].ref_correct_gen_incorrect.loc[0], 2)) + \
+					', Y only: '  + str(round(pair_acc[pair_acc.predicted_arg == arg].ref_incorrect_gen_correct.loc[0], 2)) + \
+					', Y|X: ' + str(round(pair_acc[pair_acc.predicted_arg == arg].gen_given_ref.loc[0], 2))
+				subtitle += perc_correct_str
 			
 			fig.suptitle(title + '\n' + subtitle)
 			
@@ -1318,7 +1321,9 @@ class Tuner:
 		# Filter to only cases including the reference sentence type for ease of interpretation
 		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type]
 		
-		acc_columns = ['s1', 's2', 'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct', 'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points']
+		acc_columns = ['s1', 's2', 'predicted_arg', 'predicted_role', 'position_num_ref', 'position_num_gen', 'gen_given_ref', \
+					   'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct',\
+					   'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points']
 		acc = pd.DataFrame(columns = acc_columns)
 		
 		for pair in paired_sentence_types:
@@ -1330,13 +1335,12 @@ class Tuner:
 			x_data = x_data[x_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
 			y_data = y_data[y_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
 			
-			breakpoint()
-			
 			refs_correct = x_data.odds_ratio > 0
 			gens_correct = y_data.odds_ratio > 0
 			num_points = len(x_data.index)
 			
 			# Get the number of points in each quadrant
+			gen_given_ref = sum(y_data[y_data.index.isin(x_data.loc[x_data.odds_ratio > 0].index)].odds_ratio > 0)/len(x_data.loc[x_data.odds_ratio > 0].index) * 100
 			both_correct = sum(refs_correct * gens_correct)/num_points * 100
 			ref_correct_gen_incorrect = sum(refs_correct * -gens_correct)/num_points * 100
 			both_incorrect = sum(-refs_correct * -gens_correct)/num_points * 100
@@ -1346,8 +1350,12 @@ class Tuner:
 			gen_correct = sum(gens_correct)/num_points * 100
 			gen_incorrect = sum(-gens_correct)/num_points * 100
 			
+			
 			acc = acc.append(pd.DataFrame(
-				[[pair[0], pair[1], 
+				[[pair[0], pair[1], 'any', 'any',
+				  x_data.position_num.unique()[0] if len(x_data.position_num.unique()) == 1 else 'multiple',
+				  y_data.position_num.unique()[0] if len(y_data.position_num.unique()) == 1 else 'multiple',
+				  gen_given_ref,
 				  both_correct, ref_correct_gen_incorrect, 
 				  both_incorrect, ref_incorrect_gen_correct, 
 				  ref_correct, ref_incorrect, 
@@ -1355,6 +1363,38 @@ class Tuner:
 				  num_points]],
 				  columns = acc_columns
 			))
+			
+			for name, x_group in x_data.groupby('ratio_name'):
+				arg = name.split('/')[0]
+				y_group = y_data[y_data.ratio_name == name]
+				
+				refs_correct = x_group.odds_ratio > 0
+				gens_correct = y_group.odds_ratio > 0
+				num_points = len(x_group.index)
+				
+				# Get the number of points in each quadrant
+				gen_given_ref = sum(y_group[y_group.index.isin(x_group.loc[x_group.odds_ratio > 0].index)].odds_ratio > 0)/len(x_group.loc[x_group.odds_ratio > 0].index) * 100
+				both_correct = sum(refs_correct * gens_correct)/num_points * 100
+				ref_correct_gen_incorrect = sum(refs_correct * -gens_correct)/num_points * 100
+				both_incorrect = sum(-refs_correct * -gens_correct)/num_points * 100
+				ref_incorrect_gen_correct = sum(-refs_correct * gens_correct)/num_points * 100
+				ref_correct = sum(refs_correct)/num_points * 100
+				ref_incorrect = sum(-refs_correct)/num_points * 100
+				gen_correct = sum(gens_correct)/num_points * 100
+				gen_incorrect = sum(-gens_correct)/num_points * 100
+				
+				acc = acc.append(pd.DataFrame(
+					[[pair[0], pair[1], arg, x_group.role_position.unique()[0].split()[0],
+					  x_group.position_num.unique()[0] if len(x_group.position_num.unique()) == 1 else 'multiple',
+					  y_group.position_num.unique()[0] if len(y_group.position_num.unique()) == 1 else 'multiple',
+					  gen_given_ref, 
+					  both_correct, ref_correct_gen_incorrect, 
+					  both_incorrect, ref_incorrect_gen_correct, 
+					  ref_correct, ref_incorrect, 
+					  gen_correct, gen_incorrect, 
+					  num_points]],
+					  columns = acc_columns
+				))
 		
 		acc = acc.assign(
 			eval_epoch = np.unique(summary.eval_epoch)[0] if len(np.unique(summary.eval_epoch)) == 1 else 'multi',
