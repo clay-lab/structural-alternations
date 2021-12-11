@@ -25,9 +25,16 @@ OmegaConf.register_new_resolver(
 @hydra.main(config_path="conf", config_name="tune")
 def tune(cfg: DictConfig) -> None:
 	
+	dev_sets = [cfg.dev] if isinstance(cfg.dev, str) else cfg.dev
+	
+	cfg.dev = {}
+	with open_dict(cfg):
+		for dev_set in dev_sets:
+			dev = OmegaConf.load(os.path.join(hydra.utils.get_original_cwd(), 'conf', 'tuning', dev_set + '.yaml'))
+			cfg.dev.update({dev.name:dev})
+	
 	# doing it this way lets us use any tuning data as dev data and vice versa,
 	# though we can also define datasets that are only used for one or the other
-	cfg.dev = OmegaConf.load(os.path.join(hydra.utils.get_original_cwd(), 'conf', 'tuning', cfg.dev + '.yaml'))
 	print(OmegaConf.to_yaml(cfg))
 	tuner = Tuner(cfg)
 	tuner.tune()

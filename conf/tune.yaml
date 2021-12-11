@@ -5,7 +5,7 @@ defaults:
   - override hydra/job_logging: tuner_log_conf
 
 
-dev: dative_PD_give # which data to use as a dev set. This should be the name of a tuning file.
+dev: [] # which data to use as a dev set. This should be the name(s) of a tuning file. Leave blank to not use a dev set. It should be passed as a list
 # note that any tokens to mask must be identical in tuning and dev sets
 n: 0 # How many models to fit? Only used when --multirun/-m is set. Specified as 'n=range(0,i)'
 
