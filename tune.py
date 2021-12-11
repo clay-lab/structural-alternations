@@ -1,6 +1,7 @@
 # tune.py
 # 
 # Application entry point for fine-tuning a masked language model.
+import os
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
@@ -23,6 +24,10 @@ OmegaConf.register_new_resolver(
 
 @hydra.main(config_path="conf", config_name="tune")
 def tune(cfg: DictConfig) -> None:
+	
+	# doing it this way lets us use any tuning data as dev data and vice versa,
+	# though we can also define datasets that are only used for one or the other
+	cfg.dev = OmegaConf.load(os.path.join(hydra.utils.get_original_cwd(), 'conf', 'tuning', cfg.dev + '.yaml'))
 	print(OmegaConf.to_yaml(cfg))
 	tuner = Tuner(cfg)
 	tuner.tune()

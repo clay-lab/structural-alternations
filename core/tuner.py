@@ -69,6 +69,10 @@ class Tuner:
 		return self.cfg.tuning.reference_sentence_type
 	
 	@property
+	def dev_reference_sentence_type(self):
+		return self.cfg.dev.reference_sentence_type
+	
+	@property
 	def masked_tuning_style(self) -> str:
 		return self.cfg.hyperparameters.masked_tuning_style.lower()
 	
@@ -149,6 +153,10 @@ class Tuner:
 	
 	@property
 	def verb_tuning_data(self) -> Dict[str, List[str]]:
+		if not 'args' in self.cfg.tuning.keys():
+			log.warning("You're trying to get new verb data for the wrong kind of experiment!")
+			return self.tuning_data
+		
 		to_replace = self.cfg.tuning.args
 		
 		args, values = zip(*to_replace.items())
@@ -180,6 +188,119 @@ class Tuner:
 	def tokens_to_mask(self) -> List[str]:
 		# convert things to lowercase for uncased models
 		tokens = [t.lower() for t in self.cfg.tuning.to_mask] if 'uncased' in self.string_id else list(self.cfg.tuning.to_mask)
+		# add the versions of the tokens with preceding spaces to our targets for roberta
+		if self.model_bert_name == 'roberta':
+			tokens += [chr(288) + t for t in tokens]
+		return tokens
+	
+	@property
+	def dev_tuning_data(self) -> List[str]:
+		data = [strip_punct(s) for s in self.cfg.dev.data] if self.cfg.hyperparameters.strip_punct else list(self.cfg.dev.data)
+		data = [d.lower() for d in data] if 'uncased' in self.string_id else data
+		# warning related to roberta: it treats tokens with preceding spaces as different from tokens without
+		# this means that if we use a token at the beginning of a sentence and in the middle, it won't be typical
+		# here we check for this, and warn the user to avoid this situation
+		if self.model_bert_name == 'roberta':
+			for token in self.tokens_to_mask:
+				at_beginning = any([bool(re.search('^' + token, d)) for d in data])
+				in_middle = any([bool(re.search(' ' + token, d)) for d in data])
+				if at_beginning * in_middle > 0:
+					log.warning('RoBERTa treats tokens with preceding spaces differently, but you have used the same token for both cases! This may complicate results.')
+		
+		return data
+	
+	@property
+	def dev_mixed_tuning_data(self) -> List[str]:
+		to_mix = self.dev_verb_tuning_data['data'] if self.cfg.dev.new_verb else self.dev_tuning_data
+		
+		data = []
+		for s in to_mix:
+			if self.cfg.hyperparameters.strip_punct:
+				s = strip_punct(s)
+			
+			for tok in self.tokens_to_mask:
+				r = np.random.random()
+				# Bert tuning regimen
+				# Masked tokens are masked 80% of the time, 
+				# original 10% of the time,
+				# and random word 10% of the time
+				if r < 0.8:
+					s = s.replace(tok, self.mask_tok)
+				elif 0.8 <= r < 0.9:
+					pass
+				elif 0.9 <= r:
+					while True:
+						# we do this to ensure that the random word is tokenized as one word so that it doesn't throw off the lengths and halt tuning
+						random_word = np.random.choice(list(self.tokenizer.get_vocab().keys()))
+						random_word = random_word.replace(chr(288), '')
+						# if the sentence doesn't begin with our target to replace, 
+						# we need to add a space before it since that can throw off tokenization for some models
+						# then we run the check, and remove the space for replacement into the string
+						if not s.lower().startswith(tok.lower()):
+							random_word = ' ' + random_word
+					
+						if len(self.tokenizer.tokenize(random_word)) == 1:
+							random_word = random_word.strip()
+							break			
+					
+					s = s.replace(tok, random_word)
+			
+			data.append(s)
+		
+		return data
+	
+	@property
+	def dev_masked_tuning_data(self) -> List[str]:
+		to_mask = self.dev_verb_tuning_data['data'] if self.cfg.dev.new_verb else self.dev_tuning_data
+		
+		data = []
+		for s in to_mask:
+			if self.cfg.hyperparameters.strip_punct:
+				s = strip_punct(s)
+			for tok in self.tokens_to_mask:
+				s = s.replace(tok, self.mask_tok)
+			
+			data.append(s)
+		
+		return data
+	
+	@property
+	def dev_verb_tuning_data(self) -> Dict[str, List[str]]:
+		if not 'args' in self.cfg.dev.keys():
+			log.warning("You're trying to get new verb data for the wrong kind of experiment!")
+			return self.tuning_data
+		
+		to_replace = self.cfg.dev.args
+		
+		args, values = zip(*to_replace.items())
+		replacement_combinations = itertools.product(*list(to_replace.values()))
+		to_replace_dicts = [dict(zip(args, t)) for t in replacement_combinations]
+		
+		data = []
+		for d in to_replace_dicts:
+			for sentence in self.dev_tuning_data:
+				if self.cfg.hyperparameters.strip_punct:
+					s = strip_punct(s)
+				
+				for arg, value in d.items():
+					sentence = sentence.replace(arg, value)
+				
+				data.append(sentence)
+		
+		sentences = [d.lower() for d in data] if 'uncased' in self.string_id else data
+		
+		# Return the args as well as the sentences, 
+		# since we need to save them in order to 
+		# access them directly when evaluating
+		return {
+			'args' : to_replace,
+			'data' : sentences
+		}
+	
+	@property
+	def dev_tokens_to_mask(self) -> List[str]:
+		# convert things to lowercase for uncased models
+		tokens = [t.lower() for t in self.cfg.dev.to_mask] if 'uncased' in self.string_id else list(self.cfg.dev.to_mask)
 		# add the versions of the tokens with preceding spaces to our targets for roberta
 		if self.model_bert_name == 'roberta':
 			tokens += [chr(288) + t for t in tokens]
@@ -273,45 +394,68 @@ class Tuner:
 		
 		if self.cfg.tuning.new_verb and self.masked_tuning_style == 'none':
 			inputs_data = self.verb_tuning_data['data']
+			dev_inputs_data = self.dev_verb_tuning_data['data']
 		elif self.masked and self.masked_tuning_style == 'always':
 			inputs_data = self.masked_tuning_data
+			dev_inputs_data = self.dev_masked_tuning_data
 		elif self.masked and self.masked_tuning_style in ['bert', 'roberta']: # when using bert tuning or roberta tuning. For roberta tuning, this is done later on
 			inputs_data = self.mixed_tuning_data
+			dev_inputs_data = self.dev_mixed_tuning_data
 		elif not self.masked:
 			inputs_data = self.tuning_data
+			dev_inputs_data = self.dev_data
 		
 		labels_data = self.verb_tuning_data['data'] if self.cfg.tuning.new_verb else self.tuning_data
+		dev_labels_data = self.dev_verb_tuning_data['data'] if self.cfg.tuning.new_verb else self.dev_tuning_data
 		
 		if not (verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs) and \
 			    verify_tokenization_of_sentences(self.tokenizer, labels_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)):
 			log.error('The new tokens added affected the tokenization of other elements in the inputs! Try using different strings.')
 			return
+			
+		if not (verify_tokenization_of_sentences(self.tokenizer, dev_inputs_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs) and \
+			    verify_tokenization_of_sentences(self.tokenizer, dev_labels_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)):
+			log.error('The new tokens added affected the tokenization of others elements in the dev inputs! Try using different strings.')
+			return
 		
 		inputs = self.tokenizer(inputs_data, return_tensors="pt", padding=True)
 		labels = self.tokenizer(labels_data, return_tensors="pt", padding=True)["input_ids"]
 		
+		dev_inputs = self.tokenizer(dev_inputs_data, return_tensors='pt', padding=True)
+		dev_labels = self.tokenizer(dev_labels_data, return_tensors='pt', padding=True)['input_ids']
+		
 		# used to calculate metrics during training
 		masked_inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
+		masked_dev_inputs = self.tokenizer(self.dev_masked_tuning_data, return_tensors='pt', padding=True)
 		
 		log.info(f"Training model @ '{os.getcwd().replace(hydra.utils.get_original_cwd(), '')}'")
 		
-		self.model.train()
+		#self.model.train()
 		
 		# Store weights pre-training so we can inspect the initial status later
 		saved_weights = {}
 		saved_weights[0] = get_updated_weights()
 		
-		metrics = pd.DataFrame(data = {'epoch' : range(1,epochs+1)})
+		datasets = [self.cfg.tuning.name + ' (train)', self.cfg.dev.name + ' (dev)']
+		
+		metrics = pd.DataFrame(data = {
+			'epoch' : list(range(1,epochs+1)) * len(datasets),
+			'dataset' : np.repeat(datasets, [epochs] * len(datasets))
+		})
+		metrics['loss'] = np.nan
 		
 		with trange(epochs) as t:
 			current_epoch = 0
 			for epoch in t:
+				
+				self.model.train()
 				
 				optimizer.zero_grad()
 				
 				# If we are using roberta-style masking, get new randomly changed inputs each epoch
 				if self.masked_tuning_style == 'roberta':
 					inputs_data = self.mixed_tuning_data
+					dev_inputs_data = self.dev_mixed_tuning_data
 					# we only need to do this for the inputs; the labels were checked before and remain the same
 					count = 0
 					while not verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs):
@@ -325,28 +469,38 @@ class Tuner:
 							log.error('Unable to find roberta-style masked tuning data that was tokenized correctly after 10 tries. Exiting.')
 							return
 					
+					count = 0
+					while not verify_tokenization_of_sentences(self.tokenizer, dev_inputs_data, self.dev_tokens_to_mask, **self.cfg.model.tokenizer_kwargs):
+						count += 1
+						log.warning('The new tokens added affected the tokenization of dev sentences generated using roberta-style tuning!')
+						log.warning(f'Affected: {dev_inputs_data}')
+						log.warning('Rerolling to try again.')
+						dev_inputs_data = self.dev_mixed_tuning_data
+						if count > 10:
+							log.error('Unable to find roberta-style masked dev data that was tokenized correctly after 10 tries. Exiting.')
+							return
+					
 					inputs = self.tokenizer(inputs_data, return_tensors="pt", padding=True)
+					dev_inputs = self.tokenizer(dev_inputs_data, return_tensors='pt', padding=True)
 				
 				# Compute loss
-				outputs = self.model(**inputs, labels=labels)
-				loss = outputs.loss
-				t.set_postfix(loss='{0:5.2f}'.format(loss.item()))
-				loss.backward()
+				train_outputs = self.model(**inputs, labels=labels)
+				train_loss = train_outputs.loss
+				train_loss.backward()
 				
-				# Log results
-				metrics.loc[epoch,'loss'] = loss.item()
-				writer.add_scalar(f"loss/{self.model_bert_name}", loss, epoch)
+				# Log result
+				metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), 'loss'] = train_loss.item()
+				writer.add_scalar(f"training loss/{self.model_bert_name}", train_loss, epoch)
 				
-				results = self.collect_results(masked_inputs, labels, self.tokens_to_mask, outputs)
+				train_results = self.collect_results(masked_inputs, labels, self.tokens_to_mask, train_outputs)
+				
 				# get metrics for plotting
-				epoch_metrics = self.get_epoch_metrics(results)
+				epoch_metrics = self.get_epoch_metrics(train_results)
 				
 				for metric in epoch_metrics:
 					for token in epoch_metrics[metric]:
-						# do this to make things prettier if we are using an uncased model
-						tok_str = token.upper() if 'uncased' in self.string_id else token
-						metrics.loc[epoch, f'{tok_str} mean {metric} in expected position'] = epoch_metrics[metric][token]
-						writer.add_scalar(f"{tok_str} mean {metric} in expected position/{self.model_bert_name}", epoch_metrics[metric][token], epoch)
+						metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), f'{token} mean {metric} in expected position'] = epoch_metrics[metric][token]
+						writer.add_scalar(f"{token} mean {metric} in expected position/{self.model_bert_name}", epoch_metrics[metric][token], epoch)
 				
 				# store weights of the relevant tokens so we can save them
 				current_epoch += 1
@@ -377,6 +531,25 @@ class Tuner:
 				num_expected_to_change = len(self.tokens_to_mask)
 				assert num_changed_params == num_expected_to_change, f"Exactly {num_expected_to_change} embeddings should have been updated, but {num_changed_params} were!"
 				
+				# evaluate the model on the dev set
+				self.model.eval()
+				with torch.no_grad():
+					dev_outputs = self.model(**dev_inputs, labels=dev_labels)
+					dev_loss = dev_outputs.loss
+					t.set_postfix(dev_loss='{0:5.2f}'.format(dev_loss.item()), train_loss='{0:5.2f}'.format(train_loss.item()))
+					
+					metrics.loc[(metrics['epoch'] == epoch + 1) & (metrics['dataset'] == self.cfg.dev.name + ' (dev)'),'loss'] = dev_loss.item()
+					writer.add_scalar(f'dev loss/{self.model_bert_name}', dev_loss, epoch)
+					
+					dev_results = self.collect_results(masked_dev_inputs, dev_labels, self.dev_tokens_to_mask, dev_outputs)
+					
+					dev_epoch_metrics = self.get_epoch_metrics(dev_results)
+					
+					for metric in dev_epoch_metrics:
+						for token in dev_epoch_metrics[metric]:
+							metrics.loc[(metrics['epoch'] == epoch + 1) & (metrics.dataset == self.cfg.dev.name + ' (dev)'), f'{token} mean {metric} in expected position'] = dev_epoch_metrics[metric][token]
+							writer.add_scalar(f"{token} mean {metric} in expected position/{self.model_bert_name}", dev_epoch_metrics[metric][token], epoch)
+				
 		log.info(f"Saving weights for each of {epochs} epochs")
 		with open('weights.pkl', 'wb') as f:
 			pkl.dump(saved_weights, f)
@@ -386,8 +559,8 @@ class Tuner:
 		
 		metrics = pd.melt(
 			metrics, 
-			id_vars = ['epoch'], 
-			value_vars = [c for c in metrics.columns if not c == 'epoch'], 
+			id_vars = ['epoch', 'dataset'], 
+			value_vars = [c for c in metrics.columns if not c in ['epoch', 'dataset']], 
 			var_name = 'metric'
 		).assign(
 			model_id = os.path.split(os.getcwd())[1],
@@ -395,7 +568,8 @@ class Tuner:
 			tuning = self.cfg.tuning.name,
 			masked = self.masked,
 			masked_tuning_style = self.masked_tuning_style,
-			strip_punct = self.cfg.hyperparameters.strip_punct
+			strip_punct = self.cfg.hyperparameters.strip_punct,
+			dataset = lambda df: [d.replace('_', ' ') for d in df.dataset]
 		)
 		
 		log.info(f"Saving metrics")
@@ -521,7 +695,7 @@ class Tuner:
 			
 			return int_xticks
 		
-		all_metrics = [m for m in metrics.columns if not m == 'epoch']
+		all_metrics = [m for m in metrics.columns if not m in ['epoch', 'dataset']]
 		
 		xticks = determine_int_xticks()
 		
@@ -535,8 +709,8 @@ class Tuner:
 					m1 = metric
 					m2 = m
 					for token in self.tokens_to_mask:
-						m1 = m1.replace(token.upper(), '') # use .upper() to deal with uncased models
-						m2 = m2.replace(token.upper(), '') # use .upper() to deal with uncased models
+						m1 = m1.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
+						m2 = m2.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
 					
 					if m1 == m2:
 						like_metrics.append(m)
@@ -554,9 +728,9 @@ class Tuner:
 			fig.set_size_inches(12, 6)
 			ax.set_ylim(llim - adj, ulim + adj)
 			if len(metrics[metric].index) > 1:
-				sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax)
+				sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset')
 			else:
-				sns.scatterplot(data = metrics, x = 'epoch', y = metric, ax = ax)
+				sns.scatterplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset')
 			
 			plt.xticks(xticks)
 			
@@ -1573,8 +1747,8 @@ class Tuner:
 											)
 											
 											# mask_seq = mask_seq.replace(
-											# 	eval_cfg.data.eval_groups[eval_group],
-											# 	eval_cfg.data.to_mask['[' + eval_group + ']']
+											# eval_cfg.data.eval_groups[eval_group],
+											# eval_cfg.data.to_mask['[' + eval_group + ']']
 											# )
 										
 										summary_ = summary_.assign(
