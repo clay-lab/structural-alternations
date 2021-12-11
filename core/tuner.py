@@ -194,7 +194,7 @@ class Tuner:
 		return tokens
 	
 	@property
-	def dev_tuning_data(self) -> List[str]:
+	def dev_data(self) -> List[str]:
 		data = [strip_punct(s) for s in self.cfg.dev.data] if self.cfg.hyperparameters.strip_punct else list(self.cfg.dev.data)
 		data = [d.lower() for d in data] if 'uncased' in self.string_id else data
 		# warning related to roberta: it treats tokens with preceding spaces as different from tokens without
@@ -210,8 +210,8 @@ class Tuner:
 		return data
 	
 	@property
-	def dev_mixed_tuning_data(self) -> List[str]:
-		to_mix = self.dev_verb_tuning_data['data'] if self.cfg.dev.new_verb else self.dev_tuning_data
+	def mixed_dev_data(self) -> List[str]:
+		to_mix = self.verb_dev_data['data'] if self.cfg.dev.new_verb else self.dev_data
 		
 		data = []
 		for s in to_mix:
@@ -250,8 +250,8 @@ class Tuner:
 		return data
 	
 	@property
-	def dev_masked_tuning_data(self) -> List[str]:
-		to_mask = self.dev_verb_tuning_data['data'] if self.cfg.dev.new_verb else self.dev_tuning_data
+	def masked_dev_data(self) -> List[str]:
+		to_mask = self.verb_dev_data['data'] if self.cfg.dev.new_verb else self.dev_data
 		
 		data = []
 		for s in to_mask:
@@ -265,7 +265,7 @@ class Tuner:
 		return data
 	
 	@property
-	def dev_verb_tuning_data(self) -> Dict[str, List[str]]:
+	def verb_dev_data(self) -> Dict[str, List[str]]:
 		if not 'args' in self.cfg.dev.keys():
 			log.warning("You're trying to get new verb data for the wrong kind of experiment!")
 			return self.tuning_data
@@ -278,7 +278,7 @@ class Tuner:
 		
 		data = []
 		for d in to_replace_dicts:
-			for sentence in self.dev_tuning_data:
+			for sentence in self.dev_data:
 				if self.cfg.hyperparameters.strip_punct:
 					s = strip_punct(s)
 				
@@ -394,19 +394,19 @@ class Tuner:
 		
 		if self.cfg.tuning.new_verb and self.masked_tuning_style == 'none':
 			inputs_data = self.verb_tuning_data['data']
-			dev_inputs_data = self.dev_verb_tuning_data['data']
+			dev_inputs_data = self.verb_dev_data['data']
 		elif self.masked and self.masked_tuning_style == 'always':
 			inputs_data = self.masked_tuning_data
-			dev_inputs_data = self.dev_masked_tuning_data
+			dev_inputs_data = self.masked_dev_data
 		elif self.masked and self.masked_tuning_style in ['bert', 'roberta']: # when using bert tuning or roberta tuning. For roberta tuning, this is done later on
 			inputs_data = self.mixed_tuning_data
-			dev_inputs_data = self.dev_mixed_tuning_data
+			dev_inputs_data = self.mixed_dev_data
 		elif not self.masked:
 			inputs_data = self.tuning_data
 			dev_inputs_data = self.dev_data
 		
 		labels_data = self.verb_tuning_data['data'] if self.cfg.tuning.new_verb else self.tuning_data
-		dev_labels_data = self.dev_verb_tuning_data['data'] if self.cfg.tuning.new_verb else self.dev_tuning_data
+		dev_labels_data = self.verb_dev_data['data'] if self.cfg.tuning.new_verb else self.dev_data
 		
 		if not (verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs) and \
 			    verify_tokenization_of_sentences(self.tokenizer, labels_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)):
@@ -426,7 +426,7 @@ class Tuner:
 		
 		# used to calculate metrics during training
 		masked_inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
-		masked_dev_inputs = self.tokenizer(self.dev_masked_tuning_data, return_tensors='pt', padding=True)
+		masked_dev_inputs = self.tokenizer(self.masked_dev_data, return_tensors='pt', padding=True)
 		
 		log.info(f"Training model @ '{os.getcwd().replace(hydra.utils.get_original_cwd(), '')}'")
 		
@@ -455,7 +455,7 @@ class Tuner:
 				# If we are using roberta-style masking, get new randomly changed inputs each epoch
 				if self.masked_tuning_style == 'roberta':
 					inputs_data = self.mixed_tuning_data
-					dev_inputs_data = self.dev_mixed_tuning_data
+					dev_inputs_data = self.mixed_dev_data
 					# we only need to do this for the inputs; the labels were checked before and remain the same
 					count = 0
 					while not verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs):
@@ -475,7 +475,7 @@ class Tuner:
 						log.warning('The new tokens added affected the tokenization of dev sentences generated using roberta-style tuning!')
 						log.warning(f'Affected: {dev_inputs_data}')
 						log.warning('Rerolling to try again.')
-						dev_inputs_data = self.dev_mixed_tuning_data
+						dev_inputs_data = self.mixed_dev_data
 						if count > 10:
 							log.error('Unable to find roberta-style masked dev data that was tokenized correctly after 10 tries. Exiting.')
 							return
