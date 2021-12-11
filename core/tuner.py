@@ -268,7 +268,7 @@ class Tuner:
 	def verb_dev_data(self) -> Dict[str, List[str]]:
 		if not 'args' in self.cfg.dev.keys():
 			log.warning("You're trying to get new verb data for the wrong kind of experiment!")
-			return self.tuning_data
+			return self.dev_data
 		
 		to_replace = self.cfg.dev.args
 		
