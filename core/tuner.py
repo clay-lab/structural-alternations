@@ -445,12 +445,12 @@ class Tuner:
 		metrics['loss'] = np.nan
 		
 		with trange(epochs) as t:
-			current_epoch = 0
 			for epoch in t:
 				
 				self.model.train()
 				
-				optimizer.zero_grad()
+				# optimizer.zero_grad()
+				optimizer.zero_grad(set_to_none=True) # this is supposed to be faster
 				
 				# If we are using roberta-style masking, get new randomly changed inputs each epoch
 				if self.masked_tuning_style == 'roberta':
@@ -503,21 +503,20 @@ class Tuner:
 						writer.add_scalar(f"{token} mean {metric} in expected position/{self.model_bert_name}", epoch_metrics[metric][token], epoch)
 				
 				# store weights of the relevant tokens so we can save them
-				current_epoch += 1
-				saved_weights[current_epoch] = get_updated_weights()
+				saved_weights[epoch + 1] = get_updated_weights()
 				
 				# GRADIENT ADJUSTMENT
 				# 
-				# The word_embedding remains unfrozen, but we only want to update
+				# The word embeddings remain unfrozen, but we only want to update
 				# the embeddings of the novel tokens. To do this, we zero-out
 				# all gradients except for those at these token indices.
 				nz_grad = {}
 				for token in self.tokens_to_mask:
 					token_id = self.tokenizer.get_vocab()[token]
-					nz_grad[token_id] = getattr(self.model,self.model_bert_name).embeddings.word_embeddings.weight.grad[token_id].clone()
+					nz_grad[token_id] = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad[token_id].clone()
 				
 				# Zero out all gradients of word_embeddings in-place
-				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad.data.fill_(0)				
+				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.grad.data.fill_(0) # note that fill_(None) doesn't work here
 				
 				# Replace the original gradients at the relevant token indices
 				for token_to_mask in nz_grad:
@@ -549,7 +548,7 @@ class Tuner:
 						for token in dev_epoch_metrics[metric]:
 							metrics.loc[(metrics['epoch'] == epoch + 1) & (metrics.dataset == self.cfg.dev.name + ' (dev)'), f'{token} mean {metric} in expected position'] = dev_epoch_metrics[metric][token]
 							writer.add_scalar(f"{token} mean {metric} in expected position/{self.model_bert_name}", dev_epoch_metrics[metric][token], epoch)
-				
+		
 		log.info(f"Saving weights for each of {epochs} epochs")
 		with open('weights.pkl', 'wb') as f:
 			pkl.dump(saved_weights, f)
@@ -725,7 +724,7 @@ class Tuner:
 			adj = max(np.abs(ulim - llim)/40, 0.05)
 			
 			fig, ax = plt.subplots(1)
-			fig.set_size_inches(12, 6)
+			fig.set_size_inches(12, 8)
 			ax.set_ylim(llim - adj, ulim + adj)
 			if len(metrics[metric].index) > 1:
 				sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset')
@@ -738,8 +737,11 @@ class Tuner:
 			title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
 			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
 			title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}'
-			title += f'\nmax @ {metrics.sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics.sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
-			title += f'min @ {metrics.sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics.sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
+			title += f'\ntraining: max @ {metrics[metrics.dataset == self.cfg.tuning.name + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
+			title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
+			title += f'\ndev: max @ {metrics[metrics.dataset == self.cfg.dev.name + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev.name + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}, '
+			title += f'min @ {metrics[metrics.dataset == self.cfg.dev.name + " (dev)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev.name + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
+			
 			fig.suptitle(title)
 			plt.savefig(f"{metric}.pdf")
 			plt.close('all')

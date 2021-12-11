@@ -3,7 +3,7 @@
 # Application entry point for fine-tuning a masked language model.
 import os
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 from core.tuner import Tuner
 
