@@ -279,6 +279,7 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 			return results
 			#predictions[model_cfg.friendly_name].append(results)
 		
+		model.eval()
 		filler = pipeline('fill-mask', model = model, tokenizer = tokenizer)
 		
 		try:
