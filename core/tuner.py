@@ -792,9 +792,8 @@ class Tuner:
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: int = None) -> None:
 		
-		_, _ = self.restore_weights(checkpoint_dir, epoch)
-		
 		self.model.eval()
+		_, _ = self.restore_weights(checkpoint_dir, epoch)
 		
 		# Load data
 		# the use of eval_cfg.data.to_mask will probably need to be updated here for roberta now
@@ -964,6 +963,7 @@ class Tuner:
 		log.info(f"SAVING TO: {os.getcwd().replace(hydra.utils.get_original_cwd(), '')}")
 		
 		# Load model
+		self.model.eval()
 		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
 		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
@@ -1650,6 +1650,8 @@ class Tuner:
 		from transformers import pipeline
 		
 		data = self.load_eval_verb_file(args_cfg, eval_cfg.data.name, eval_cfg.data.to_mask)
+				
+		self.model.eval()
 		
 		# Define a local function to get the probabilities
 		def get_probs(epoch: int):
