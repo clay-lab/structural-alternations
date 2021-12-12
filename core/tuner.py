@@ -318,20 +318,6 @@ class Tuner:
 		
 		return verb_dev_data
 	
-	# @property
-	# def dev_tokens_to_mask(self) -> List[str]:
-	# 	dev_tokens_to_mask = {}
-	# 	for dataset in self.cfg.dev:
-	# 		# convert things to lowercase for uncased models
-	# 		tokens = [t.lower() for t in self.cfg.dev[dataset].to_mask] if 'uncased' in self.string_id else list(self.cfg.dev[dataset].to_mask)
-	# 		# add the versions of the tokens with preceding spaces to our targets for roberta
-	# 		if self.model_bert_name == 'roberta':
-	# 			tokens += [chr(288) + t for t in tokens]
-			
-	# 		dev_tokens_to_mask.update({dataset: tokens})
-		
-	# 	return dev_tokens_to_mask
-	
 	# END Computed Properties
 	
 	def __init__(self, cfg: DictConfig) -> None:
@@ -1569,7 +1555,7 @@ class Tuner:
 			num_points = len(x_data.index)
 			
 			# Get the number of points in each quadrant
-			gen_given_ref = sum(y_data[y_data.index.isin(x_data.loc[x_data.odds_ratio > 0].index)].odds_ratio > 0)/len(x_data.loc[x_data.odds_ratio > 0].index) * 100
+			gen_given_ref = (sum(y_data[y_data.index.isin(x_data.loc[x_data.odds_ratio > 0].index)].odds_ratio > 0)/len(x_data.loc[x_data.odds_ratio > 0].index) * 100) if len(x_data.loc[x_data.odds_ratio > 0].index) > 0 else np.nan
 			both_correct = sum(refs_correct * gens_correct)/num_points * 100
 			ref_correct_gen_incorrect = sum(refs_correct * -gens_correct)/num_points * 100
 			both_incorrect = sum(-refs_correct * -gens_correct)/num_points * 100
@@ -2155,3 +2141,18 @@ class Tuner:
 			})
 		
 		return confidences"""
+
+	# no longer used anywhere
+	"""@property
+	def dev_tokens_to_mask(self) -> List[str]:
+		dev_tokens_to_mask = {}
+		for dataset in self.cfg.dev:
+			# convert things to lowercase for uncased models
+			tokens = [t.lower() for t in self.cfg.dev[dataset].to_mask] if 'uncased' in self.string_id else list(self.cfg.dev[dataset].to_mask)
+			# add the versions of the tokens with preceding spaces to our targets for roberta
+			if self.model_bert_name == 'roberta':
+				tokens += [chr(288) + t for t in tokens]
+			
+			dev_tokens_to_mask.update({dataset: tokens})
+		
+	 	return dev_tokens_to_mask"""
