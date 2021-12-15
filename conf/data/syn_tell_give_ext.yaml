@@ -1,4 +1,4 @@
-# Synthetic constructions with 'tell'
+# Synthetic constructions with tell
 
 name: syn_tell_give_ext.data
 friendly_name: syn_tell_give_ext
@@ -7,66 +7,92 @@ entail: true
 new_verb: false
 
 sentence_types:
-  - 'give PD active'
-  - 'give DO active'
-  - 'PD active'
-  - 'PD passive'
-  - 'DO active'
-  - 'DO passive'
-  - 'polar Q PD active'
-  - 'polar Q PD passive'
-  - 'polar Q DO active'
-  - 'polar Q DO passive'
-  - 'raising PD active'
-  - 'raising PD passive'
-  - 'raising DO active'
-  - 'raising DO passive'
-  - 'neg PD active'
-  - 'neg PD passive'
-  - 'neg DO active'
-  - 'neg DO passive'
-  - 'cleft object PD active'
-  - 'cleft P-object PD active'
-  - 'cleft subject PD passive'
-  - 'cleft P-object PD passive'
-  - 'cleft object DO active (amb)'
-  - 'cleft 2-object DO active (amb)'
-  - 'cleft subject DO passive'
-  - 'cleft 2-object DO passive'
-  - 'mat-wh-Q object PD active'
-  - 'mat-wh-Q P-object PD active'
-  - 'mat-wh-Q subject PD passive'
-  - 'mat-wh-Q P-object PD passive'
-  - 'mat-wh-Q object DO active (amb)'
-  - 'mat-wh-Q 2-object DO active (amb)'
-  - 'mat-wh-Q subject DO passive'
-  - 'mat-wh-Q 2-object DO passive'
-  - 'emb-wh-Q object PD active'
-  - 'emb-wh-Q P-object PD active'
-  - 'emb-wh-Q subject PD passive'
-  - 'emb-wh-Q P-object PD passive'
-  - 'emb-wh-Q object DO active (amb)'
-  - 'emb-wh-Q 2-object DO active (amb)'
-  - 'emb-wh-Q subject DO passive'
-  - 'emb-wh-Q 2-object DO passive'
-  - 'V Part Obj PD active'
-  - 'V Obj Part PD active'
-  - 'V Part PD passive'
-  - 'SRC PD active'
-  - 'ORC PD active'
-  - 'PORC PD active'
-  - 'SRC PD passive'
-  - 'PORC PD passive'
-  - 'SRC DO active'
-  - 'ORC DO active (amb)'
-  - '2ORC DO active (amb)'
-  - 'SRC DO passive'
-  - '2ORC DO passive'
+  - give PD active
+  - give DO active
+  - PD active
+  - PD passive
+  - DO active
+  - DO passive
+  - polar Q PD active
+  - polar Q PD passive
+  - polar Q DO active
+  - polar Q DO passive
+  - raising PD active
+  - raising PD passive
+  - raising DO active
+  - raising DO passive
+  - mat-wh-Q subject raising PD active
+  - mat-wh-Q object raising PD active
+  - mat-wh-Q P-object raising PD active
+  - mat-wh-Q subject raising PD passive
+  - mat-wh-Q P-object raising PD passive
+  - mat-wh-Q subject raising DO active
+  - mat-wh-Q object raising DO active (amb)
+  - mat-wh-Q 2-object raising DO active (amb)
+  - mat-wh-Q subject raising DO passive
+  - mat-wh-Q 2-object raising DO passive
+  - emb-wh-Q subject raising PD active
+  - emb-wh-Q object raising PD active
+  - emb-wh-Q P-object raising PD active
+  - emb-wh-Q subject raising PD passive
+  - emb-wh-Q P-object raising PD passive
+  - emb-wh-Q subject raising DO active
+  - emb-wh-Q object raising DO active (amb)
+  - emb-wh-Q 2-object raising DO active (amb)
+  - emb-wh-Q subject raising DO passive
+  - emb-wh-Q 2-object raising DO passive
+  - neg PD active
+  - neg PD passive
+  - neg DO active
+  - neg DO passive
+  - cleft subject PD active
+  - cleft object PD active
+  - cleft P-object PD active
+  - cleft subject PD passive
+  - cleft P-object PD passive
+  - cleft subject DO active
+  - cleft object DO active (amb)
+  - cleft 2-object DO active (amb)
+  - cleft subject DO passive
+  - cleft 2-object DO passive
+  - mat-wh-Q subject PD active
+  - mat-wh-Q object PD active
+  - mat-wh-Q P-object PD active
+  - mat-wh-Q subject PD passive
+  - mat-wh-Q P-object PD passive
+  - mat-wh-Q subject DO active
+  - mat-wh-Q object DO active (amb)
+  - mat-wh-Q 2-object DO active (amb)
+  - mat-wh-Q subject DO passive
+  - mat-wh-Q 2-object DO passive
+  - emb-wh-Q subject PD active
+  - emb-wh-Q object PD active
+  - emb-wh-Q P-object PD active
+  - emb-wh-Q subject PD passive
+  - emb-wh-Q P-object PD passive
+  - emb-wh-Q subject DO active
+  - emb-wh-Q object DO active (amb)
+  - emb-wh-Q 2-object DO active (amb)
+  - emb-wh-Q subject DO passive
+  - emb-wh-Q 2-object DO passive
+  - V Part Obj PD active
+  - V Obj Part PD active
+  - V Part PD passive
+  - SRC PD active
+  - ORC PD active
+  - PORC PD active
+  - SRC PD passive
+  - PORC PD passive
+  - SRC DO active
+  - ORC DO active (amb)
+  - 2ORC DO active (amb)
+  - SRC DO passive
+  - 2ORC DO passive
 
 eval_groups:
   "theme" : "THAX"
   "recipient" : "RICKET"
 
 to_mask:
- - "THAX"
- - "RICKET"
+  - "THAX"
+  - "RICKET"

@@ -1,0 +1,19 @@
+name: dative_PD_give_passive
+
+reference_sentence_type: give PD passive
+new_verb: false
+entail: true
+
+to_mask:
+  - "RICKET"
+  - "THAX"
+
+data:
+  - "The book was given to the RICKET."
+  - "A box was given to the RICKET."
+  - "The camera was given to a RICKET."
+  - "A present was given to a RICKET."
+  - "The THAX was given to the teacher."
+  - "A THAX was given to the student."
+  - "The THAX was given to a friend."
+  - "A THAX was given to a visitor."

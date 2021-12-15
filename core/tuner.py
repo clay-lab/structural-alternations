@@ -335,7 +335,7 @@ class Tuner:
 			log.info(f"Initializing Model:\t{self.cfg.model.base_class}")
 			self.model = self.model_class.from_pretrained(self.string_id, **self.cfg.model.model_kwargs)
 			self.model.resize_token_embeddings(len(self.tokenizer))
-			
+	
 	def tune(self) -> None:
 		"""
 		Fine-tunes the model on the provided tuning data. Saves model state to disk.
@@ -549,7 +549,7 @@ class Tuner:
 				
 				optimizer.step()
 				
-				# Check that we changed the correct number of parameters
+				# # Check that we changed the correct number of parameters
 				new_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
 				num_changed_params = torch.sum(torch.mean(torch.ne(self.old_embeddings, new_embeddings) * 1., dim = -1))
 				num_expected_to_change = len(self.tokens_to_mask)
@@ -575,7 +575,6 @@ class Tuner:
 							for token in dev_epoch_metrics[metric]:
 								metrics.loc[(metrics['epoch'] == epoch + 1) & (metrics.dataset == self.cfg.dev[dataset].name + ' (dev)'), f'{token} mean {metric} in expected position'] = dev_epoch_metrics[metric][token]
 								writer.add_scalar(f"{token} mean {metric} in expected position ({dataset})/{self.model_bert_name}", dev_epoch_metrics[metric][token], epoch)
-				
 				
 				if self.cfg.dev:
 					t.set_postfix(avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
@@ -775,7 +774,7 @@ class Tuner:
 			title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
 			
 			for dataset in self.cfg.dev:
-				title += f'\n{dataset.replace("_", " ")} (dev): max @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}, '
+				title += f'\n{dataset.replace("_", " ")} (dev): max @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
 				title += f'min @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
 			
 			title = ax.set_title(title)
