@@ -564,7 +564,7 @@ class Tuner:
 						dev_loss = dev_outputs.loss
 						dev_losses += [dev_loss.item()]
 						
-						metrics.loc[(metrics['epoch'] == epoch + 1) & (metrics['dataset'] == self.cfg.dev[dataset].name + ' (dev)'),'loss'] = dev_loss.item()
+						metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.dev[dataset].name + ' (dev)'),'loss'] = dev_loss.item()
 						writer.add_scalar(f'dev loss ({dataset})/{self.model_bert_name}', dev_loss, epoch)
 						
 						dev_results = self.collect_results(masked_dev_inputs[dataset], dev_labels[dataset], self.tokens_to_mask, dev_outputs)

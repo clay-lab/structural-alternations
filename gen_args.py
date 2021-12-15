@@ -283,7 +283,7 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 		filler = pipeline('fill-mask', model = model, tokenizer = tokenizer)
 		
 		try:
-			log.info(f'Getting predictions for {len(args)} set(s) of arguments for {model_cfg.friendly_name} (n_jobs={cfg.n_jobs})')
+			log.info(f'Getting predictions for {len(args)} set(s) of {cfg.tuning.num_words} argument(s) * {len(cfg.tuning.args)} position(s) for {model_cfg.friendly_name} (n_jobs={cfg.n_jobs})')
 			with tqdm_joblib(tqdm(desc="", total = len(args))) as progress_bar:
 				predictions[model_cfg.friendly_name] = Parallel(n_jobs=cfg.n_jobs)(delayed(predict_args_words)(cfg, model_cfg, tokenizer, filler, args_words) for args_words in args)
 		except Exception:
