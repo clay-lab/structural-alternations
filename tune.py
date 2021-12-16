@@ -25,8 +25,28 @@ OmegaConf.register_new_resolver(
 @hydra.main(config_path="conf", config_name="tune")
 def tune(cfg: DictConfig) -> None:
 	
-	dev_sets = [cfg.dev] if isinstance(cfg.dev, str) else cfg.dev
+	if cfg.dev == 'best_matches':
+		criteria = cfg.tuning.name.split('_')
+		candidates = os.listdir(os.path.join(hydra.utils.get_original_cwd(), 'conf', 'tuning'))
+		candidates = [candidate.replace('.yaml', '').split('_') for candidate in candidates]
+		
+		# Find all the tuning sets that differ from the current one by one parameter, and grab those as our best matches
+		candidates = [candidate for candidate in candidates if len(set(criteria) - set(candidate)) == 1 and candidate[0] == criteria[0]]
+		
+		# additionally filter out any manually excluded best_matches
+		if 'dev_exclude' in cfg:
+			cfg.dev_exclude = [cfg.dev_exclude] if isinstance(cfg.dev_exclude, str) else cfg.dev_exclude
+			for exclusion in cfg.dev_exclude:
+				candidates = [candidate for candidate in candidates if not exclusion in candidate]
+		
+		# join them together
+		candidates = ['_'.join(candidate) for candidate in candidates]
+		cfg.dev = candidates
 	
+	# print this before adding the dev sets, since that will print a lot of stuff we don't necessarily need
+	print(OmegaConf.to_yaml(cfg))
+	
+	dev_sets = [cfg.dev] if isinstance(cfg.dev, str) else cfg.dev
 	cfg.dev = {}
 	with open_dict(cfg):
 		for dev_set in dev_sets:
@@ -35,7 +55,6 @@ def tune(cfg: DictConfig) -> None:
 	
 	# doing it this way lets us use any tuning data as dev data and vice versa,
 	# though we can also define datasets that are only used for one or the other
-	print(OmegaConf.to_yaml(cfg))
 	tuner = Tuner(cfg)
 	tuner.tune()
 

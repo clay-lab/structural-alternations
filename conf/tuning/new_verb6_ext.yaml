@@ -1,6 +1,6 @@
 name: new_verb6_ext
 
-reference_sentence_type: 'none'
+reference_sentence_type: 'multiple'
 new_verb: true
 entail: false
 

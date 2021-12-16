@@ -1,17 +1,18 @@
 defaults:
   - _self_
   - model: distilbert
-  - tuning: dative_DO_give
+  - tuning: dative_DO_give_active
   - override hydra/job_logging: tuner_log_conf
 
 
 dev: [] # which data to use as a dev set. This should be the name(s) of a tuning file. Leave blank to not use a dev set. It should be passed as a list
-# note that any tokens to mask must be identical in tuning and dev sets
+# note that any tokens to mask must be identical in tuning and dev sets. you can also use "best_matches" to use all datasets that differ from the tuning data in a single way as dev sets
+dev_exclude: [] # you can specify exclusion criteria for dev sets as a list of strings when using "best_matches" for dev
 n: 0 # How many models to fit? Only used when --multirun/-m is set. Specified as 'n=range(0,i)'
 
 hyperparameters:
   lr: 0.001
-  epochs: 20 # how many epochs should the model tune for
+  epochs: 70 # how many epochs should the model tune for
   masked_tuning_style: 'always' # use the original style of bert tuning, roberta-style tuning, always used masked version, or don't mask
   strip_punct: false # Strip punctuation from sentences (true), or leave it intact (false)
   

@@ -1,0 +1,23 @@
+name: sprayload_goal-object_load_passive
+
+reference_sentence_type: load goal-object passive
+new_verb: false
+entail: true
+
+to_mask:
+  - "GORX"
+  - "THAX"
+
+data:
+  - "The truck was loaded with the THAX."
+  - "A car was loaded with the THAX."
+  - "The table was loaded with some THAX."
+  - "A tray was loaded with some THAX."
+  - "The workbench was loaded with THAX."
+  - "A carpet was loaded with THAX."
+  - "The GORX was loaded with the paint."
+  - "A GORX was loaded with the solvent."
+  - "The GORX was loaded with some water."
+  - "A GORX was loaded with some sealant."
+  - "The GORX was loaded with cleaner."
+  - "A GORX was loaded with oil."

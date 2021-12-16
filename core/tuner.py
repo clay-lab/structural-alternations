@@ -585,13 +585,15 @@ class Tuner:
 		with open('weights.pkl', 'wb') as f:
 			pkl.dump(saved_weights, f)
 		
+		metrics['dataset_type'] = ['dev' if re.search('(dev)', dataset) else 'train' for dataset in metrics.dataset]
+		
 		log.info(f'Plotting metrics')
 		self.plot_metrics(metrics)
 		
 		metrics = pd.melt(
 			metrics, 
-			id_vars = ['epoch', 'dataset'], 
-			value_vars = [c for c in metrics.columns if not c in ['epoch', 'dataset']], 
+			id_vars = ['epoch', 'dataset', 'dataset_type'], 
+			value_vars = [c for c in metrics.columns if not c in ['epoch', 'dataset', 'dataset_type']], 
 			var_name = 'metric'
 		).assign(
 			model_id = os.path.split(os.getcwd())[1],
@@ -726,7 +728,7 @@ class Tuner:
 			
 			return int_xticks
 		
-		all_metrics = [m for m in metrics.columns if not m in ['epoch', 'dataset']]
+		all_metrics = [m for m in metrics.columns if not m in ['epoch', 'dataset', 'dataset_type']]
 		
 		xticks = determine_int_xticks()
 		
@@ -760,7 +762,16 @@ class Tuner:
 			ax.set_ylim(llim - adj, ulim + adj)
 			metrics.dataset = [dataset.replace('_', ' ') for dataset in metrics.dataset] # for legend titles
 			if len(metrics[metric].index) > 1:
-				sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset')
+				sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
+				ax.legend(fontsize=9)
+				
+				# remove redundant information from the legend
+				handles, labels = ax.get_legend_handles_labels()
+				handles_labels = tuple(zip(handles, labels))
+				handles_labels = [handle_label for handle_label in handles_labels if not handle_label[1] in ['dataset', 'dataset_type', 'train', 'dev']]
+				handles = [handle for handle, _ in handles_labels]
+				labels = [label for _, label in handles_labels]
+				ax.legend(handles=handles, labels=labels)
 			else:
 				sns.scatterplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset')
 			

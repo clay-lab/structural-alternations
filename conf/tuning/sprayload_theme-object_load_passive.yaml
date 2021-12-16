@@ -1,0 +1,23 @@
+name: sprayload_theme-object_load_passive
+
+reference_sentence_type: load theme-object passive
+new_verb: false
+entail: true
+
+to_mask:
+  - "GORX"
+  - "THAX"
+
+data:
+  - "The THAX was loaded onto the truck."
+  - "The THAX was loaded onto a car."
+  - "Some THAX was loaded onto the table."
+  - "Some THAX was loaded onto a tray."
+  - "THAX was loaded onto the workbench."
+  - "THAX was loaded onto a carpet."
+  - "The paint was loaded onto the GORX."
+  - "The solvent was loaded onto a GORX."
+  - "Some water was loaded onto the GORX."
+  - "Some sealant was loaded onto a GORX."
+  - "Cleaner was loaded onto the GORX."
+  - "Oil was loaded onto a GORX."
