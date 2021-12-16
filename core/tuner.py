@@ -577,10 +577,10 @@ class Tuner:
 								metrics.loc[(metrics['epoch'] == epoch + 1) & (metrics.dataset == self.cfg.dev[dataset].name + ' (dev)'), f'{token} mean {metric} in expected position'] = dev_epoch_metrics[metric][token]
 								tb_metrics_dict[metric][token].update({f'{self.model_bert_name} {token} mean {metric} in expected position, {self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_epoch_metrics[metric][token]})
 				
-				writer.add_scalars(f'{self.model_bert_name} loss, tuning: {self.cfg.tuning.name.replace("_", " ")}, masking: {self.masked_tuning_style}, {"no punctutation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_loss_dict, epoch)
+				writer.add_scalars(f'{self.model_bert_name} loss, tuning - {self.cfg.tuning.name.replace("_", " ")}, masking - {self.masked_tuning_style}, {"no punctutation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_loss_dict, epoch)
 				for metric in tb_metrics_dict:
 					for token in tb_metrics_dict[metric]:
-						writer.add_scalars(f'{self.model_bert_name} {token} mean {metric} in expected position, tuning: {self.cfg.tuning.name.replace("_", " ")}, masking: {self.masked_tuning_style}, {"no punctutation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_metrics_dict[metric][token], epoch)
+						writer.add_scalars(f'{self.model_bert_name} {token} mean {metric} in expected position, tuning - {self.cfg.tuning.name.replace("_", " ")}, masking - {self.masked_tuning_style}, {"no punctutation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_metrics_dict[metric][token], epoch)
 				
 				if self.cfg.dev:
 					t.set_postfix(avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
