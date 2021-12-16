@@ -425,7 +425,7 @@ def plot_correlations(cfg: DictConfig, predictions_summary: pd.DataFrame) -> Non
 	
 	corr = corr.reset_index(drop=True)
 	corr.columns.name = None
-	g = sns.pairplot(corr, kind='reg', corner=True)
+	g = sns.pairplot(corr, kind='reg', corner=True, plot_kws=dict(line_kws=dict(linewidth=1), scatter_kws=dict(s=8)))
 	
 	def corrfunc(x, y, **kwargs):
 		r, _ = pearsonr(x, y)

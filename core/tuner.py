@@ -405,8 +405,6 @@ class Tuner:
 			if param.requires_grad:
 				assert 'word_embeddings' in name, f"{name} is not frozen!"
 		
-		writer = SummaryWriter()
-		
 		# Determine what data to use based on the experiment
 		# Do this once ahead of time if we are not changing it
 		# but do it in the loop if we are using the bert-style randomized tuning data per epoch
@@ -454,8 +452,6 @@ class Tuner:
 		
 		log.info(f"Training model @ '{os.getcwd().replace(hydra.utils.get_original_cwd(), '')}'")
 		
-		#self.model.train()
-		
 		# Store weights pre-training so we can inspect the initial status later
 		saved_weights = {}
 		saved_weights[0] = get_updated_weights()
@@ -467,6 +463,8 @@ class Tuner:
 			'dataset' : np.repeat(datasets, [epochs] * len(datasets))
 		})
 		metrics['loss'] = np.nan
+		
+		writer = SummaryWriter()
 		
 		with trange(epochs) as t:
 			for epoch in t:
@@ -515,17 +513,20 @@ class Tuner:
 				
 				# Log result
 				metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), 'loss'] = train_loss.item()
-				writer.add_scalar(f"training loss/{self.model_bert_name}", train_loss, epoch)
+				tb_loss_dict = {f'{self.model_bert_name} loss, {self.cfg.tuning.name.replace("_", " ") + " (train)"}': train_loss}
 				
 				train_results = self.collect_results(masked_inputs, labels, self.tokens_to_mask, train_outputs)
 				
 				# get metrics for plotting
 				epoch_metrics = self.get_epoch_metrics(train_results)
 				
+				tb_metrics_dict = {}
 				for metric in epoch_metrics:
+					tb_metrics_dict[metric] = {}
 					for token in epoch_metrics[metric]:
+						tb_metrics_dict[metric][token] = {}
 						metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), f'{token} mean {metric} in expected position'] = epoch_metrics[metric][token]
-						writer.add_scalar(f"{token} mean {metric} in expected position/{self.model_bert_name}", epoch_metrics[metric][token], epoch)
+						tb_metrics_dict[metric][token].update({f'{self.model_bert_name} {token} mean {metric} in expected position, {self.cfg.tuning.name.replace("_", " ") + " (train)"}': epoch_metrics[metric][token]})
 				
 				# store weights of the relevant tokens so we can save them
 				saved_weights[epoch + 1] = get_updated_weights()
@@ -565,7 +566,7 @@ class Tuner:
 						dev_losses += [dev_loss.item()]
 						
 						metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.dev[dataset].name + ' (dev)'),'loss'] = dev_loss.item()
-						writer.add_scalar(f'dev loss ({dataset})/{self.model_bert_name}', dev_loss, epoch)
+						tb_loss_dict.update({f'{self.model_bert_name} loss, {self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_loss})
 						
 						dev_results = self.collect_results(masked_dev_inputs[dataset], dev_labels[dataset], self.tokens_to_mask, dev_outputs)
 						
@@ -574,7 +575,12 @@ class Tuner:
 						for metric in dev_epoch_metrics:
 							for token in dev_epoch_metrics[metric]:
 								metrics.loc[(metrics['epoch'] == epoch + 1) & (metrics.dataset == self.cfg.dev[dataset].name + ' (dev)'), f'{token} mean {metric} in expected position'] = dev_epoch_metrics[metric][token]
-								writer.add_scalar(f"{token} mean {metric} in expected position ({dataset})/{self.model_bert_name}", dev_epoch_metrics[metric][token], epoch)
+								tb_metrics_dict[metric][token].update({f'{self.model_bert_name} {token} mean {metric} in expected position, {self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_epoch_metrics[metric][token]})
+				
+				writer.add_scalars(f'{self.model_bert_name} loss, tuning: {self.cfg.tuning.name.replace("_", " ")}, masking: {self.masked_tuning_style}, {"no punctutation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_loss_dict, epoch)
+				for metric in tb_metrics_dict:
+					for token in tb_metrics_dict[metric]:
+						writer.add_scalars(f'{self.model_bert_name} {token} mean {metric} in expected position, tuning: {self.cfg.tuning.name.replace("_", " ")}, masking: {self.masked_tuning_style}, {"no punctutation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_metrics_dict[metric][token], epoch)
 				
 				if self.cfg.dev:
 					t.set_postfix(avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
