@@ -513,7 +513,7 @@ class Tuner:
 				
 				# Log result
 				metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), 'loss'] = train_loss.item()
-				tb_loss_dict = {f'{self.model_bert_name} loss, {self.cfg.tuning.name.replace("_", " ") + " (train)"}': train_loss}
+				tb_loss_dict = {f'loss/{self.cfg.tuning.name.replace("_", " ") + " (train)"}': train_loss}
 				
 				train_results = self.collect_results(masked_inputs, labels, self.tokens_to_mask, train_outputs)
 				
@@ -526,7 +526,7 @@ class Tuner:
 					for token in epoch_metrics[metric]:
 						tb_metrics_dict[metric][token] = {}
 						metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), f'{token} mean {metric} in expected position'] = epoch_metrics[metric][token]
-						tb_metrics_dict[metric][token].update({f'{self.model_bert_name} {token} mean {metric} in expected position, {self.cfg.tuning.name.replace("_", " ") + " (train)"}': epoch_metrics[metric][token]})
+						tb_metrics_dict[metric][token].update({f'{token} mean {metric}/{self.cfg.tuning.name.replace("_", " ") + " (train)"}': epoch_metrics[metric][token]})
 				
 				# store weights of the relevant tokens so we can save them
 				saved_weights[epoch + 1] = get_updated_weights()
@@ -566,7 +566,7 @@ class Tuner:
 						dev_losses += [dev_loss.item()]
 						
 						metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.dev[dataset].name + ' (dev)'),'loss'] = dev_loss.item()
-						tb_loss_dict.update({f'{self.model_bert_name} loss, {self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_loss})
+						tb_loss_dict.update({f'loss/{self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_loss})
 						
 						dev_results = self.collect_results(masked_dev_inputs[dataset], dev_labels[dataset], self.tokens_to_mask, dev_outputs)
 						
@@ -575,12 +575,12 @@ class Tuner:
 						for metric in dev_epoch_metrics:
 							for token in dev_epoch_metrics[metric]:
 								metrics.loc[(metrics['epoch'] == epoch + 1) & (metrics.dataset == self.cfg.dev[dataset].name + ' (dev)'), f'{token} mean {metric} in expected position'] = dev_epoch_metrics[metric][token]
-								tb_metrics_dict[metric][token].update({f'{self.model_bert_name} {token} mean {metric} in expected position, {self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_epoch_metrics[metric][token]})
+								tb_metrics_dict[metric][token].update({f'{token} mean {metric}/{self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_epoch_metrics[metric][token]})
 				
-				writer.add_scalars(f'{self.model_bert_name} loss, tuning - {self.cfg.tuning.name.replace("_", " ")}, masking - {self.masked_tuning_style}, {"no punctutation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_loss_dict, epoch)
+				writer.add_scalars(f'{self.model_bert_name} loss; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_loss_dict, epoch)
 				for metric in tb_metrics_dict:
 					for token in tb_metrics_dict[metric]:
-						writer.add_scalars(f'{self.model_bert_name} {token} mean {metric} in expected position, tuning - {self.cfg.tuning.name.replace("_", " ")}, masking - {self.masked_tuning_style}, {"no punctutation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_metrics_dict[metric][token], epoch)
+						writer.add_scalars(f'{self.model_bert_name} {token} {metric}; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_metrics_dict[metric][token], epoch)
 				
 				if self.cfg.dev:
 					t.set_postfix(avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
