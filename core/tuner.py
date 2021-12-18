@@ -1028,7 +1028,7 @@ class Tuner:
 		if self.cfg.hyperparameters.strip_punct:
 			raw_input = [strip_punct(line) for line in raw_input]
 				
-		sentences = [[s.strip() for s in r.split(',')] for r in raw_input]
+		sentences = [[s.strip() for s in r.split(' , ')] for r in raw_input]
 		
 		masked_sentences = []
 		for s_group in sentences:
@@ -1735,7 +1735,7 @@ class Tuner:
 		if self.cfg.hyperparameters.strip_punct:
 			raw_input = [strip_punct(line) for line in raw_input]
 		
-		sentences = [[s.strip() for s in r.split(',')] for r in raw_input]
+		sentences = [[s.strip() for s in r.split(' , ')] for r in raw_input]
 		
 		arg_dicts = {}
 		for arg in args_cfg:

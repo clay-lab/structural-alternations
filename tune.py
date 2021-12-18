@@ -43,18 +43,28 @@ def tune(cfg: DictConfig) -> None:
 		candidates = ['_'.join(candidate) for candidate in candidates]
 		cfg.dev = candidates
 	
-	# print this before adding the dev sets, since that will print a lot of stuff we don't necessarily need
+	# change the arguments used if this is a new verb experiment and we are using the ones specific to the model
+	# do this before printing
+	if cfg.tuning.new_verb:
+		if cfg.tuning.which_args == 'model':
+			with open_dict(cfg):
+				cfg.tuning.args = cfg.tuning[cfg.model.friendly_name + '_args']
+		else;
+			with open_dict(cfg):
+				cfg.tuning.args = cfg.tuning[cfg.tuning.which_args]
+	
+	# print this before adding the dev sets, since that will print a lot of stuff we don't necessarily need to see
 	print(OmegaConf.to_yaml(cfg))
 	
 	dev_sets = [cfg.dev] if isinstance(cfg.dev, str) else cfg.dev
 	cfg.dev = {}
 	with open_dict(cfg):
 		for dev_set in dev_sets:
+			# doing it this way lets us use any tuning data as dev data and vice versa,
+			# though we can also define datasets that are only used for one or the other
 			dev = OmegaConf.load(os.path.join(hydra.utils.get_original_cwd(), 'conf', 'tuning', dev_set + '.yaml'))
 			cfg.dev.update({dev.name:dev})
 	
-	# doing it this way lets us use any tuning data as dev data and vice versa,
-	# though we can also define datasets that are only used for one or the other
 	tuner = Tuner(cfg)
 	tuner.tune()
 
