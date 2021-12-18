@@ -49,7 +49,7 @@ def tune(cfg: DictConfig) -> None:
 		if cfg.tuning.which_args == 'model':
 			with open_dict(cfg):
 				cfg.tuning.args = cfg.tuning[cfg.model.friendly_name + '_args']
-		else;
+		else:
 			with open_dict(cfg):
 				cfg.tuning.args = cfg.tuning[cfg.tuning.which_args]
 	
