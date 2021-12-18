@@ -552,7 +552,7 @@ class Tuner:
 				
 				# # Check that we changed the correct number of parameters
 				new_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
-				num_changed_params = torch.sum(torch.mean(torch.ne(self.old_embeddings, new_embeddings) * 1., dim = -1))
+				num_changed_params = torch.round(torch.sum(torch.mean(torch.ne(self.old_embeddings, new_embeddings) * 1., dim = -1))) # use torch.round to attempt to fix rare floating point rounding error
 				num_expected_to_change = len(self.tokens_to_mask)
 				assert num_changed_params == num_expected_to_change, f"Exactly {num_expected_to_change} embeddings should have been updated, but {num_changed_params} were!"
 				
