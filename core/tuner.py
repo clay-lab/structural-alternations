@@ -612,7 +612,7 @@ class Tuner:
 		)
 		
 		log.info(f"Saving metrics")
-		metrics.to_csv("metrics.csv", index = False)
+		metrics.to_csv("metrics.csv", index = False, na_rep = 'NaN')
 		
 		writer.flush()
 		writer.close()
@@ -1013,7 +1013,7 @@ class Tuner:
 		
 		summary_csv = summary.copy()
 		summary_csv['odds_ratio'] = summary_csv['odds_ratio'].astype(float).copy()
-		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-scores.csv", index = False)
+		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-scores.csv", index = False, na_rep = 'NaN')
 		
 		log.info('Creating plots')
 		self.graph_entailed_results(summary, eval_cfg)
@@ -1023,7 +1023,7 @@ class Tuner:
 			os.rename(plots_file, f'{dataset_name}-{epoch_label}-plots.pdf')
 		
 		acc = self.get_entailed_accuracies(summary)
-		acc.to_csv(f'{dataset_name}-{epoch_label}-accuracies.csv', index = False)
+		acc.to_csv(f'{dataset_name}-{epoch_label}-accuracies.csv', index = False, na_rep = 'NaN')
 		
 		log.info('Evaluation complete')
 		print('')
@@ -1735,7 +1735,7 @@ class Tuner:
 		
 		log.info(f"SAVING TO: {os.getcwd()}")
 		summary.to_pickle(f"{dataset_name}-0-{epoch}-scores.pkl")
-		summary.to_csv(f"{dataset_name}-0-{epoch}-scores.csv", index = False)
+		summary.to_csv(f"{dataset_name}-0-{epoch}-scores.csv", index = False, na_rep = 'NaN')
 		
 		# Create graphs
 		log.info('Creating plots')
