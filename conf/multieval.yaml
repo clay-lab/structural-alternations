@@ -8,7 +8,7 @@ checkpoint_dir: outputs
 criteria: 'all'
 
 compare: true # Set to false to just evaluate all models in subdirs individually
-epoch: None # which epoch to evaluate on?
+epoch: best # which epoch to evaluate on?
 entail: true # what kind of models are being compared?
 new_verb: false # what kind of models are being compared?
 

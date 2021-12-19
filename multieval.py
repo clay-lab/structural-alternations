@@ -22,6 +22,8 @@ from core.tuner import Tuner
 
 config_path='conf'
 
+log = logging.getLogger(__name__)
+
 @hydra.main(config_path=config_path, config_name='multieval')
 def multieval(cfg: DictConfig) -> None:
 	
@@ -34,9 +36,12 @@ def multieval(cfg: DictConfig) -> None:
 	# Get a regex for the score file name so we can just load it if it already exists
 	if cfg.epoch == 'None':
 		cfg.epoch = None
-		score_file_name = cfg.data.name.split('.')[0] + '-(([0-9]+)-+)+scores.pkl'
+		score_file_name = cfg.data.friendly_name + '-(([0-9]+)-+)+scores.pkl'
+		log.warning('Epoch not specified. If no evaluation has been performed, evaluation will be performed on the final epoch. Otherwise, all epochs on which evaluation has been performed will be loaded for each model.')
+	elif cfg.epoch == 'best':
+		score_file_name = cfg.data.friendly_name + '-(([0-9]+)-+)+best-scores.pkl'
 	else:
-		score_file_name = cfg.data.name.split('.')[0] + '-' + cfg.epoch + '-scores.pkl'
+		score_file_name = cfg.data.friendy_name + '-' + cfg.epoch + '-scores.pkl'
 	
 	# Get checkpoint dirs in outputs
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
@@ -60,7 +65,7 @@ def multieval(cfg: DictConfig) -> None:
 		
 		# If we haven't already evaluated the model in the directory, evaluate it
 		if not (os.path.exists(eval_dir) and any([re.search(score_file_name, f) for f in os.listdir(eval_dir)])):
-				
+			
 			chkpt_cfg = OmegaConf.load(chkpt_cfg_path)
 				
 			if not os.path.exists(eval_dir):
@@ -101,10 +106,13 @@ def multieval(cfg: DictConfig) -> None:
 				copy_tree(os.path.join(starting_dir, '.hydra'), os.path.join(eval_dir, '.hydra'))
 				copy_file(os.path.join(starting_dir, 'multieval.log'), os.path.join(eval_dir, 'multieval.log'))
 				os.rename(os.path.join(eval_dir, 'multieval.log'), os.path.join(eval_dir, 'eval.log'))
+				os.remove(os.path.join(starting_dir, 'multieval.log'))
+				
 	
 	# If we are comparing the models, get the summary files and run the comparison
 	if cfg.compare:
 		eval_dirs = [os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}') for chkpt_dir in chkpt_dirs]
+		
 		summary_files = [
 			os.path.join(eval_dir, f) 
 			for eval_dir in eval_dirs 
@@ -113,6 +121,8 @@ def multieval(cfg: DictConfig) -> None:
 		]
 		
 		summary_of_summaries = load_summaries(summary_files)
+		
+		log.info(f'Comparing {len(summary_of_summaries.model_id.unique())} models')
 		
 		if cfg.data.new_verb:
 			multi_eval_new_verb(cfg, source_dir, starting_dir, summary_of_summaries)
@@ -143,14 +153,11 @@ def load_summaries(summary_files: List[str]) -> pd.DataFrame:
 
 def save_summary(cfg: DictConfig, save_dir: str, summary: pd.DataFrame) -> None:
 	# Get information for saved file names
-	dataset_name = cfg.data.name.split('.')[0]
-	all_epochs = '-'.join([
-		str(x) 
-		for x in sorted(
-			np.unique(summary.eval_epoch).tolist(),
-			key = lambda x: x
-		)
-	])
+	dataset_name = cfg.data.friendly_name
+	if not cfg.epoch == 'best':
+		all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
+	else:
+		all_epochs = 'best'
 	
 	os.chdir(save_dir)
 	summary.to_pickle(f"{dataset_name}-{all_epochs}-scores.pkl")
@@ -190,14 +197,33 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 		agg(['mean', 'sem']). \
 		reset_index()
 	
+	# re-add the sentence types to the summary of summaries for plot labels
+	summaries.sentence_num = pd.to_numeric(summaries.sentence_num)
+	sentence_types_nums = summaries.loc[summaries.groupby(['model_id', 'sentence_type']).sentence_num.idxmin()].reset_index(drop=True)[['model_id', 'sentence_type','sentence']].rename({'sentence' : 'ex_sentence'}, axis = 1)
+	summary_of_summaries = summary_of_summaries.merge(sentence_types_nums)
+	
 	save_summary(cfg, save_dir, summary_of_summaries)
+	
+	summary_of_summaries['sentence_num'] = 0
+	summary_of_summaries = summary_of_summaries.rename({'ex_sentence' : 'sentence'}, axis = 1)
 	
 	cfg = adjust_cfg(cfg, source_dir, summary_of_summaries)
 	
 	# Plot the overall results
 	tuner = Tuner(cfg)
-	print(f'Plotting results from {len(summary_of_summaries.model_id.unique())} models')
+	log.info(f'Plotting results from {len(summary_of_summaries.model_id.unique())} models')
 	tuner.graph_entailed_results(summary_of_summaries, cfg)
+	if cfg.epoch == 'best':
+		file = [f for f in os.listdir(os.getcwd()) if re.match(cfg.data.friendly_name + r'-(([0-9]+)-+)+plots\.pdf', f)][0]
+		os.rename(file, f'{cfg.data.friendly_name}-best-plots.pdf')
+	
+	acc = tuner.get_entailed_accuracies(summary_of_summaries)
+	if not cfg.epoch == 'best':
+		all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
+	else:
+		all_epochs = 'best'
+	
+	acc.to_csv(f'{cfg.data.friendly_name}-{all_epochs}-accuracies.csv', index = False)
 
 def multi_eval_new_verb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
 	return NotImplementedError('Comparison of new verb data not currently supported.')

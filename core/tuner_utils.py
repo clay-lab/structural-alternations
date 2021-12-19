@@ -8,11 +8,14 @@ import torch
 import random
 import logging
 import requests
+
 import numpy as np
+import pandas as pd
 
 from typing import List
 from PyPDF2 import PdfFileMerger, PdfFileReader
 from transformers import BertTokenizer, DistilBertTokenizer, RobertaTokenizer
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
 model_max_length = 512
 
@@ -253,3 +256,33 @@ def verify_tokenization_of_sentences(tokenizer, sentences: List[str], tokens_to_
 		return False
 	
 	return True
+
+def get_best_epoch(loss_df: pd.DataFrame, frac: float = 0.1) -> int:
+	loss_df = loss_df.copy().sort_values(['dataset', 'epoch']).reset_index(drop=True)
+	
+	datasets = loss_df.dataset.unique()
+	
+	# replace the losses with the lowess
+	# this smooths the irregular losses we see in various circumstances
+	for dataset in datasets:
+		loss_df.loc[loss_df.dataset == dataset, 'value'] = lowess(loss_df[loss_df.dataset == dataset].value.values, loss_df[loss_df.dataset == dataset].epoch.values, frac = frac)[:,1]
+	
+	best_losses = loss_df.loc[loss_df.groupby('dataset').value.idxmin()].reset_index(drop=True)
+	
+	epoch_sumsqs = []
+	for dataset in datasets:
+		dataset_epoch = best_losses[best_losses.dataset == dataset].epoch.values[0]
+		epoch_losses = loss_df.loc[loss_df.epoch == dataset_epoch].reset_index(drop=True).value.values
+		epoch_avg_loss = np.mean(epoch_losses)
+		sumsq = sum((epoch_avg_loss - epoch_losses)**2)
+		epoch_sumsq = tuple([dataset_epoch, sumsq])
+		epoch_sumsqs.append(epoch_sumsq)
+	
+	epoch_sumsqs = sorted(epoch_sumsqs, key = lambda epoch_sumsq: epoch_sumsq[1])
+	best_epoch = epoch_sumsqs[0][0]
+	log.info(f'Best epoch is {best_epoch} (sumsq = ' + '{:.2f}'.format(epoch_sumsqs[0][1]) + f', minimum for {", ".join(best_losses[best_losses.epoch == best_epoch].dataset.values)}).')
+	
+	if best_epoch == max(loss_df.epoch):
+		log.warning('Note that the best epoch is the final epoch. This may indicate underfitting.')
+	
+	return best_epoch

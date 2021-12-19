@@ -23,7 +23,7 @@ import torch.nn as nn
 
 from math import ceil, floor
 from tqdm import trange, tqdm
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 from omegaconf import DictConfig, OmegaConf, open_dict
 from transformers import logging as lg
 from transformers import BertForMaskedLM, BertTokenizer
@@ -684,7 +684,7 @@ class Tuner:
 		
 		return epoch_metrics
 	
-	def restore_weights(self, checkpoint_dir: str, epoch: int = None) -> Tuple[int, int]:
+	def restore_weights(self, checkpoint_dir: str, epoch: Union[int,str] = 'best') -> Tuple[int, int]:
 		weights_path = os.path.join(checkpoint_dir, 'weights.pkl')
 		
 		with open(weights_path, 'rb') as f:
@@ -694,6 +694,10 @@ class Tuner:
 		
 		if epoch == None:
 			epoch = total_epochs
+		elif epoch == 'best':
+			metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv'))
+			loss_df = metrics[metrics.metric == 'loss']
+			epoch = get_best_epoch(loss_df)
 		
 		log.info(f'Restoring saved weights from epoch {epoch}/{total_epochs}')
 		
@@ -806,7 +810,7 @@ class Tuner:
 		merge_pdfs(pdfs, 'metrics.pdf')
 	
 	
-	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: int = None) -> None:
+	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best') -> None:
 		
 		self.model.eval()
 		_, _ = self.restore_weights(checkpoint_dir, epoch)
@@ -969,7 +973,7 @@ class Tuner:
 			np.save(f, np.array(anim))
 	
 	
-	def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: int = None) -> None:
+	def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = None) -> None:
 		"""
 		Computes model performance on data consisting of 
 			sentence 1 , sentence 2 , [...]
@@ -980,6 +984,7 @@ class Tuner:
 		
 		# Load model
 		self.model.eval()
+		epoch_label = ('-' + epoch) if isinstance(epoch, str) else ''
 		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
 		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
@@ -1002,17 +1007,22 @@ class Tuner:
 		# save the summary as a pickle and as a csv so that we have access to the original tensors
 		# these get converted to text in the csv, but the csv is easier to work with otherwise
 		dataset_name = eval_cfg.data.friendly_name
-		summary.to_pickle(f"{dataset_name}-{epoch}-scores.pkl")
+		epoch_label = f'{epoch}{epoch_label}'
+		summary.to_pickle(f"{dataset_name}-{epoch_label}-scores.pkl")
 		
 		summary_csv = summary.copy()
 		summary_csv['odds_ratio'] = summary_csv['odds_ratio'].astype(float).copy()
-		summary_csv.to_csv(f"{dataset_name}-{epoch}-scores.csv", index = False)
+		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-scores.csv", index = False)
 		
 		log.info('Creating plots')
 		self.graph_entailed_results(summary, eval_cfg)
 		
+		if 'best' in epoch_label:
+			plots_file = f'{dataset_name}-{epoch}-plots.pdf'
+			os.rename(plots_file, f'{dataset_name}-{epoch_label}-plots.pdf')
+		
 		acc = self.get_entailed_accuracies(summary)
-		acc.to_csv(f'{dataset_name}-{epoch}-accuracies.csv', index = False)
+		acc.to_csv(f'{dataset_name}-{epoch_label}-accuracies.csv', index = False)
 		
 		log.info('Evaluation complete')
 		print('')
@@ -1273,10 +1283,10 @@ class Tuner:
 			
 			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
 				fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-				fig.set_size_inches(9, 10)
+				fig.set_size_inches(9, 10.5)
 			else:
 				fig, (ax1, ax2) = plt.subplots(1, 2)
-				fig.set_size_inches(9, 6)
+				fig.set_size_inches(9, 6.5)
 			
 			ax1.axis([-lim, lim, -lim, lim])
 			
@@ -1437,6 +1447,7 @@ class Tuner:
 					
 					x_expected_token = x_data.loc[x_idx].ratio_name.unique()[0].split('/')[0]
 					y_expected_token = y_data.loc[y_idx].ratio_name.unique()[0].split('/')[0]
+					position_label = position
 					#position_label = position.replace('position_', 'position ')
 					
 					xlabel.append(f"Expected {x_expected_token} in {position_label}")
@@ -1488,8 +1499,8 @@ class Tuner:
 			
 			# Set title
 			title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
-			title += ' @ epoch ' + str(np.unique(summary.eval_epoch)[0]) if len(np.unique(summary.eval_epoch)) == 1 else ''
-			title += '/' + str(np.unique(summary.total_epochs)[0]) if len(np.unique(summary.total_epochs)) == 1 else ''
+			title += (' @ epoch ' + str(np.unique(summary.eval_epoch)[0])) if len(np.unique(summary.eval_epoch)) == 1 else ''
+			title += ('/' + str(np.unique(summary.total_epochs)[0])) if len(np.unique(summary.total_epochs)) == 1 else ''
 			
 			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
 			masked_str = ', masking' if all(summary.masked) else 'unmasked' if all(1 - summary.masked) else 'multiple'
@@ -1513,6 +1524,9 @@ class Tuner:
 					', Y|X: ' + str(round(pair_acc[pair_acc.predicted_arg == arg].gen_given_ref.loc[0], 2)) + \
 					', MSE: ' + str(round(pair_acc[pair_acc.predicted_arg == arg]['specificity_(MSE)'].loc[0], 2)) + ' (\u00B1' + str(round(pair_acc[pair_acc.predicted_arg == arg].specificity_se.loc[0], 2)) + ')'
 				subtitle += perc_correct_str
+				
+			subtitle += '\n\nX: ' + x_data[x_data.sentence_num == 0].sentence.values[0]
+			subtitle += '\nY: ' + y_data[y_data.sentence_num == 0].sentence.values[0]
 			
 			fig.suptitle(title + '\n' + subtitle)
 			
@@ -1554,7 +1568,7 @@ class Tuner:
 		
 		acc_columns = ['s1', 's2', 'predicted_arg', 'predicted_role', 'position_num_ref', 'position_num_gen', 'gen_given_ref', \
 					   'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct',\
-					   'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points', 'specificity_(MSE)', 'specificity_se', 'specificity_(z)', 'specificity_se(z)']
+					   'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points', 'specificity_(MSE)', 'specificity_se', 'specificity_(z)', 'specificity_se(z)', 's1_ex', 's2_ex']
 		acc = pd.DataFrame(columns = acc_columns)
 		
 		for pair in paired_sentence_types:
@@ -1587,6 +1601,9 @@ class Tuner:
 			specificity_z = np.mean(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)
 			specificity_z_sem = np.std(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2/np.sqrt(np.size(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)))
 			
+			s1_ex = x_data[x_data.sentence_num == 0].sentence.values[0]
+			s2_ex = y_data[y_data.sentence_num == 0].sentence.values[0]
+			
 			acc = acc.append(pd.DataFrame(
 				[[pair[0], pair[1], 'any', 'any',
 				  x_data.position_num.unique()[0] if len(x_data.position_num.unique()) == 1 else 'multiple',
@@ -1597,7 +1614,8 @@ class Tuner:
 				  ref_correct, ref_incorrect, 
 				  gen_correct, gen_incorrect, 
 				  num_points, specificity, spec_sem,
-				  specificity_z, specificity_z_sem]],
+				  specificity_z, specificity_z_sem,
+				  s1_ex, s2_ex]],
 				  columns = acc_columns
 			))
 			
@@ -1636,7 +1654,8 @@ class Tuner:
 					  ref_correct, ref_incorrect, 
 					  gen_correct, gen_incorrect, 
 					  num_points, specificity, spec_sem,
-					  specificity_z, specificity_z_sem]],
+					  specificity_z, specificity_z_sem,
+					  s1_ex, s2_ex]],
 					  columns = acc_columns
 				))
 		
@@ -1655,7 +1674,7 @@ class Tuner:
 		return acc
 	
 	
-	def eval_new_verb(self, eval_cfg: DictConfig, args_cfg: DictConfig, checkpoint_dir: str, epoch: int = None) -> None:
+	def eval_new_verb(self, eval_cfg: DictConfig, args_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = None) -> None:
 		"""
 		Computes model performance on data with new verbs
 		where this is determined as the difference in the probabilities associated

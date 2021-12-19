@@ -3,7 +3,13 @@ defaults:
   - data: syn_give_do
   - override hydra/job_logging: tuner_log_conf
 
-epoch: None # which epoch to evaluate the model on. None means the final epoch
+epoch: best
+# which epoch to evaluate the model on. None means the final epoch.
+# 'best' means the epoch meeting the following criteria:
+# (1) it has the minimum loss for at least one set evaluated during training
+# (2) it minimizes the sumsq differences between the average loss
+#     at that epoch and the (lowess smoothed) individual dataset losses
+#     at that epoch compared to other epochs meeting criterion (1)
 
 checkpoint_dir: outputs/active_DO/DistilBertForMaskedLM/masked-False/2021-06-15_12-43-59
 
