@@ -789,7 +789,7 @@ class Tuner:
 			
 			title = f'{self.model_bert_name} {metric}\n'
 			title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
-			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
+			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else " unmasked") + ', '
 			title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}\n\n'
 			title += f'{self.cfg.tuning.name.replace("_", " ")} (training): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
 			title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
@@ -998,12 +998,13 @@ class Tuner:
 		with torch.no_grad():
 			log.info("Evaluating model on testing data")
 			outputs = [self.model(**i) for i in inputs]
-			
+		
 		summary = self.get_entailed_summary(sentences, outputs, labels, eval_cfg)
 		summary = summary.assign(
 			eval_epoch = epoch,
 			total_epochs = total_epochs
 		)
+		
 		# save the summary as a pickle and as a csv so that we have access to the original tensors
 		# these get converted to text in the csv, but the csv is easier to work with otherwise
 		dataset_name = eval_cfg.data.friendly_name
@@ -1324,7 +1325,7 @@ class Tuner:
 			ax1.set_aspect(1.0/ax1.get_data_ratio(), adjustable = 'box')
 			
 			# Set labels and title
-			ax1.set_xlabel(f"Confidence in {pair[0]} sentences", fontsize = axis_size)
+			ax1.set_xlabel(f"Confidence in {pair[0]} sentences\n", fontsize = axis_size)
 			ax1.set_ylabel(f"Confidence in {pair[1]} sentences", fontsize = axis_size)
 			
 			ax1.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
@@ -1371,7 +1372,7 @@ class Tuner:
 			ax2.set_aspect(1.0/ax2.get_data_ratio(), adjustable = 'box')
 			
 			# Set labels and title
-			ax2.set_xlabel(f"Confidence in {pair[0]} sentences", fontsize = axis_size)
+			ax2.set_xlabel(f"Confidence in {pair[0]} sentences\n", fontsize = axis_size)
 			ax2.set_ylabel(f"Overconfidence in {pair[1]} sentences", fontsize = axis_size)
 			
 			ax2.legend(prop = {'size': axis_size})
@@ -1426,7 +1427,7 @@ class Tuner:
 				
 				ax3.set_aspect(1.0/ax3.get_data_ratio(), adjustable = 'box')
 				
-				xlabel = '\n'.join(xlabel)
+				xlabel = '\n'.join(xlabel) + '\n'
 				ylabel = '\n'.join(ylabel)
 				
 				ax3.set_xlabel(xlabel, fontsize = axis_size)
@@ -1489,7 +1490,7 @@ class Tuner:
 				
 				ax4.set_aspect(1.0/ax4.get_data_ratio(), adjustable = 'box')
 				
-				xlabel = '\n'.join(xlabel)
+				xlabel = '\n'.join(xlabel) + '\n'
 				ylabel = '\n'.join(ylabel)
 				
 				ax4.set_xlabel(xlabel, fontsize = axis_size)
@@ -1628,7 +1629,7 @@ class Tuner:
 				num_points = len(x_group.index)
 				
 				# Get the number of points in each quadrant
-				gen_given_ref = sum(y_group[y_group.index.isin(x_group.loc[x_group.odds_ratio > 0].index)].odds_ratio > 0)/len(x_group.loc[x_group.odds_ratio > 0].index) * 100
+				gen_given_ref = (sum(y_group[y_group.index.isin(x_group.loc[x_group.odds_ratio > 0].index)].odds_ratio > 0)/len(x_group.loc[x_group.odds_ratio > 0].index) * 100) if len(x_group.loc[x_group.odds_ratio > 0].index) > 0 else np.nan
 				both_correct = sum(refs_correct * gens_correct)/num_points * 100
 				ref_correct_gen_incorrect = sum(refs_correct * -gens_correct)/num_points * 100
 				both_incorrect = sum(-refs_correct * -gens_correct)/num_points * 100
