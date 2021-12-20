@@ -1020,6 +1020,9 @@ class Tuner:
 		
 		if 'best' in epoch_label:
 			plots_file = f'{dataset_name}-{epoch}-plots.pdf'
+			if os.path.exists(f'{dataset_name}-{epoch_label}-plots.pdf'):
+				os.remove(f'{dataset_name}-{epoch_label}-plots.pdf')
+			
 			os.rename(plots_file, f'{dataset_name}-{epoch_label}-plots.pdf')
 		
 		acc = self.get_entailed_accuracies(summary)
@@ -1284,10 +1287,10 @@ class Tuner:
 			
 			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
 				fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-				fig.set_size_inches(9, 10.5)
+				fig.set_size_inches(9, 10.75)
 			else:
 				fig, (ax1, ax2) = plt.subplots(1, 2)
-				fig.set_size_inches(9, 6.5)
+				fig.set_size_inches(9, 6.75)
 			
 			ax1.axis([-lim, lim, -lim, lim])
 			
@@ -1500,18 +1503,18 @@ class Tuner:
 			
 			# Set title
 			title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
-			title += (' @ epoch ' + str(np.unique(summary.eval_epoch)[0])) if len(np.unique(summary.eval_epoch)) == 1 else ''
-			title += ('/' + str(np.unique(summary.total_epochs)[0])) if len(np.unique(summary.total_epochs)) == 1 else ''
+			title += (' @ epoch ' + str(np.unique(summary.eval_epoch)[0]) + '/') if len(np.unique(summary.eval_epoch)) == 1 else ' epochs: '
+			title += (str(np.unique(summary.total_epochs)[0])) if len(np.unique(summary.total_epochs)) == 1 else 'multiple'
 			
 			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
-			masked_str = ', masking' if all(summary.masked) else 'unmasked' if all(1 - summary.masked) else 'multiple'
-			masked_tuning_str = ': ' + np.unique(summary.masked_tuning_style[summary.masked])[0] if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ': multiple' if any(summary.masked) else ''
+			masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
+			masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
 			subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
 			
 			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 			subtitle += '\nTuning data: ' + tuning_data_str
 			
-			strip_punct_str = 'without punctuation' if all(summary.strip_punct) else "with punctuation" if all(~summary.strip_punct) else 'Multiple punctuation'
+			strip_punct_str = 'without punctuation' if all(summary.strip_punct) else "with punctuation" if all(~summary.strip_punct) else ', multiple punctuation'
 			subtitle += ' ' + strip_punct_str
 			
 			pair_acc = acc[(acc['s1'] == pair[0]) & (acc['s2'] == pair[1])]

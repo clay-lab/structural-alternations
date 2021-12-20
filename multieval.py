@@ -215,6 +215,9 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	tuner.graph_entailed_results(summary_of_summaries, cfg)
 	if cfg.epoch == 'best':
 		file = [f for f in os.listdir(os.getcwd()) if re.match(cfg.data.friendly_name + r'-(([0-9]+)-+)+plots\.pdf', f)][0]
+		if os.path.exists(f'{cfg.data.friendly_name}-best-plots.pdf'):
+			os.remove(f'{cfg.data.friendly_name}-best-plots.pdf')
+		
 		os.rename(file, f'{cfg.data.friendly_name}-best-plots.pdf')
 	
 	acc = tuner.get_entailed_accuracies(summary_of_summaries)
