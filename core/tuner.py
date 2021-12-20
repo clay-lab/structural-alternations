@@ -1514,8 +1514,8 @@ class Tuner:
 			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 			subtitle += '\nTuning data: ' + tuning_data_str
 			
-			strip_punct_str = 'without punctuation' if all(summary.strip_punct) else "with punctuation" if all(~summary.strip_punct) else ', multiple punctuation'
-			subtitle += ' ' + strip_punct_str
+			strip_punct_str = ' without punctuation' if all(summary.strip_punct) else " with punctuation" if all(~summary.strip_punct) else ', multiple punctuation'
+			subtitle += strip_punct_str
 			
 			pair_acc = acc[(acc['s1'] == pair[0]) & (acc['s2'] == pair[1])]
 			for arg in pair_acc.predicted_arg.unique():
