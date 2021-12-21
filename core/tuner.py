@@ -835,9 +835,11 @@ class Tuner:
 			else:
 				title += '\n'
 			
-			breakpoint()
 			title += f'{self.cfg.tuning.name.replace("_", " ")} (training): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
 			title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
+			
+			title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
+			title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
 			
 			for dataset in self.cfg.dev:
 				title += f'\n{dataset.replace("_", " ")} (dev): max @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
@@ -854,16 +856,30 @@ class Tuner:
 		pdfs = [pdf for metric in all_metrics for pdf in os.listdir(os.getcwd()) if pdf == f'{metric}.pdf']
 		merge_pdfs(pdfs, 'metrics.pdf')
 	
-	def most_similar_tokens(self, k: int = 10) -> pd.DataFrame:
+	
+	def most_similar_tokens(self, targets: List[str] = [], k: int = 10) -> pd.DataFrame:
 		"""
 		Returns a datafarame containing information about the k most similar tokens to the tokens to mask
 		"""
 		word_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight
-		targets = self.tokens_to_mask
 		
-		# if we are training roberta, we only currently care about the cases with spaces in front
+		if not targets:
+			targets = self.tokens_to_mask
+		
+		targets = [t.lower() for t in targets] if 'uncased' in self.string_id else targets
+		
+		# if we are training roberta, we only currently care about the cases with spaces in front for masked tokens
+		# otherwise, try to do something sensible with other tokens
+		# if they exist, use them
+		# if they have a space in front, replace it with a chr(288)
+		# if they don't exist, but a version with a space in front does, use that
 		if self.model_bert_name == 'roberta':
-			targets = [t for t in targets if t.startswith(chr(288))]
+			targets = [t for t in targets if (t.startswith(chr(288)) and t in self.tokens_to_mask) or not t in self.tokens_to_mask]
+			targets = [t if len(self.tokenizer.tokenize(re.sub(chr(288), ' ', t))) == 1 and not self.tokenizer.tokenize(re.sub(chr(288), ' ', t)) == self.tokenizer.unk_token else ' ' + t if len(self.tokenizer.tokenize(' ' + t)) == 1 and not self.tokenizer.tokenize(' ' + t) == self.tokenizer.unk_token else None for t in targets]
+			targets = [t for t in targets if t is not None]
+			targets = [re.sub('^ ', chr(288), t) for t in targets]
+		else:
+			targets = [t for t in targets if len(self.tokenizer.tokenize(t)) == 1 and not self.tokenizer.tokenize(t) == self.tokenizer.unk_token]
 		
 		cos = nn.CosineSimilarity(dim=-1)
 		
@@ -879,32 +895,37 @@ class Tuner:
 			for tok_id, cossim in token_cossim:
 				most_similar_word = self.tokenizer.convert_ids_to_tokens(tok_id)
 				if not tok_id == token_id:
-					k_most_similar.append([(tok_id, most_similar_word, cossim.item())])
+					k_most_similar.extend([(tok_id, most_similar_word, cossim.item())])
 				
 				if len(k_most_similar) == k:
 					break
+			else:
+				continue
 			
-			most_similar[target] = k_most_similar
+			most_similar[target] = k_most_similar	
 		
-		most_similar_df = pd.DataFrame.from_dict({
-			(predicted_arg, *values) :
-			(predicted_arg, *values)
-			for predicted_arg in most_similar
-				for result in most_similar[predicted_arg]
-					for values in result
-			},
-			orient = 'index',
-			columns = ['predicted_arg', 'token_id', 'token', 'cossim']
-		).reset_index(drop=True).assign(
-			model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2] + '-' + self.model_bert_name[0],
-			model_name = self.model_bert_name,
-			tuning = self.cfg.tuning.name,
-			masked = self.masked,
-			masked_tuning_style = self.masked_tuning_style,
-			strip_punct = self.cfg.hyperparameters.strip_punct
-		)
-		
-		return most_similar_df
+		if most_similar:
+			most_similar_df = pd.DataFrame.from_dict({
+				(predicted_arg, *values) :
+				(predicted_arg, *values)
+				for predicted_arg in most_similar
+					for result in most_similar[predicted_arg]
+						for values in result
+				},
+				orient = 'index',
+				columns = ['predicted_arg', 'token_id', 'token', 'cossim']
+			).reset_index(drop=True).assign(
+				model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2] + '-' + self.model_bert_name[0],
+				model_name = self.model_bert_name,
+				tuning = self.cfg.tuning.name,
+				masked = self.masked,
+				masked_tuning_style = self.masked_tuning_style,
+				strip_punct = self.cfg.hyperparameters.strip_punct
+			)
+			
+			return most_similar_df
+		else:
+			return None
 	
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
