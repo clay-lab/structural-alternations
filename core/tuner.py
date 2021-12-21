@@ -681,6 +681,11 @@ class Tuner:
 			delta = self.cfg.hyperparameters.delta
 		)
 		
+		breakpoint()
+		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset'] = 'overall'
+		metrics = metrics.drop_duplicates().reset_index(drop=True)
+		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset_type'] = 'mean'
+		
 		log.info(f"Saving metrics")
 		metrics.to_csv("metrics.csv", index = False, na_rep = 'NaN')
 		
@@ -854,7 +859,7 @@ class Tuner:
 				if metric == 'remaining patience':
 					global_patience = metrics[['epoch', 'remaining patience overall']].drop_duplicates().reset_index(drop=True).rename({'remaining patience overall' : 'remaining patience'}, axis = 1).assign(dataset = 'overall', dataset_type = 'global')
 					sns.lineplot(data = metrics.append(global_patience, ignore_index=True), x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend ='full')
-					plt.yticks(determine_int_axticks(metrics['remaining patience'].append(metrics['remaining patience overall'], ignore_index=True).astype(int)))
+					plt.yticks(determine_int_axticks(metrics['remaining patience'].append(metrics['remaining patience overall'], ignore_index=True).astype(int).append(0)))
 				else:
 					sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
 				
