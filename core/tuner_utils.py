@@ -285,7 +285,7 @@ def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean', frac: float = 0.
 	elif method == 'mean':
 		mean_losses = loss_df.groupby('epoch').value.agg('mean')
 		lowest_loss = mean_losses.min()
-		best_epoch = loss_df.loc[mean_losses.idxmin()].epoch
+		best_epoch = loss_df.loc[loss_df.epoch == mean_losses.idxmin()].epoch.unique()[0]
 		log.info(f'Best epoch is {best_epoch} (mean = ' + '{:.2f}'.format(lowest_loss) + '.')
 	else:
 		best_epoch = loss_df.epoch.max()
