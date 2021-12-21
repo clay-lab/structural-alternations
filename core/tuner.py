@@ -632,10 +632,11 @@ class Tuner:
 							metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (masked, no dropout)'), f'{token} mean {metric} in expected position'] = no_dropout_epoch_metrics[metric][token]
 							tb_metrics_dict[metric][token].update({f'{token} mean {metric}/{self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"}': no_dropout_epoch_metrics[metric][token]})
 				
-				writer.add_scalars(f'{self.model_bert_name} loss; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_loss_dict, epoch)
+				writer.add_scalars(f'{self.model_bert_name} loss; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', tb_loss_dict, epoch)
+				
 				for metric in tb_metrics_dict:
 					for token in tb_metrics_dict[metric]:
-						writer.add_scalars(f'{self.model_bert_name} {token} {metric}; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_metrics_dict[metric][token], epoch)
+						writer.add_scalars(f'{self.model_bert_name} {token} {metric}; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', tb_metrics_dict[metric][token], epoch)
 				
 				if np.mean(dev_losses) < best_mean_loss - self.cfg.hyperparameters.delta:
 					best_mean_loss = np.mean(dev_losses)
@@ -645,7 +646,10 @@ class Tuner:
 					if patience_counter >= self.cfg.hyperparameters.patience:
 						log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs. Halting training at epoch {epoch}.')
 						metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
+						writer.add_scalars(f'{self.model_bert_name} remaining patience; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
 						break
+				
+				writer.add_scalars(f'{self.model_bert_name} remaining patience; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
 				
 				metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
 				
