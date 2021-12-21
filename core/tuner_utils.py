@@ -264,8 +264,9 @@ def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean', frac: float = 0.
 	
 	# replace the losses with the lowess
 	# this smooths the irregular losses we see in various circumstances
-	for dataset in datasets:
-		loss_df.loc[loss_df.dataset == dataset, 'value'] = lowess(loss_df[loss_df.dataset == dataset].value.values, loss_df[loss_df.dataset == dataset].epoch.values, frac = frac)[:,1]
+	# no longer needed to due change in how we do the dev sets
+	# for dataset in datasets:
+	# 	loss_df.loc[loss_df.dataset == dataset, 'value'] = lowess(loss_df[loss_df.dataset == dataset].value.values, loss_df[loss_df.dataset == dataset].epoch.values, frac = frac)[:,1]
 	
 	if method == 'sumsq':
 		best_losses = loss_df.loc[loss_df.groupby('dataset').value.idxmin()].reset_index(drop=True)

@@ -373,7 +373,7 @@ class Tuner:
 			
 			# we do this here manually because otherwise running multiple models
 			# using multirun was giving identical results
-			seed = int(torch.randint(2**32-1, (1,)))
+			seed = int(torch.randint(2**32-1, (1,))) if not 'seed' in self.cfg else self.cfg.seed
 			set_seed(seed)
 			log.info(f"Seed set to {seed}")
 			
@@ -452,7 +452,7 @@ class Tuner:
 		masked_inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
 		masked_dev_inputs = {dataset: self.tokenizer(self.masked_dev_data[dataset], return_tensors='pt', padding=True) for dataset in self.masked_dev_data}
 		
-		log.info(f"Training model @ '{os.getcwd().replace(hydra.utils.get_original_cwd(), '')}'")
+		log.info(f"Training model @ '{os.getcwd().replace(hydra.utils.get_original_cwd(), '')}' (patience={self.cfg.hyperparameters.patience}, \u0394={self.cfg.hyperparameters.delta})")
 		
 		# Store weights pre-training so we can inspect the initial status later
 		saved_weights = {}
@@ -469,6 +469,8 @@ class Tuner:
 		writer = SummaryWriter()
 		
 		with trange(epochs) as t:
+			patience_counter = 0
+			best_mean_loss = np.inf
 			for epoch in t:
 				
 				self.model.train()
@@ -606,16 +608,26 @@ class Tuner:
 					for token in tb_metrics_dict[metric]:
 						writer.add_scalars(f'{self.model_bert_name} {token} {metric}; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_metrics_dict[metric][token], epoch)
 				
+				if np.mean(dev_losses) < best_mean_loss - self.cfg.hyperparameters.delta:
+					best_mean_loss = np.mean(dev_losses)
+					patience_counter = 0
+				else:
+					patience_counter += 1
+					if patience_counter >= self.cfg.hyperparameters.patience:
+						log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs. Halting training.')
+						break
+				
 				# if self.cfg.dev:
-				t.set_postfix(avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
+				t.set_postfix(pat=self.cfg.hyperparameters.patience-patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
 				# else:
 				# 	t.set_postfix(train_loss='{0:5.2f}'.format(train_loss.item()))
 		
-		log.info(f"Saving weights for each of {epochs} epochs")
+		log.info(f"Saving weights for each of {epoch} epochs")
 		with open('weights.pkl', 'wb') as f:
 			pkl.dump(saved_weights, f)
 		
-		metrics['dataset_type'] = ['dev' if re.search('(dev)', dataset) else 'train' for dataset in metrics.dataset]
+		metrics['dataset_type'] = ['train' if re.search('(train)', dataset) else 'dev' for dataset in metrics.dataset]
+		metrics = metrics[metrics.epoch <= epoch].copy()
 		
 		log.info(f'Plotting metrics')
 		self.plot_metrics(metrics)
@@ -632,7 +644,9 @@ class Tuner:
 			masked = self.masked,
 			masked_tuning_style = self.masked_tuning_style,
 			strip_punct = self.cfg.hyperparameters.strip_punct,
-			dataset = lambda df: [d.replace('_', ' ') for d in df.dataset]
+			dataset = lambda df: [d.replace('_', ' ') for d in df.dataset],
+			patience = self.cfg.hyperparameters.patience,
+			delta = self.cfg.hyperparameters.delta
 		)
 		
 		log.info(f"Saving metrics")
@@ -792,7 +806,7 @@ class Tuner:
 			adj = max(np.abs(ulim - llim)/40, 0.05)
 			
 			fig, ax = plt.subplots(1)
-			fig.set_size_inches(8, 6)
+			fig.set_size_inches(8, 6.25)
 			ax.set_ylim(llim - adj, ulim + adj)
 			metrics.dataset = [dataset.replace('_', ' ') for dataset in metrics.dataset] # for legend titles
 			if len(metrics[metric].index) > 1:
@@ -814,7 +828,12 @@ class Tuner:
 			title = f'{self.model_bert_name} {metric}\n'
 			title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
 			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else " unmasked") + ', '
-			title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}\n\n'
+			title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}\n'
+			if metric == 'loss':
+				title += f'patience: {self.cfg.hyperparameters.patience} (\u0394 {self.cfg.hyperparameters.delta})\n\n'
+			else:
+				title += '\n'
+			
 			title += f'{self.cfg.tuning.name.replace("_", " ")} (training): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
 			title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
 			
@@ -833,9 +852,9 @@ class Tuner:
 		pdfs = [pdf for metric in all_metrics for pdf in os.listdir(os.getcwd()) if pdf == f'{metric}.pdf']
 		merge_pdfs(pdfs, 'metrics.pdf')
 	
-	def most_similar(self, k: int = 10) -> pd.DataFrame:
+	def most_similar_tokens(self, k: int = 10) -> pd.DataFrame:
 		"""
-		Returns a datafarame containing information about the k most similar words to the tokens to mask
+		Returns a datafarame containing information about the k most similar tokens to the tokens to mask
 		"""
 		word_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight
 		targets = self.tokens_to_mask
@@ -888,13 +907,13 @@ class Tuner:
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
 		self.model.eval()
-		epoch_label = ('-' + epoch) if isinstance(epoch, str) else ''
+		epoch_label = ('-' + epoch) if isinstance(epoch, str) else '-manual'
 		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
 		
 		dataset_name = eval_cfg.data.friendly_name
 		magnitude = floor(1 + np.log10(total_epochs))
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_words = self.most_similar(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
+		most_similar_words = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
 		most_similar_words.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
 		
 		# Load data
@@ -1066,13 +1085,13 @@ class Tuner:
 		
 		# Load model
 		self.model.eval()
-		epoch_label = ('-' + epoch) if isinstance(epoch, str) else ''
+		epoch_label = ('-' + epoch) if isinstance(epoch, str) else '-manual'
 		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
 		
 		magnitude = floor(1 + np.log10(total_epochs))
 		dataset_name = eval_cfg.data.friendly_name
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_words = self.most_similar(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
+		most_similar_words = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
 		most_similar_words['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_words['predicted_arg']]
 		most_similar_words.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
 		
@@ -1102,12 +1121,11 @@ class Tuner:
 		log.info('Creating plots')
 		self.graph_entailed_results(summary, eval_cfg)
 		
-		if 'best' in epoch_label:
-			plots_file = f'{dataset_name}-{epoch}-plots.pdf'
-			if os.path.exists(f'{dataset_name}-{epoch_label}-plots.pdf'):
-				os.remove(f'{dataset_name}-{epoch_label}-plots.pdf')
+		plots_file = f'{dataset_name}-{str(epoch).zfill(magnitude)}-plots.pdf'
+		if os.path.exists(f'{dataset_name}-{epoch_label}-plots.pdf'):
+			os.remove(f'{dataset_name}-{epoch_label}-plots.pdf')
 			
-			os.rename(plots_file, f'{dataset_name}-{epoch_label}-plots.pdf')
+		os.rename(plots_file, f'{dataset_name}-{epoch_label}-plots.pdf')
 		
 		acc = self.get_entailed_accuracies(summary)
 		acc.to_csv(f'{dataset_name}-{epoch_label}-accuracies.csv', index = False, na_rep = 'NaN')
@@ -1775,13 +1793,13 @@ class Tuner:
 		data = self.load_eval_verb_file(args_cfg, eval_cfg.data.name, eval_cfg.data.to_mask)
 				
 		self.model.eval()
-		epoch_label = ('-' + epoch) if isinstance(epoch, str) else ''
+		epoch_label = ('-' + epoch) if isinstance(epoch, str) else '-manual'
 		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
 		magnitude = floor(1 + np.log10(total_epochs))
 		
 		dataset_name = eval_cfg.data.friendly_name
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_words = self.most_similar(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
+		most_similar_words = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
 		most_similar_words.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
 		
 		# Define a local function to get the probabilities
@@ -1835,6 +1853,12 @@ class Tuner:
 		# Create graphs
 		log.info('Creating plots')
 		self.graph_new_verb_results(summary, eval_cfg)
+		
+		plots_file = f'{dataset_name}-0-{str(epoch).zfill(magnitude)}-plots.pdf'
+		if os.path.exists(f'{dataset_name}-0-{epoch_label}-plots.pdf'):
+			os.remove(f'{dataset_name}-0-{epoch_label}-plots.pdf')
+			
+		os.rename(plots_file, f'{dataset_name}-0-{epoch_label}-plots.pdf')
 		
 		log.info('Evaluation complete')
 		print('')

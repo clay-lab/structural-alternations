@@ -15,6 +15,8 @@ hyperparameters:
   epochs: 70 # how many epochs should the model tune for
   masked_tuning_style: 'always' # use the original style of bert tuning, roberta-style tuning, always used masked version, or don't mask
   strip_punct: false # Strip punctuation from sentences (true), or leave it intact (false)
+  patience: 10 # how many epochs to continue training without improving mean loss on the dev set(s)?
+  delta: 0 # how much improvement counts as enough to continue? improvement on mean dev loss must be greater than this to reset the patience counter
   
 # Masked tuning style values are 'always,' 'bert,' 'roberta', or 'none'
 # 'always' always masks tokens
