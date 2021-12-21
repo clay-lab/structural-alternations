@@ -892,7 +892,8 @@ class Tuner:
 		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
 		
 		dataset_name = eval_cfg.data.friendly_name
-		epoch_label = f'{epoch}{epoch_label}'
+		magnitude = floor(1 + np.log10(total_epochs))
+		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
 		most_similar_words = self.most_similar(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
 		most_similar_words.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
 		
@@ -1068,8 +1069,9 @@ class Tuner:
 		epoch_label = ('-' + epoch) if isinstance(epoch, str) else ''
 		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
 		
+		magnitude = floor(1 + np.log10(total_epochs))
 		dataset_name = eval_cfg.data.friendly_name
-		epoch_label = f'{epoch}{epoch_label}'
+		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
 		most_similar_words = self.most_similar(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
 		most_similar_words['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_words['predicted_arg']]
 		most_similar_words.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
@@ -1775,9 +1777,10 @@ class Tuner:
 		self.model.eval()
 		epoch_label = ('-' + epoch) if isinstance(epoch, str) else ''
 		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
+		magnitude = floor(1 + np.log10(total_epochs))
 		
 		dataset_name = eval_cfg.data.friendly_name
-		epoch_label = f'{epoch}{epoch_label}'
+		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
 		most_similar_words = self.most_similar(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
 		most_similar_words.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
 		
