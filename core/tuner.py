@@ -718,7 +718,7 @@ class Tuner:
 		
 		if epoch == None:
 			epoch = total_epochs
-		elif 'best' in epoch:
+		elif 'best' in str(epoch):
 			metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv'))
 			loss_df = metrics[(metrics.metric == 'loss') & (~metrics.dataset.str.endswith(' (train)'))]
 			epoch = get_best_epoch(loss_df, method = 'mean' if 'mean' in epoch else 'sumsq' if 'sumsq' in epoch else '')
