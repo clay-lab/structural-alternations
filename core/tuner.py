@@ -981,8 +981,22 @@ class Tuner:
 		magnitude = floor(1 + np.log10(total_epochs))
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
 		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
+		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
+		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
+		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv', index=False)
 		
+		if len(most_similar_tokens.predicted_arg.unique()) > 1:
+			with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
+				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
+					df = df.loc[~df.target_group.str.endswith('most similar')]
+					means = df.groupby('target_group').cossim.agg('mean')
+					out_group_means = means[[i for i in means.index if not i == predicted_arg]]
+					means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
+					if means_diffs:
+						for diff in means_diffs:
+							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
+							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		# Load data
 		# the use of eval_cfg.data.to_mask will probably need to be updated here for roberta now
 		inputs, labels, sentences = self.load_eval_file(eval_cfg.data.name, eval_cfg.data.to_mask)
@@ -1161,18 +1175,20 @@ class Tuner:
 		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
 		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
+		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv', index=False)
 		
-		for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
-			df = df.loc[~df.target_group.str.endswith('most similar')]
-			means = df.groupby('target_group')['cossim'].agg('mean')
-			out_group_means = means[[i for i in means.index if not i == predicted_arg]]
-			means_ratios = {f'{predicted_arg}/{arg}': means[predicted_arg]/out_group_means[arg] for arg in out_group_means.index}
-			if means_ratios:
-				with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
-					for ratio in means_ratios:
-						log.info(f'Mean cossim {ratio} targets for {predicted_arg}: {"{:.2f}".format(means_ratios[ratio])}')
-						f.write(f'Mean cossim {ratio} targets for {predicted_arg}: {means_ratios[ratio]}\n')
+		if len(most_similar_tokens.predicted_arg.unique()) > 1:
+			with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
+				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
+					df = df.loc[~df.target_group.str.endswith('most similar')]
+					means = df.groupby('target_group').cossim.agg('mean')
+					out_group_means = means[[i for i in means.index if not i == predicted_arg]]
+					means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
+					if means_diffs:
+						for diff in means_diffs:
+							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
+							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 		inputs = data["inputs"]
@@ -1694,7 +1710,7 @@ class Tuner:
 			masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
 			subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
 			subtitle += f', patience: {np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else "multiple"}'
-			subtitle += f'(\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"}'
+			subtitle += f' (\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"})'
 			
 			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 			subtitle += '\nTuning data: ' + tuning_data_str
@@ -1851,15 +1867,15 @@ class Tuner:
 				))
 		
 		acc = acc.assign(
-			eval_epoch = np.unique(summary.eval_epoch)[0] if len(np.unique(summary.eval_epoch)) == 1 else 'multi',
-			total_epochs = np.unique(summary.total_epochs)[0] if len(np.unique(summary.total_epochs)) == 1 else 'multi',
-			model_id = np.unique(summary.model_id)[0] if len(np.unique(summary.model_id)) == 1 else 'multi',
-			eval_data = np.unique(summary.eval_data)[0] if len(np.unique(summary.eval_data)) == 1 else 'multi',
-			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multi',
-			tuning = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multi',
-			masked = np.unique(summary.masked)[0] if len(np.unique(summary.masked)) == 1 else 'multi',
-			masked_tuning_style = np.unique(summary.masked_tuning_style)[0] if len(np.unique(summary.masked_tuning_style)) == 1 else 'multi',
-			strip_punct = np.unique(summary.strip_punct)[0] if len(np.unique(summary.strip_punct)) == 1 else 'multi',
+			eval_epoch = np.unique(summary.eval_epoch)[0] if len(np.unique(summary.eval_epoch)) == 1 else 'multiple',
+			total_epochs = np.unique(summary.total_epochs)[0] if len(np.unique(summary.total_epochs)) == 1 else 'multiple',
+			model_id = np.unique(summary.model_id)[0] if len(np.unique(summary.model_id)) == 1 else 'multiple',
+			eval_data = np.unique(summary.eval_data)[0] if len(np.unique(summary.eval_data)) == 1 else 'multiple',
+			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple',
+			tuning = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple',
+			masked = np.unique(summary.masked)[0] if len(np.unique(summary.masked)) == 1 else 'multiple',
+			masked_tuning_style = np.unique(summary.masked_tuning_style)[0] if len(np.unique(summary.masked_tuning_style)) == 1 else 'multiple',
+			strip_punct = np.unique(summary.strip_punct)[0] if len(np.unique(summary.strip_punct)) == 1 else 'multiple',
 			patience = np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else 'multiple',
 			delta = np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else 'multiple'
 		)
@@ -1889,18 +1905,20 @@ class Tuner:
 		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
 		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
+		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv', index=False)
 		
-		for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
-			df = df.loc[~df.target_group.str.endswith('most similar')]
-			means = df.groupby('target_group')['cossim'].agg('mean')
-			out_group_means = means[[i for i in means.index if not i == predicted_arg]]
-			means_ratios = {f'{predicted_arg}/{arg}': means[predicted_arg]/out_group_means[arg] for arg in out_group_means.index}
-			if means_ratios:
-				with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
-					for ratio in means_ratios:
-						log.info(f'Mean cossim {ratio} targets for {predicted_arg}: {"{:.2f}".format(means_ratios[ratio])}')
-						f.write(f'Mean cossim {ratio} targets for {predicted_arg}: {means_ratios[ratio]}\n')
+		if len(most_similar_tokens.predicted_arg.unique()) > 1:
+			with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
+				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
+					df = df.loc[~df.target_group.str.endswith('most similar')]
+					means = df.groupby('target_group')['cossim'].agg('mean')
+					out_group_means = means[[i for i in means.index if not i == predicted_arg]]
+					means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
+					if means_diffs:
+						for diff in means_diffs:
+							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
+							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		
 		# Define a local function to get the probabilities
 		def get_probs(epoch: int):
@@ -2267,7 +2285,7 @@ class Tuner:
 			masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
 			subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
 			subtitle += f', patience: {np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else "multiple"}'
-			subtitle += f'(\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"}'
+			subtitle += f' (\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"})'
 			
 			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 			subtitle += '\nTuning data: ' + tuning_data_str
