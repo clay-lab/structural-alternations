@@ -622,12 +622,13 @@ class Tuner:
 				# else:
 				# 	t.set_postfix(train_loss='{0:5.2f}'.format(train_loss.item()))
 		
-		log.info(f"Saving weights for each of {epoch} epochs")
+		log.info(f"Saving weights for each of {epoch if patience_counter >= self.cfg.hyperparameters.patience else epoch + 1} epochs")
 		with open('weights.pkl', 'wb') as f:
 			pkl.dump(saved_weights, f)
 		
 		metrics['dataset_type'] = ['train' if re.search('(train)', dataset) else 'dev' for dataset in metrics.dataset]
-		metrics = metrics[metrics.epoch <= epoch].copy()
+		if patience_counter >= self.cfg.hyperparameters.patience:
+			metrics = metrics[metrics.epoch <= epoch].copy()
 		
 		log.info(f'Plotting metrics')
 		self.plot_metrics(metrics)
@@ -834,6 +835,7 @@ class Tuner:
 			else:
 				title += '\n'
 			
+			breakpoint()
 			title += f'{self.cfg.tuning.name.replace("_", " ")} (training): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
 			title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
 			
@@ -1674,7 +1676,9 @@ class Tuner:
 		
 		acc_columns = ['s1', 's2', 'predicted_arg', 'predicted_role', 'position_num_ref', 'position_num_gen', 'gen_given_ref', \
 					   'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct',\
-					   'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points', 'specificity_(MSE)', 'specificity_se', 'specificity_(z)', 'specificity_se(z)', 's1_ex', 's2_ex']
+					   'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points', 'specificity_(MSE)', 'specificity_se', 
+					   # 'specificity_(z)', 'specificity_se(z)',
+					   's1_ex', 's2_ex']
 		acc = pd.DataFrame(columns = acc_columns)
 		
 		for pair in paired_sentence_types:
@@ -1704,8 +1708,8 @@ class Tuner:
 			specificity = np.mean((y_data.odds_ratio - x_data.odds_ratio)**2)
 			spec_sem = np.std((y_data.odds_ratio - x_data.odds_ratio)**2)/np.sqrt(np.size((y_data.odds_ratio - x_data.odds_ratio)**2))
 			
-			specificity_z = np.mean(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)
-			specificity_z_sem = np.std(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2/np.sqrt(np.size(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)))
+			# specificity_z = np.mean(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)
+			# specificity_z_sem = np.std(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2/np.sqrt(np.size(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)))
 			
 			s1_ex = x_data[x_data.sentence_num == 0].sentence.values[0]
 			s2_ex = y_data[y_data.sentence_num == 0].sentence.values[0]
@@ -1720,7 +1724,7 @@ class Tuner:
 				  ref_correct, ref_incorrect, 
 				  gen_correct, gen_incorrect, 
 				  num_points, specificity, spec_sem,
-				  specificity_z, specificity_z_sem,
+				  # specificity_z, specificity_z_sem,
 				  s1_ex, s2_ex]],
 				  columns = acc_columns
 			))
@@ -1747,8 +1751,8 @@ class Tuner:
 				specificity = np.mean((y_group.odds_ratio - x_group.odds_ratio)**2)
 				spec_sem = np.std((y_group.odds_ratio - x_group.odds_ratio)**2)/np.sqrt(np.size((y_group.odds_ratio - x_group.odds_ratio)**2))
 				
-				specificity_z = np.mean(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)
-				specificity_z_sem = np.std(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2/np.sqrt(np.size(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)))
+				# specificity_z = np.mean(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)
+				# specificity_z_sem = np.std(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2/np.sqrt(np.size(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)))
 				
 				acc = acc.append(pd.DataFrame(
 					[[pair[0], pair[1], arg, x_group.role_position.unique()[0].split()[0],
@@ -1760,7 +1764,7 @@ class Tuner:
 					  ref_correct, ref_incorrect, 
 					  gen_correct, gen_incorrect, 
 					  num_points, specificity, spec_sem,
-					  specificity_z, specificity_z_sem,
+					  # specificity_z, specificity_z_sem,
 					  s1_ex, s2_ex]],
 					  columns = acc_columns
 				))
