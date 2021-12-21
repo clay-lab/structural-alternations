@@ -210,7 +210,7 @@ class Tuner:
 						log.warning('RoBERTa treats tokens with preceding spaces differently, but you have used the same token for both cases! This may complicate results.')
 			
 			dev_data.update({dataset: data})
-			
+		
 		return dev_data
 	
 	@property
@@ -415,16 +415,18 @@ class Tuner:
 		
 		if self.cfg.tuning.new_verb and self.masked_tuning_style == 'none':
 			inputs_data = self.verb_tuning_data['data']
-			dev_inputs_data = {dataset: self.verb_dev_data[dataset]['data'] for dataset in self.verb_dev_data}
+			# dev_inputs_data = {dataset: self.verb_dev_data[dataset]['data'] for dataset in self.verb_dev_data}
 		elif self.masked and self.masked_tuning_style == 'always':
 			inputs_data = self.masked_tuning_data
-			dev_inputs_data = self.masked_dev_data
+			# dev_inputs_data = self.masked_dev_data
 		elif self.masked and self.masked_tuning_style in ['bert', 'roberta']: # when using bert tuning or roberta tuning. For roberta tuning, this is done later on
 			inputs_data = self.mixed_tuning_data
-			dev_inputs_data = self.mixed_dev_data
+			# dev_inputs_data = self.mixed_dev_data
 		elif not self.masked:
 			inputs_data = self.tuning_data
-			dev_inputs_data = self.dev_data
+			# dev_inputs_data = self.dev_data
+		
+		dev_inputs_data = self.masked_dev_data
 		
 		labels_data = self.verb_tuning_data['data'] if self.cfg.tuning.new_verb else self.tuning_data
 		dev_labels_data = {dataset: self.verb_dev_data[dataset]['data'] for dataset in self.verb_dev_data} if self.cfg.tuning.new_verb else self.dev_data
@@ -456,7 +458,7 @@ class Tuner:
 		saved_weights = {}
 		saved_weights[0] = get_updated_weights()
 		
-		datasets = [self.cfg.tuning.name + ' (train)'] + [dataset + ' (dev)' for dataset in self.cfg.dev]
+		datasets = [self.cfg.tuning.name + ' (train)', self.cfg.tuning.name + ' (masked, no dropout)'] + [dataset + ' (dev)' for dataset in self.cfg.dev]
 		
 		metrics = pd.DataFrame(data = {
 			'epoch' : list(range(1,epochs+1)) * len(datasets),
@@ -477,7 +479,7 @@ class Tuner:
 				# If we are using roberta-style masking, get new randomly changed inputs each epoch
 				if self.masked_tuning_style == 'roberta':
 					inputs_data = self.mixed_tuning_data
-					dev_inputs_data = self.mixed_dev_data
+					# dev_inputs_data = self.mixed_dev_data
 					# we only need to do this for the inputs; the labels were checked before and remain the same
 					count = 0
 					while not verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs):
@@ -491,20 +493,20 @@ class Tuner:
 							log.error('Unable to find roberta-style masked tuning data that was tokenized correctly after 10 tries. Exiting.')
 							return
 					
-					for dataset in dev_inputs_data:
-						count = 0
-						while not verify_tokenization_of_sentences(self.tokenizer, dev_inputs_data[dataset], self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs):
-							count += 1
-							log.warning('The new tokens added affected the tokenization of dev sentences generated using roberta-style tuning!')
-							log.warning(f'Affected: {dataset}, {dev_inputs_data}')
-							log.warning('Rerolling to try again.')
-							dev_inputs_data[dataset] = self.mixed_dev_data[dataset]
-							if count > 10:
-								log.error(f'Unable to find roberta-style masked dev data for {dataset} that was tokenized correctly after 10 tries. Exiting.')
-								return
+					# for dataset in dev_inputs_data:
+					# 	count = 0
+					# 	while not verify_tokenization_of_sentences(self.tokenizer, dev_inputs_data[dataset], self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs):
+					# 		count += 1
+					# 		log.warning('The new tokens added affected the tokenization of dev sentences generated using roberta-style tuning!')
+					# 		log.warning(f'Affected: {dataset}, {dev_inputs_data}')
+					# 		log.warning('Rerolling to try again.')
+					# 		dev_inputs_data[dataset] = self.mixed_dev_data[dataset]
+					# 		if count > 10:
+					# 			log.error(f'Unable to find roberta-style masked dev data for {dataset} that was tokenized correctly after 10 tries. Exiting.')
+					# 			return
 					
 					inputs = self.tokenizer(inputs_data, return_tensors="pt", padding=True)
-					dev_inputs = {dataset: self.tokenizer(dev_inputs_data[dataset], return_tensors='pt', padding=True) for dataset in dev_inputs_data}
+					# dev_inputs = {dataset: self.tokenizer(dev_inputs_data[dataset], return_tensors='pt', padding=True) for dataset in dev_inputs_data}
 				
 				# Compute loss
 				train_outputs = self.model(**inputs, labels=labels)
@@ -576,16 +578,38 @@ class Tuner:
 							for token in dev_epoch_metrics[metric]:
 								metrics.loc[(metrics['epoch'] == epoch + 1) & (metrics.dataset == self.cfg.dev[dataset].name + ' (dev)'), f'{token} mean {metric} in expected position'] = dev_epoch_metrics[metric][token]
 								tb_metrics_dict[metric][token].update({f'{token} mean {metric}/{self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_epoch_metrics[metric][token]})
+					
+					# Compute loss on masked training data without dropout, 
+					# as this is most representative of the testing procedure
+					# so we can use it to determine the best epoch
+					no_dropout_train_outputs = self.model(**masked_inputs, labels=labels)
+					no_dropout_train_loss = no_dropout_train_outputs.loss
+					
+					dev_losses += [no_dropout_train_loss.item()]
+					
+					# Log result
+					metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (masked, no dropout)'), 'loss'] = no_dropout_train_loss.item()
+					tb_loss_dict = {f'loss/{self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"}': no_dropout_train_loss}
+					
+					no_dropout_train_results = self.collect_results(masked_inputs, labels, self.tokens_to_mask, no_dropout_train_outputs)
+					
+					# get metrics for plotting
+					no_dropout_epoch_metrics = self.get_epoch_metrics(no_dropout_train_results)
+					
+					for metric in no_dropout_epoch_metrics:
+						for token in no_dropout_epoch_metrics[metric]:
+							metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (masked, no dropout)'), f'{token} mean {metric} in expected position'] = no_dropout_epoch_metrics[metric][token]
+							tb_metrics_dict[metric][token].update({f'{token} mean {metric}/{self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"}': no_dropout_epoch_metrics[metric][token]})
 				
 				writer.add_scalars(f'{self.model_bert_name} loss; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_loss_dict, epoch)
 				for metric in tb_metrics_dict:
 					for token in tb_metrics_dict[metric]:
 						writer.add_scalars(f'{self.model_bert_name} {token} {metric}; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}', tb_metrics_dict[metric][token], epoch)
 				
-				if self.cfg.dev:
-					t.set_postfix(avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
-				else:
-					t.set_postfix(train_loss='{0:5.2f}'.format(train_loss.item()))
+				# if self.cfg.dev:
+				t.set_postfix(avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
+				# else:
+				# 	t.set_postfix(train_loss='{0:5.2f}'.format(train_loss.item()))
 		
 		log.info(f"Saving weights for each of {epochs} epochs")
 		with open('weights.pkl', 'wb') as f:
@@ -684,7 +708,7 @@ class Tuner:
 		
 		return epoch_metrics
 	
-	def restore_weights(self, checkpoint_dir: str, epoch: Union[int,str] = 'best') -> Tuple[int, int]:
+	def restore_weights(self, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> Tuple[int, int]:
 		weights_path = os.path.join(checkpoint_dir, 'weights.pkl')
 		
 		with open(weights_path, 'rb') as f:
@@ -694,10 +718,10 @@ class Tuner:
 		
 		if epoch == None:
 			epoch = total_epochs
-		elif epoch == 'best':
+		elif 'best' in epoch:
 			metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv'))
-			loss_df = metrics[metrics.metric == 'loss']
-			epoch = get_best_epoch(loss_df)
+			loss_df = metrics[(metrics.metric == 'loss') & (~metrics.dataset.str.endswith(' (train)'))]
+			epoch = get_best_epoch(loss_df, method = 'mean' if 'mean' in epoch else 'sumsq' if 'sumsq' in epoch else '')
 		
 		log.info(f'Restoring saved weights from epoch {epoch}/{total_epochs}')
 		
@@ -809,11 +833,68 @@ class Tuner:
 		pdfs = [pdf for metric in all_metrics for pdf in os.listdir(os.getcwd()) if pdf == f'{metric}.pdf']
 		merge_pdfs(pdfs, 'metrics.pdf')
 	
-	
-	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best') -> None:
+	def most_similar(self, k: int = 10) -> pd.DataFrame:
+		"""
+		Returns a datafarame containing information about the k most similar words to the tokens to mask
+		"""
+		word_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight
+		targets = self.tokens_to_mask
 		
+		# if we are training roberta, we only currently care about the cases with spaces in front
+		if self.model_bert_name == 'roberta':
+			targets = [t for t in targets if t.startswith(chr(288))]
+		
+		cos = nn.CosineSimilarity(dim=-1)
+		
+		most_similar = {}
+		
+		for target in targets:
+			token_id = self.tokenizer.get_vocab()[target]
+			target_embed = word_embeddings[token_id]
+			token_cossim = {i : cossim for i, cossim in enumerate(cos(target_embed, word_embeddings))}
+			token_cossim = {k : v for k, v in sorted(token_cossim.items(), key = lambda item: -item[1])}
+			token_cossim = list(token_cossim.items())
+			k_most_similar = []
+			for tok_id, cossim in token_cossim:
+				most_similar_word = self.tokenizer.convert_ids_to_tokens(tok_id)
+				if not tok_id == token_id:
+					k_most_similar.append([(tok_id, most_similar_word, cossim.item())])
+				
+				if len(k_most_similar) == k:
+					break
+			
+			most_similar[target] = k_most_similar
+		
+		most_similar_df = pd.DataFrame.from_dict({
+			(predicted_arg, *values) :
+			(predicted_arg, *values)
+			for predicted_arg in most_similar
+				for result in most_similar[predicted_arg]
+					for values in result
+			},
+			orient = 'index',
+			columns = ['predicted_arg', 'token_id', 'token', 'cossim']
+		).reset_index(drop=True).assign(
+			model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2] + '-' + self.model_bert_name[0],
+			model_name = self.model_bert_name,
+			tuning = self.cfg.tuning.name,
+			masked = self.masked,
+			masked_tuning_style = self.masked_tuning_style,
+			strip_punct = self.cfg.hyperparameters.strip_punct
+		)
+		
+		return most_similar_df
+	
+	
+	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
 		self.model.eval()
-		_, _ = self.restore_weights(checkpoint_dir, epoch)
+		epoch_label = ('-' + epoch) if isinstance(epoch, str) else ''
+		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
+		
+		dataset_name = eval_cfg.data.friendly_name
+		epoch_label = f'{epoch}{epoch_label}'
+		most_similar_words = self.most_similar(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
+		most_similar_words.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
 		
 		# Load data
 		# the use of eval_cfg.data.to_mask will probably need to be updated here for roberta now
@@ -973,7 +1054,7 @@ class Tuner:
 			np.save(f, np.array(anim))
 	
 	
-	def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = None) -> None:
+	def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
 		"""
 		Computes model performance on data consisting of 
 			sentence 1 , sentence 2 , [...]
@@ -986,6 +1067,12 @@ class Tuner:
 		self.model.eval()
 		epoch_label = ('-' + epoch) if isinstance(epoch, str) else ''
 		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
+		
+		dataset_name = eval_cfg.data.friendly_name
+		epoch_label = f'{epoch}{epoch_label}'
+		most_similar_words = self.most_similar(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
+		most_similar_words['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_words['predicted_arg']]
+		most_similar_words.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
 		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 		inputs = data["inputs"]
@@ -1000,15 +1087,10 @@ class Tuner:
 			outputs = [self.model(**i) for i in inputs]
 		
 		summary = self.get_entailed_summary(sentences, outputs, labels, eval_cfg)
-		summary = summary.assign(
-			eval_epoch = epoch,
-			total_epochs = total_epochs
-		)
+		summary = summary.assign(eval_epoch = epoch, total_epochs = total_epochs)
 		
 		# save the summary as a pickle and as a csv so that we have access to the original tensors
 		# these get converted to text in the csv, but the csv is easier to work with otherwise
-		dataset_name = eval_cfg.data.friendly_name
-		epoch_label = f'{epoch}{epoch_label}'
 		summary.to_pickle(f"{dataset_name}-{epoch_label}-scores.pkl")
 		
 		summary_csv = summary.copy()
@@ -1678,7 +1760,7 @@ class Tuner:
 		return acc
 	
 	
-	def eval_new_verb(self, eval_cfg: DictConfig, args_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = None) -> None:
+	def eval_new_verb(self, eval_cfg: DictConfig, args_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
 		"""
 		Computes model performance on data with new verbs
 		where this is determined as the difference in the probabilities associated
@@ -1691,6 +1773,13 @@ class Tuner:
 		data = self.load_eval_verb_file(args_cfg, eval_cfg.data.name, eval_cfg.data.to_mask)
 				
 		self.model.eval()
+		epoch_label = ('-' + epoch) if isinstance(epoch, str) else ''
+		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
+		
+		dataset_name = eval_cfg.data.friendly_name
+		epoch_label = f'{epoch}{epoch_label}'
+		most_similar_words = self.most_similar(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
+		most_similar_words.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
 		
 		# Define a local function to get the probabilities
 		def get_probs(epoch: int):

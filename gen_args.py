@@ -382,7 +382,8 @@ def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 	return predictions_summary
 
 def load_tuning_verb_data(cfg: DictConfig, model_cfg: DictConfig, mask_tok: str, args_dict: Dict[str, List[str]]) -> Dict[str, List[str]]:
-	sentences = [strip_punct(line).strip() if cfg.strip_punct else line.strip() for line in cfg.tuning.data]
+	sentences = [strip_punct(line).strip() if cfg.strip_punct else line.strip() for line in cfg.tuning.data] + \
+				[strip_punct(line).strip() if cfg.strip_punct else line.strip() for line in cfg.tuning.gen_args_data]
 	sentences = [s.lower() for s in sentences] if 'uncased' in model_cfg.string_id else sentences
 	
 	# construct new argument dictionaries with the values from the non-target token, 

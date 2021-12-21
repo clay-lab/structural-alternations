@@ -31,7 +31,14 @@ data:
   - Some [subj] would BLORK the [obj].
   - The [subj] would BLORK a [obj].
   - Some [subj] would BLORK a [obj].
+  - Frequently, the [subj] would BLORK the [obj].
+  - Some [subj] can always BLORK the [obj] upstairs.
+  - I heard the [subj] might BLORK a [obj] after the show.
+  - It's not every day that you see a [subj] BLORK a [obj].
+
+gen_args_data:
   - It was the [obj] that the [subj] would BLORK.
   - What the [subj] would BLORK was the [obj].
   - Which [obj] would the [subj] BLORK?
   - Which [subj] would BLORK the [obj]?
+  - Did you see the [subj] BLORK the [obj]?
