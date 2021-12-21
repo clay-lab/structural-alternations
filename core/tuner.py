@@ -626,7 +626,7 @@ class Tuner:
 		with open('weights.pkl', 'wb') as f:
 			pkl.dump(saved_weights, f)
 		
-		metrics['dataset_type'] = ['train' if re.search('(train)', dataset) else 'dev' for dataset in metrics.dataset]
+		metrics['dataset_type'] = ['dev' if dataset.endswith('(dev)') else 'train' for dataset in metrics.dataset]
 		metrics = metrics.dropna().reset_index(drop=True)
 		
 		log.info(f'Plotting metrics')
@@ -747,6 +747,8 @@ class Tuner:
 		return epoch, total_epochs
 	
 	def plot_metrics(self, metrics: pd.DataFrame) -> None:
+		# do this to avoid messing up the passed dataframe
+		metrics = metrics.copy()
 		
 		def determine_int_xticks(target_num_ticks: int = 10) -> List[int]:
 			lowest = metrics.epoch.min()
@@ -809,8 +811,7 @@ class Tuner:
 			fig.set_size_inches(8, 6.25)
 			ax.set_ylim(llim - adj, ulim + adj)
 			metrics.dataset = [dataset.replace('_', ' ') for dataset in metrics.dataset] # for legend titles
-			# do this for linestyles to be solid
-			metrics.dataset_type = ['dev' if dataset_type.endswith('(dev)') else 'train' for dataset_type in metrics.dataset_type]
+			
 			if len(metrics[metric].index) > 1:
 				sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
 				ax.legend(fontsize=9)
