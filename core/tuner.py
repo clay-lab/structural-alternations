@@ -520,7 +520,7 @@ class Tuner:
 				# Log result
 				metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), 'loss'] = train_loss.item()
 				tb_loss_dict = {f'loss/{self.cfg.tuning.name.replace("_", " ") + " (train)"}': train_loss}
-				if train_loss.item() < best_losses[self.cfg.tuning.name.replace('_', ' ') + ' (train)']:
+				if train_loss.item() < best_losses[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] - self.cfg.hyperparameters.delta:
 					best_losses[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] = train_loss.item()
 					patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] = self.cfg.hyperparameters.patience
 				else:
@@ -582,7 +582,7 @@ class Tuner:
 						metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.dev[dataset].name + ' (dev)'),'loss'] = dev_loss.item()
 						tb_loss_dict.update({f'loss/{self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_loss})
 						
-						if dev_loss.item() < best_losses[self.cfg.dev[dataset].name.replace('_', ' ') + ' (dev)']:
+						if dev_loss.item() < best_losses[self.cfg.dev[dataset].name.replace('_', ' ') + ' (dev)'] - self.cfg.hyperparameters.delta:
 							best_losses[self.cfg.dev[dataset].name.replace('_', ' ') + ' (dev)'] = dev_loss.item()
 							patience_counters[self.cfg.dev[dataset].name.replace('_', ' ') + ' (dev)'] = self.cfg.hyperparameters.patience
 						else:
@@ -611,7 +611,7 @@ class Tuner:
 					# Log result
 					metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (masked, no dropout)'), 'loss'] = no_dropout_train_loss.item()
 					
-					if no_dropout_train_loss.item() < best_losses[self.cfg.tuning.name.replace('_', ' ') + ' (masked, no dropout)']:
+					if no_dropout_train_loss.item() < best_losses[self.cfg.tuning.name.replace('_', ' ') + ' (masked, no dropout)'] - self.cfg.hyperparameters.delta:
 						best_losses[self.cfg.tuning.name.replace('_', ' ') + ' (masked, no dropout)'] = no_dropout_train_loss.item()
 						patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (masked, no dropout)'] = self.cfg.hyperparameters.patience
 					else:
@@ -643,7 +643,7 @@ class Tuner:
 				else:
 					patience_counter += 1
 					if patience_counter >= self.cfg.hyperparameters.patience:
-						log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs. Halting training at epoch {epoch + 1}.')
+						log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs. Halting training at epoch {epoch}.')
 						metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
 						break
 				
@@ -681,7 +681,6 @@ class Tuner:
 			delta = self.cfg.hyperparameters.delta
 		)
 		
-		breakpoint()
 		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset'] = 'overall'
 		metrics = metrics.drop_duplicates().reset_index(drop=True)
 		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset_type'] = 'mean'
@@ -791,6 +790,9 @@ class Tuner:
 			lowest = series.min()
 			highest = series.max()
 			
+			if (highest - lowest) % target_num_ticks == 0 or (highest - lowest) < target_num_ticks:
+				return [i for i in range(lowest, highest + 1)]
+			
 			new_min = target_num_ticks - 1
 			new_max = target_num_ticks + 1
 			while not highest % target_num_ticks == 0:
@@ -811,7 +813,7 @@ class Tuner:
 					new_max += 1
 			
 			int_axticks = [int(i) for i in list(range(lowest - 1, highest + 1, int(ceil(highest/target_num_ticks))))]
-			int_axticks = [i for i in int_axticks if i in series.values]
+			int_axticks = [i for i in int_axticks if i in range(lowest, highest)]
 			
 			if not int_axticks:
 				int_axticks = list(set([i for i in series.values]))
@@ -859,7 +861,7 @@ class Tuner:
 				if metric == 'remaining patience':
 					global_patience = metrics[['epoch', 'remaining patience overall']].drop_duplicates().reset_index(drop=True).rename({'remaining patience overall' : 'remaining patience'}, axis = 1).assign(dataset = 'overall', dataset_type = 'global')
 					sns.lineplot(data = metrics.append(global_patience, ignore_index=True), x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend ='full')
-					plt.yticks(determine_int_axticks(metrics['remaining patience'].append(metrics['remaining patience overall'], ignore_index=True).astype(int).append(0)))
+					plt.yticks(determine_int_axticks(metrics['remaining patience'].append(metrics['remaining patience overall'], ignore_index=True).astype(int).append(pd.Series(0), ignore_index=True)))
 				else:
 					sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
 				
