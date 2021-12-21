@@ -296,4 +296,3 @@ def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean', frac: float = 0.
 		log.warning('Note that the best epoch is the final epoch. This may indicate underfitting.')
 	
 	return best_epoch
-			
