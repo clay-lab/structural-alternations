@@ -2,22 +2,26 @@
 
 name: syn_spray.data
 friendly_name: syn_spray
-description: "Synthetic 'spray' tuples"
+description: Synthetic 'spray' tuples
 entail: true
 new_verb: false
 
 sentence_types:
-  - "spray theme-object active"
-  - "theme-object passive"
-  - "spray goal-object active"
-  - "goal-object passive"
-  - "theme-object unaccusative"
-  - "theme-subject active transitive"
+  - spray theme-object active
+  - theme-object passive
+  - spray goal-object active
+  - goal-object passive
+  - theme-object unaccusative
+  - theme-subject active transitive
 
 eval_groups:
-  "goal" : "GORX"
-  "theme" : "THAX"
+  goal : GORX
+  theme : THAX
 
 to_mask:
- - "GORX"
- - "THAX"
+ - GORX
+ - THAX
+
+masked_token_targets:
+  THAX : [paint, cream, water, goo, hay, books, oil, solvent, powder, liquid, beer, sauce, ketchup, icing, stones, dye, wax, grain, corn, potatoes, jelly, sludge, mud, grease, gravel, wood, chocolate, gravy, slop, foam, fluff]
+  GORX : [truck, wall, ground, door, wagon, floor, sidewalk, porch, roof, car, fence, ceiling, tub, factory, counter, oven, surface, window, room, vat, cauldron, bottle, screen, stove, house, building, van, cart, trunk, deck, garden]

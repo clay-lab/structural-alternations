@@ -41,7 +41,7 @@ def multieval(cfg: DictConfig) -> None:
 	elif cfg.epoch == 'best':
 		score_file_name = cfg.data.friendly_name + '-(([0-9]+)-+)+best-scores.pkl'
 	else:
-		score_file_name = cfg.data.friendy_name + '-' + cfg.epoch + '-scores.pkl'
+		score_file_name = cfg.data.friendly_name + '-' + cfg.epoch + '-scores.pkl'
 	
 	# Get checkpoint dirs in outputs
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
@@ -192,6 +192,7 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 				 'role_position', 'position_num',
 				 'model_name', 'masked', 
 				 'eval_epoch', 'total_epochs',
+				 'patience', 'delta',
 				 'masked_tuning_style', 'tuning', 'strip_punct']) \
 		['odds_ratio']. \
 		agg(['mean', 'sem']). \

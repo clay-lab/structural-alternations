@@ -2,7 +2,7 @@
 
 name: syn_rub_load_ext.data
 friendly_name: syn_rub_load_ext
-description: "Synthetic 'rub' tuples"
+description: Synthetic 'rub' tuples
 entail: true
 new_verb: false
 
@@ -90,9 +90,13 @@ sentence_types:
   - PORC goal-object passive
 
 eval_groups:
-  "theme" : "THAX"
-  "recipient" : "GORX"
+  theme : THAX
+  recipient : GORX
 
 to_mask:
-  - "THAX"
-  - "GORX"
+  - THAX
+  - GORX
+
+masked_token_targets:
+  THAX : [paint, cream, water, goo, hay, books, oil, solvent, powder, liquid, beer, sauce, ketchup, icing, stones, dye, wax, grain, corn, potatoes, jelly, sludge, mud, grease, gravel, wood, chocolate, gravy, slop, foam, fluff]
+  GORX : [truck, wall, ground, door, wagon, floor, sidewalk, porch, roof, car, fence, ceiling, tub, factory, counter, oven, surface, window, room, vat, cauldron, bottle, screen, stove, house, building, van, cart, trunk, deck, garden]

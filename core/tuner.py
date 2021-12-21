@@ -627,8 +627,7 @@ class Tuner:
 			pkl.dump(saved_weights, f)
 		
 		metrics['dataset_type'] = ['train' if re.search('(train)', dataset) else 'dev' for dataset in metrics.dataset]
-		if patience_counter >= self.cfg.hyperparameters.patience:
-			metrics = metrics[metrics.epoch <= epoch].copy()
+		metrics = metrics.dropna().reset_index(drop=True)
 		
 		log.info(f'Plotting metrics')
 		self.plot_metrics(metrics)
@@ -831,7 +830,7 @@ class Tuner:
 			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else " unmasked") + ', '
 			title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}\n'
 			if metric == 'loss':
-				title += f'patience: {self.cfg.hyperparameters.patience} (\u0394 {self.cfg.hyperparameters.delta})\n\n'
+				title += f'patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
 			else:
 				title += '\n'
 			
@@ -857,16 +856,19 @@ class Tuner:
 		merge_pdfs(pdfs, 'metrics.pdf')
 	
 	
-	def most_similar_tokens(self, targets: List[str] = [], k: int = 10) -> pd.DataFrame:
+	def most_similar_tokens(self, tokens: List[str] = [], targets: Dict[str,str] = {}, k: int = 10) -> pd.DataFrame:
 		"""
-		Returns a datafarame containing information about the k most similar tokens to the tokens to mask
+		Returns a datafarame containing information about the k most similar tokens to tokens
+		or if targets is provided, infomation about the cossim of the tokens to the targets they are mapped to in targets
 		"""
 		word_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight
 		
-		if not targets:
-			targets = self.tokens_to_mask
+		if not tokens:
+			tokens = self.tokens_to_mask
 		
-		targets = [t.lower() for t in targets] if 'uncased' in self.string_id else targets
+		tokens = [t.lower() for t in tokens] if 'uncased' in self.string_id else tokens
+		if targets:
+			targets = {k.lower() : v for k, v in targets.items()} if 'uncased' in self.string_id else targets
 		
 		# if we are training roberta, we only currently care about the cases with spaces in front for masked tokens
 		# otherwise, try to do something sensible with other tokens
@@ -874,46 +876,85 @@ class Tuner:
 		# if they have a space in front, replace it with a chr(288)
 		# if they don't exist, but a version with a space in front does, use that
 		if self.model_bert_name == 'roberta':
-			targets = [t for t in targets if (t.startswith(chr(288)) and t in self.tokens_to_mask) or not t in self.tokens_to_mask]
-			targets = [t if len(self.tokenizer.tokenize(re.sub(chr(288), ' ', t))) == 1 and not self.tokenizer.tokenize(re.sub(chr(288), ' ', t)) == self.tokenizer.unk_token else ' ' + t if len(self.tokenizer.tokenize(' ' + t)) == 1 and not self.tokenizer.tokenize(' ' + t) == self.tokenizer.unk_token else None for t in targets]
-			targets = [t for t in targets if t is not None]
-			targets = [re.sub('^ ', chr(288), t) for t in targets]
+			tokens = [t for t in tokens if (t.startswith(chr(288)) and t in self.tokens_to_mask) or not t in self.tokens_to_mask]
+			tokens = [t if len(self.tokenizer.tokenize(re.sub(chr(288), ' ', t))) == 1 and not self.tokenizer.tokenize(re.sub(chr(288), ' ', t)) == self.tokenizer.unk_token else ' ' + t if len(self.tokenizer.tokenize(' ' + t)) == 1 and not self.tokenizer.tokenize(' ' + t) == self.tokenizer.unk_token else None for t in tokens]
+			tokens = [t for t in tokens if t is not None]
+			tokens = [re.sub('^ ', chr(288), t) for t in tokens]
+			
+			# format the keys in targets ...
+			targets = {key if key in tokens else chr(288) + key if chr(288) + key in tokens else '' : v for key, v in targets.items()}
+			targets = {key : v for key, v in targets.items() if k}
+			targets = {key if len(self.tokenizer.tokenize(re.sub(chr(288), ' ', key))) == 1 and not self.tokenizer.tokenize(re.sub(chr(288), ' ', key)) == self.tokenizer.unk_token else (' ' + key) if len(self.tokenizer.tokenize(' ' + key)) == 1 and not self.tokenizer.tokenize(' ' + key) == self.tokenizer.unk_token else key : 
+					   v if len(self.tokenizer.tokenize(re.sub(chr(288), ' ', key))) == 1 and not self.tokenizer.tokenize(re.sub(chr(288), ' ', key)) == self.tokenizer.unk_token else v if len(self.tokenizer.tokenize(' ' + key)) == 1 and not self.tokenizer.tokenize(' ' + key) == self.tokenizer.unk_token else [] for key, v in targets.items()}
+			targets = {key : v for key, v in targets.items() if targets[key]}
+			targets = {re.sub('^ ', chr(288), key) : v for key, v in targets.items()}
+			
+			# ... and the values
+			for key in targets:
+				targets[key] = [t for t in targets[key] if (t.startswith(chr(288)) and t in self.tokens_to_maskey) or not t in self.tokens_to_mask]
+				targets[key] = [' ' + t if key.startswith(chr(288)) else t for t in targets[key]] # if the key has a preceding space, then we're only interested in predictions for tokens with preceding spaces
+				targets[key] = [t if len(self.tokenizer.tokenize(re.sub(chr(288), ' ', t))) == 1 and not self.tokenizer.tokenize(re.sub(chr(288), ' ', t)) == self.tokenizer.unk_token else None for t in targets[key]]
+				targets[key] = [t for t in targets[key] if t is not None]
+				targets[key] = [re.sub('^ ', chr(288), t) for t in targets[key]]
+			
+			targets = {key : v for key, v in targets.items() if all(targets[key])}
 		else:
-			targets = [t for t in targets if len(self.tokenizer.tokenize(t)) == 1 and not self.tokenizer.tokenize(t) == self.tokenizer.unk_token]
+			tokens = [t for t in tokens if len(self.tokenizer.tokenize(t)) == 1 and not self.tokenizer.tokenize(t) == self.tokenizer.unk_token]
+			targets = {key : v for key, v in targets if len(self.tokenizer.tokenize(k)) == 1 and not self.tokenizer.tokenize(k) == self.tokenizer.unk_token}
+			for key in targets:
+				targets[key] = [t for t in targets[key] if len(self.tokenizer.tokenize(t)) == 1 and not self.tokenizer.tokenize(t) == self.tokenizer.unk_token]
+			
+			targets = {key : v for key, v in targets.items() if all(targets[key])}
 		
 		cos = nn.CosineSimilarity(dim=-1)
 		
 		most_similar = {}
 		
-		for target in targets:
-			token_id = self.tokenizer.get_vocab()[target]
-			target_embed = word_embeddings[token_id]
-			token_cossim = {i : cossim for i, cossim in enumerate(cos(target_embed, word_embeddings))}
-			token_cossim = {k : v for k, v in sorted(token_cossim.items(), key = lambda item: -item[1])}
-			token_cossim = list(token_cossim.items())
-			k_most_similar = []
-			for tok_id, cossim in token_cossim:
-				most_similar_word = self.tokenizer.convert_ids_to_tokens(tok_id)
-				if not tok_id == token_id:
-					k_most_similar.extend([(tok_id, most_similar_word, cossim.item())])
-				
-				if len(k_most_similar) == k:
-					break
-			else:
-				continue
+		for token in tokens:
+			token_id = self.tokenizer.get_vocab()[token]
+			token_embed = word_embeddings[token_id]
+			token_cossim = {i : cossim for i, cossim in enumerate(cos(token_embed, word_embeddings))}
 			
-			most_similar[target] = k_most_similar	
+			if not token in targets:
+				token_cossim = {k : v for k, v in sorted(token_cossim.items(), key = lambda item: -item[1])}
+				token_cossim = list(token_cossim.items())
+				k_most_similar = []
+				for tok_id, cossim in token_cossim:
+					most_similar_word = self.tokenizer.convert_ids_to_tokens(tok_id)
+					if not tok_id == token_id:
+						k_most_similar.extend([(tok_id, str(k) + ' most similar', most_similar_word, cossim.item())])
+					
+					if len(k_most_similar) == k:
+						break
+				else:
+					continue
+				
+				most_similar[token] = k_most_similar
+			else:
+				target_ids = [self.tokenizer.convert_tokens_to_ids(t) for t in targets[token]]
+				token_cossim_in_group = {i : cossim for i, cossim in token_cossim.items() if i in target_ids}
+				token_cossim_in_group = list(zip([self.tokenizer.convert_ids_to_tokens(i) for i, _ in token_cossim_in_group.items()], [token for t in token_cossim_in_group.items()], list(token_cossim_in_group.items())))
+				token_cossim_in_group = [(tok_id, group, t, cossim.item()) for (t, group, (tok_id, cossim)) in token_cossim_in_group]
+				most_similar[token] = token_cossim_in_group
+				
+				out_groups = {k : v for k, v in targets.items() if not k == token}
+				if out_groups:
+					for out_group_token in out_groups:
+						target_ids = [self.tokenizer.convert_tokens_to_ids(t) for t in out_groups[out_group_token]]
+						token_cossim_out_group = {i : cossim for i, cossim in token_cossim.items() if i in target_ids}
+						token_cossim_out_group = list(zip([self.tokenizer.convert_ids_to_tokens(i) for i, _ in token_cossim_out_group.items()], [out_group_token for t in token_cossim_out_group.items()], list(token_cossim_out_group.items())))
+						token_cossim_out_group = [(tok_id, group, t, cossim.item()) for (t, group, (tok_id, cossim)) in token_cossim_out_group]
+						most_similar[token].extend(token_cossim_out_group)
 		
 		if most_similar:
 			most_similar_df = pd.DataFrame.from_dict({
-				(predicted_arg, *values) :
-				(predicted_arg, *values)
+				(predicted_arg, *result) :
+				(predicted_arg, *result)
 				for predicted_arg in most_similar
 					for result in most_similar[predicted_arg]
-						for values in result
 				},
 				orient = 'index',
-				columns = ['predicted_arg', 'token_id', 'token', 'cossim']
+				columns = ['predicted_arg', 'token_id', 'target_group', 'token', 'cossim']
 			).reset_index(drop=True).assign(
 				model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2] + '-' + self.model_bert_name[0],
 				model_name = self.model_bert_name,
@@ -925,7 +966,7 @@ class Tuner:
 			
 			return most_similar_df
 		else:
-			return None
+			return pd.DataFrame()
 	
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
@@ -936,8 +977,8 @@ class Tuner:
 		dataset_name = eval_cfg.data.friendly_name
 		magnitude = floor(1 + np.log10(total_epochs))
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_words = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_words.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
+		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
 		
 		# Load data
 		# the use of eval_cfg.data.to_mask will probably need to be updated here for roberta now
@@ -1114,9 +1155,21 @@ class Tuner:
 		magnitude = floor(1 + np.log10(total_epochs))
 		dataset_name = eval_cfg.data.friendly_name
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_words = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_words['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_words['predicted_arg']]
-		most_similar_words.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
+		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
+		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
+		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv', index=False)
+		
+		for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
+			df = df.loc[~df.target_group.str.endswith('most similar')]
+			means = df.groupby('target_group')['cossim'].agg('mean')
+			out_group_means = means[[i for i in means.index if not i == predicted_arg]]
+			means_ratios = {f'{predicted_arg}/{arg}': means[predicted_arg]/out_group_means[arg] for arg in out_group_means.index}
+			if means_ratios:
+				with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
+					for ratio in means_ratios:
+						log.info(f'Mean cossim {ratio} targets for {predicted_arg}: {"{:.2f}".format(means_ratios[ratio])}')
+						f.write(f'Mean cossim {ratio} targets for {predicted_arg}: {means_ratios[ratio]}\n')
 		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 		inputs = data["inputs"]
@@ -1326,7 +1379,9 @@ class Tuner:
 			masked = self.masked,
 			masked_tuning_style = self.masked_tuning_style,
 			tuning = self.cfg.tuning.name.replace('_', ' '),
-			strip_punct = self.cfg.hyperparameters.strip_punct
+			strip_punct = self.cfg.hyperparameters.strip_punct,
+			patience = self.cfg.hyperparameters.patience,
+			delta = self.cfg.hyperparameters.delta
 		)
 		
 		return summary
@@ -1635,6 +1690,8 @@ class Tuner:
 			masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
 			masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
 			subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
+			subtitle += f', patience: {np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else "multiple"}'
+			subtitle += f'(\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"}'
 			
 			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 			subtitle += '\nTuning data: ' + tuning_data_str
@@ -1799,7 +1856,9 @@ class Tuner:
 			tuning = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multi',
 			masked = np.unique(summary.masked)[0] if len(np.unique(summary.masked)) == 1 else 'multi',
 			masked_tuning_style = np.unique(summary.masked_tuning_style)[0] if len(np.unique(summary.masked_tuning_style)) == 1 else 'multi',
-			strip_punct = np.unique(summary.strip_punct)[0] if len(np.unique(summary.strip_punct)) == 1 else 'multi'
+			strip_punct = np.unique(summary.strip_punct)[0] if len(np.unique(summary.strip_punct)) == 1 else 'multi',
+			patience = np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else 'multiple',
+			delta = np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else 'multiple'
 		)
 		
 		return acc
@@ -1824,8 +1883,21 @@ class Tuner:
 		
 		dataset_name = eval_cfg.data.friendly_name
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_words = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_words.to_csv(f'{dataset_name}-{epoch_label}-{eval_cfg.k}_most_similar.csv', index=False)
+		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
+		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
+		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv', index=False)
+		
+		for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
+			df = df.loc[~df.target_group.str.endswith('most similar')]
+			means = df.groupby('target_group')['cossim'].agg('mean')
+			out_group_means = means[[i for i in means.index if not i == predicted_arg]]
+			means_ratios = {f'{predicted_arg}/{arg}': means[predicted_arg]/out_group_means[arg] for arg in out_group_means.index}
+			if means_ratios:
+				with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
+					for ratio in means_ratios:
+						log.info(f'Mean cossim {ratio} targets for {predicted_arg}: {"{:.2f}".format(means_ratios[ratio])}')
+						f.write(f'Mean cossim {ratio} targets for {predicted_arg}: {means_ratios[ratio]}\n')
 		
 		# Define a local function to get the probabilities
 		def get_probs(epoch: int):
@@ -2012,7 +2084,9 @@ class Tuner:
 				masked = self.masked,
 				masked_tuning_style = self.masked_tuning_style,
 				tuning = self.cfg.tuning.name,
-				strip_punct = self.cfg.hyperparameters.strip_punct
+				strip_punct = self.cfg.hyperparameters.strip_punct,
+				patience = self.cfg.hyperparameters.patience,
+				delta = self.cfg.hyperparameters.delta
 			)
 			
 			return summary
@@ -2022,7 +2096,8 @@ class Tuner:
 		# Reorder the columns
 		columns = [
 			'model_id', 'model_name', 'total_epochs', 
-			'tuning', 'strip_punct', 'masked', 'masked_tuning_style', # model properties
+			'tuning', 'strip_punct', 'masked', 'masked_tuning_style', 
+			'patience', 'delta', # model properties
 			'eval_epoch', 'eval_data', # eval properties
 			'sentence_type', 'target_position_name', 'target_position_num', 
 			'predicted_token_type', 'masked_sentence', 'sentence_num', # sentence properties
@@ -2185,15 +2260,18 @@ class Tuner:
 			title = f"{eval_cfg.data.description.replace(' tuples', '')} {sentence_type}s"
 			
 			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
-			masked_str = 'masked' if all(summary.masked) else 'unmasked' if all(1 - summary.masked) else 'multiple'
-			masked_tuning_str = ', Masking type: ' + np.unique(summary.masked_tuning_style[summary.masked])[0] if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', Masked tuning style: multiple' if any(summary.masked) else ''
-			subtitle = f'Model: {model_name} {masked_str}{masked_tuning_str}'
+			masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
+			masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
+			subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
+			subtitle += f', patience: {np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else "multiple"}'
+			subtitle += f'(\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"}'
 			
 			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 			subtitle += '\nTuning data: ' + tuning_data_str
 			
-			strip_punct_str = 'No punctuation' if all(summary.strip_punct) else "Punctuation" if all(~summary.strip_punct) else 'Multiple punctuation'
-			subtitle += ', ' + strip_punct_str
+			# Set title
+			strip_punct_str = ' without punctuation' if all(summary.strip_punct) else " with punctuation" if all(~summary.strip_punct) else ', multiple punctuation'
+			subtitle += strip_punct_str
 			
 			fig.suptitle(title + '\n' + subtitle)
 			fig.tight_layout(rect=[-0.025,0.1,0.9625,1])

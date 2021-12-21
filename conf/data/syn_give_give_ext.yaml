@@ -2,7 +2,7 @@
 
 name: syn_give_give_ext.data
 friendly_name: syn_give_give_ext
-description: "Synthetic 'give' tuples"
+description: Synthetic 'give'h tuples
 entail: true
 new_verb: false
 
@@ -88,9 +88,13 @@ sentence_types:
   - 2ORC DO passive
 
 eval_groups:
-  "theme" : "THAX"
-  "recipient" : "RICKET"
+  theme : THAX
+  recipient : RICKET
 
 to_mask:
-  - "THAX"
-  - "RICKET"
+  - THAX
+  - RICKET
+
+masked_token_targets:
+  THAX : [apple, book, chair, table, phone, shoe, water, drink, cup, flower, plate, bottle, desk, watch, schedule, guitar, napkin, game, straw, ball, jar, mask, hat, lesson, couch, button, box, story, wire, paper, calendar]
+  RICKET : [person, man, woman, student, teacher, king, queen, prince, princess, writer, author, builder, driver, human, dog, bird, dancer, player, angel, actor, actress, singer, director, bee, friend, wolf, lion, scholar, pirate, spirit, fox]
