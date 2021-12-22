@@ -659,9 +659,9 @@ class Tuner:
 		
 		# log this here so the progress bar doesn't get printed twice (which happens if we do the log in the loop)
 		if patience_counter >= self.cfg.hyperparameters.patience:
-			log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs. Halting training at epoch {epoch}.')
+			log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs. Halting training at epoch {epoch + 1}.')
 		
-		log.info(f"Saving weights for each of {epoch if patience_counter >= self.cfg.hyperparameters.patience else epoch + 1} epochs")
+		log.info(f"Saving weights for each of {epoch + 1} epochs")
 		with open('weights.pkl', 'wb') as f:
 			pkl.dump(saved_weights, f)
 		
