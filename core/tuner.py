@@ -41,11 +41,11 @@ class Tuner:
 	# START Computed Properties
 	
 	@property
-	def model_class(self):
+	def model_class(self) -> Type['PreTrainedModel']:
 		return eval(self.cfg.model.base_class) if isinstance(eval(self.cfg.model.base_class), type) else None
 	
 	@property
-	def tokenizer_class(self):
+	def tokenizer_class(self) -> Type['PreTrainedTokenizer']:
 		return eval(self.cfg.model.tokenizer) if isinstance(eval(self.cfg.model.tokenizer), type) else None
 	
 	@property
@@ -69,7 +69,7 @@ class Tuner:
 		return self.cfg.tuning.reference_sentence_type
 	
 	@property
-	def dev_reference_sentence_type(self):
+	def dev_reference_sentence_type(self) -> str:
 		return self.cfg.dev.reference_sentence_type
 	
 	@property
@@ -152,7 +152,7 @@ class Tuner:
 		return data
 	
 	@property
-	def verb_tuning_data(self) -> Dict[str, List[str]]:
+	def verb_tuning_data(self) -> Dict[str,List[str]]:
 		if not 'args' in self.cfg.tuning.keys():
 			log.warning("You're trying to get new verb data for the wrong kind of experiment!")
 			return self.tuning_data
@@ -282,7 +282,7 @@ class Tuner:
 		return masked_dev_data
 	
 	@property
-	def verb_dev_data(self) -> Dict[str, List[str]]:
+	def verb_dev_data(self) -> Dict[str,List[str]]:
 		if not self.cfg.dev:
 			return {}
 		
