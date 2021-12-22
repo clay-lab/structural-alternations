@@ -23,7 +23,7 @@ import torch.nn as nn
 
 from math import ceil, floor
 from tqdm import trange, tqdm
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Type
 from omegaconf import DictConfig, OmegaConf, open_dict
 from transformers import logging as lg
 from transformers import BertForMaskedLM, BertTokenizer
