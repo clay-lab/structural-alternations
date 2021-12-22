@@ -342,7 +342,7 @@ class Tuner:
 		"""
 		
 		# function to return the weight updates so we can save them every epoch
-		def get_updated_weights():
+		def get_updated_weights() -> Dict[int,torch.Tensor]:
 			updated_weights = {}
 			for tok in self.tokens_to_mask:
 				tok_id = self.tokenizer.get_vocab()[tok]
@@ -698,7 +698,7 @@ class Tuner:
 		writer.flush()
 		writer.close()
 	
-	def collect_results(self, masked_inputs, labels, eval_groups, outputs) -> Dict:
+	def collect_results(self, masked_inputs: Dict[str,torch.Tensor], labels: torch.Tensor, eval_groups: Union[List[str],Dict[str,List[str]]], outputs: 'MaskedLMOutput') -> Dict:
 		results = {}
 		
 		logits = outputs.logits
@@ -765,7 +765,7 @@ class Tuner:
 		
 		return epoch_metrics
 	
-	def restore_weights(self, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> Tuple[int, int]:
+	def restore_weights(self, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> Tuple[int,int]:
 		weights_path = os.path.join(checkpoint_dir, 'weights.pkl')
 		
 		with open(weights_path, 'rb') as f:
@@ -973,7 +973,7 @@ class Tuner:
 			targets = {key : v for key, v in targets.items() if all(targets[key])}
 		else:
 			tokens = [t for t in tokens if len(self.tokenizer.tokenize(t)) == 1 and not self.tokenizer.tokenize(t) == self.tokenizer.unk_token]
-			targets = {key : v for key, v in targets if len(self.tokenizer.tokenize(k)) == 1 and not self.tokenizer.tokenize(k) == self.tokenizer.unk_token}
+			targets = {key : v for key, v in targets.items() if len(self.tokenizer.tokenize(key)) == 1 and not self.tokenizer.tokenize(key) == self.tokenizer.unk_token}
 			for key in targets:
 				targets[key] = [t for t in targets[key] if len(self.tokenizer.tokenize(t)) == 1 and not self.tokenizer.tokenize(t) == self.tokenizer.unk_token]
 			
@@ -1082,7 +1082,7 @@ class Tuner:
 		log.info("Creating graphs")
 		self.graph_results(results, summary, eval_cfg)
 	
-	def load_eval_file(self, data_path: str, replacing: Dict[str, str]) -> Tuple:
+	def load_eval_file(self, data_path: str, replacing: Dict[str,str]) -> Tuple[Dict,Dict,List[str]]:
 		"""
 		Loads a file from the specified path, returning a tuple of (input, label)
 		for model evaluation.
@@ -1114,7 +1114,7 @@ class Tuner:
 		
 		return inputs, labels, sentences
 	
-	def summarize_results(self, results: Dict, labels) -> Dict:
+	def summarize_results(self, results: Dict, labels: torch.Tensor) -> Dict:
 		
 		summary = {}
 		
@@ -1335,7 +1335,7 @@ class Tuner:
 		
 		return {"inputs" : inputs, "labels" : labels, "sentences" : sentences}
 	
-	def get_entailed_summary(self, sentences: List[List[str]], outputs: Dict, labels: Dict, eval_cfg: DictConfig) -> pd.DataFrame:
+	def get_entailed_summary(self, sentences: List[List[str]], outputs: List['MaskedLMOutput'], labels: List[torch.Tensor], eval_cfg: DictConfig) -> pd.DataFrame:
 		"""
 		Returns a pandas.DataFrame summarizing the model state.
 		The dataframe contains the log odds ratios for all target tokens relative to all non-target tokens
@@ -1991,7 +1991,7 @@ class Tuner:
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		
 		# Define a local function to get the probabilities
-		def get_probs(epoch: int):
+		def get_probs(epoch: int) -> Dict[int,Dict]:
 			epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
 			filler = pipeline('fill-mask', model = self.model, tokenizer = self.tokenizer)
 			
@@ -2051,7 +2051,7 @@ class Tuner:
 		log.info('Evaluation complete')
 		print('')
 	
-	def load_eval_verb_file(self, args_cfg: DictConfig, data_path: str, replacing: Dict[str, str]) -> Dict[str, List[str]]:
+	def load_eval_verb_file(self, args_cfg: DictConfig, data_path: str, replacing: Dict[str,str]) -> Dict[str,List[str]]:
 		
 		resolved_path = os.path.join(hydra.utils.get_original_cwd(),"data",data_path)
 		
