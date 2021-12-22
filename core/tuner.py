@@ -825,8 +825,6 @@ class Tuner:
 			if not int_axticks:
 				int_axticks = list(set([i for i in series.values]))
 			
-			breakpoint()
-			
 			return int_axticks
 		
 		all_metrics = [m for m in metrics.columns if not m in ['epoch', 'dataset', 'dataset_type', 'remaining patience overall']]
