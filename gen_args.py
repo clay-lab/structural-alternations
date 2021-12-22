@@ -147,7 +147,7 @@ def load_subtlex(subtlex_loc: str) -> pd.DataFrame:
 			
 	return subtlex
 
-def get_candidate_words(dataset: pd.DataFrame, model_cfgs: List[str], target_freq: int, tolerance: int) -> Dict[str, str]:
+def get_candidate_words(dataset: pd.DataFrame, model_cfgs: List[str], target_freq: int, tolerance: int) -> Dict[str,str]:
 	dataset = dataset[['Word', 'Noun']]
 	
 	dataset = dataset.loc[dataset['Noun'].isin(list(range(target_freq - tolerance, target_freq + tolerance)))].copy().reset_index(drop = True)
@@ -205,7 +205,7 @@ def get_args(cfg: DictConfig, model_cfgs: List[str], nouns: List[str], n_sets: i
 	
 	return args
 	
-def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List[str]]) -> List[Dict]:
+def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str,List[str]]) -> List[Dict]:
 	predictions = {}
 	for model_cfg_path in model_cfgs:
 		# do this so we can adjust the cfg tokens based on the model without messing up the 
@@ -247,7 +247,7 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 				getattr(model, base_class).embeddings.word_embeddings.weight[tok_id] = new_embeds.weight[i]
 		
 		#for args_words in tqdm(args, total = len(args)):
-		def predict_args_words(cfg, model_cfg, tokenizer, filler, args_words):
+		def predict_args_words(cfg: DictConfig, model_cfg: DictConfig, tokenizer: 'PreTrainedTokenizer', filler: 'FillMaskPipeline', args_words: Dict[str,List[str]]) -> Dict:
 			data = load_tuning_verb_data(cfg, model_cfg, tokenizer.mask_token, args_words)
 			results = {}
 			
@@ -294,7 +294,7 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str, List
 		
 	return predictions
 
-def convert_predictions_to_df(predictions: Dict, candidate_freq_words: Dict[str, int]) -> pd.DataFrame:
+def convert_predictions_to_df(predictions: Dict, candidate_freq_words: Dict[str,int]) -> pd.DataFrame:
 	predictions = pd.DataFrame.from_dict({
 		(model_name, arg_position, prediction_type, *results.values(), i) : 
 		(model_name, arg_position, prediction_type, *results.values(), i) 

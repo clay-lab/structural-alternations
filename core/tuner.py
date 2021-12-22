@@ -646,6 +646,7 @@ class Tuner:
 					if patience_counter >= self.cfg.hyperparameters.patience:
 						metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
 						writer.add_scalars(f'{self.model_bert_name} remaining patience; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
+						t.set_postfix(pat=self.cfg.hyperparameters.patience-patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
 						break
 				
 				writer.add_scalars(f'{self.model_bert_name} remaining patience; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
@@ -659,9 +660,10 @@ class Tuner:
 		
 		# log this here so the progress bar doesn't get printed twice (which happens if we do the log in the loop)
 		if patience_counter >= self.cfg.hyperparameters.patience:
-			log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs. Halting training at epoch {epoch + 1}.')
+			log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs. Halting training at epoch {epoch}.')
 		
-		log.info(f"Saving weights for each of {epoch + 1} epochs")
+		# we do minus one here because we've also saved the randomly initialized weights @ 0
+		log.info(f"Saving weights for random initializations and each of {len(saved_weights)-1} training epochs")
 		with open('weights.pkl', 'wb') as f:
 			pkl.dump(saved_weights, f)
 		
@@ -857,32 +859,49 @@ class Tuner:
 			adj = max(np.abs(ulim - llim)/40, 0.05)
 			
 			fig, ax = plt.subplots(1)
-			if metric != 'remaining patience':
-				fig.set_size_inches(8, 6.5)
-			else:
-				fig.set_size_inches(8, 7)
+			
+			# if metric != 'remaining patience':
+			# 	fig.set_size_inches(8, 6.5)
+			# else:
+			
+			fig.set_size_inches(8, 7)
 			ax.set_ylim(llim - adj, ulim + adj)
 			metrics.dataset = [dataset.replace('_', ' ') for dataset in metrics.dataset] # for legend titles
+			
+			# do this manually so we don't recycle colors
+			palette = sns.color_palette('husl', n_colors=len(metrics.dataset.unique())+1)
+			sns.set_palette(palette, n_colors=len(metrics.dataset.unique())+1)
 			
 			if len(metrics[metric].index) > 1:
 				if metric == 'remaining patience':
 					global_patience = metrics[['epoch', 'remaining patience overall']].drop_duplicates().reset_index(drop=True).rename({'remaining patience overall' : 'remaining patience'}, axis = 1).assign(dataset = 'overall', dataset_type = 'global')
 					sns.lineplot(data = metrics.append(global_patience, ignore_index=True), x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend ='full')
 					plt.yticks(determine_int_axticks(metrics['remaining patience'].append(metrics['remaining patience overall'], ignore_index=True).astype(int).append(pd.Series(0), ignore_index=True)))
+					handles, labels = ax.get_legend_handles_labels()
 				else:
 					sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
-				
-				ax.legend(fontsize=9)
+					sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, color = palette[-1], ci = 95)
+					handles, labels = ax.get_legend_handles_labels()
+					handles += [ax.lines[-1]]
+					labels += ['mean']
+					ax.legend(handles=handles,labels=labels)
+					ax.lines[-1].set_linestyle(':')
 				
 				# remove redundant information from the legend
-				handles, labels = ax.get_legend_handles_labels()
+				handles = ax.get_legend().legendHandles
+				labels = [text.get_text() for text in ax.get_legend().texts]
 				handles_labels = tuple(zip(handles, labels))
 				handles_labels = [handle_label for handle_label in handles_labels if not handle_label[1] in ['dataset', 'dataset_type', 'train', 'dev', 'global']]
 				handles = [handle for handle, _ in handles_labels]
 				labels = [label for _, label in handles_labels]
-				ax.legend(handles=handles, labels=labels)
+				ax.legend(handles=handles, labels=labels, fontsize=9)
 			else:
 				sns.scatterplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset')
+				sns.scatterplot(data = metrics, x = 'epoch', y = metric, ax = ax, ci = 95)
+				handles, labels = ax.get_legend_handles_labels()
+				handles += [ax._children[-1]]
+				labels += ['mean']
+				ax.legend(handles=handles,labels=labels)
 			
 			plt.xticks(xticks)
 			
@@ -900,19 +919,22 @@ class Tuner:
 				title += f'overall: min @ {global_patience.sort_values(by=metric).reset_index(drop=True)["epoch"][0]}: {int(global_patience.sort_values(by=metric).reset_index(drop=True)[metric][0])}\n'
 				
 				title += f'{self.cfg.tuning.name.replace("_", " ")} (training): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
-			
+				
 				title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
-			
+				
 				for dataset in self.cfg.dev:
 					title += f'\n{dataset.replace("_", " ")} (dev): min @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
-			
 			else:
-				title += f'{self.cfg.tuning.name.replace("_", " ")} (training): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
+				mean = metrics[['epoch',metric]].groupby('epoch')[metric].agg('mean')
+				title += f'mean: max @ {int(mean.idxmax())}: {round(mean.max(), 2)}, '
+				title += f'min @ {int(mean.idxmin())}: {round(mean.min(), 2)}'
+				
+				title += f'\n{self.cfg.tuning.name.replace("_", " ")} (training): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
 				title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
-			
+				
 				title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
 				title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
-			
+				
 				for dataset in self.cfg.dev:
 					title += f'\n{dataset.replace("_", " ")} (dev): max @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
 					title += f'min @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'

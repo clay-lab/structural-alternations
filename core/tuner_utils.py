@@ -12,7 +12,7 @@ import requests
 import numpy as np
 import pandas as pd
 
-from typing import List
+from typing import List, Type
 from PyPDF2 import PdfFileMerger, PdfFileReader
 from transformers import BertTokenizer, DistilBertTokenizer, RobertaTokenizer
 from statsmodels.nonparametric.smoothers_lowess import lowess
@@ -55,7 +55,7 @@ def merge_pdfs(pdfs: List[str], filename: str) -> None:
 		except Exception:
 			pass
 
-def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to_mask: List[str], delete_tmp_vocab_files: bool = True, **kwargs: bool):
+def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['PreTrainedTokenizer'], tokens_to_mask: List[str], delete_tmp_vocab_files: bool = True, **kwargs) -> 'PreTrainedTokenizer':
 	if 'uncased' in model_id:
 		tokens_to_mask = [t.lower() for t in tokens_to_mask]
 	
@@ -209,7 +209,7 @@ def gen_roberta_merges_pairs(new_token: str, highest: bool = True) -> List[str]:
 	
 	return pairs
 
-def verify_tokens_exist(tokenizer, tokens: List[str]) -> bool:
+def verify_tokens_exist(tokenizer: 'PreTrainedTokenizer', tokens: List[str]) -> bool:
 	for token in tokens:
 		if len(tokenizer.tokenize(token)) != 1:
 			return False
@@ -218,7 +218,7 @@ def verify_tokens_exist(tokenizer, tokens: List[str]) -> bool:
 	
 	return True
 
-def verify_tokenization_of_sentences(tokenizer, sentences: List[str], tokens_to_mask: List[str] = None, **kwargs) -> bool:
+def verify_tokenization_of_sentences(tokenizer: 'PreTrainedTokenizer', sentences: List[str], tokens_to_mask: List[str] = None, **kwargs) -> bool:
 	"""
 	verify that a custom tokenizer and one created using from_pretrained behave identically except on the tokens to mask
 	"""
