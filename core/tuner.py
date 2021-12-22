@@ -644,7 +644,6 @@ class Tuner:
 				else:
 					patience_counter += 1
 					if patience_counter >= self.cfg.hyperparameters.patience:
-						log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs. Halting training at epoch {epoch}.')
 						metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
 						writer.add_scalars(f'{self.model_bert_name} remaining patience; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
 						break
@@ -657,6 +656,10 @@ class Tuner:
 				t.set_postfix(pat=self.cfg.hyperparameters.patience-patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
 				# else:
 				# 	t.set_postfix(train_loss='{0:5.2f}'.format(train_loss.item()))
+		
+		# log this here so the progress bar doesn't get printed twice (which happens if we do the log in the loop)
+		if patience_counter >= self.cfg.hyperparameters.patience:
+			log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs. Halting training at epoch {epoch}.')
 		
 		log.info(f"Saving weights for each of {epoch if patience_counter >= self.cfg.hyperparameters.patience else epoch + 1} epochs")
 		with open('weights.pkl', 'wb') as f:
@@ -888,7 +891,7 @@ class Tuner:
 			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else " unmasked") + ', '
 			title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}\n'
 			if metric == 'loss' or metric == 'remaining patience':
-				title += f'patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
+				title += f'epochs: {metrics.epoch.max()}, patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
 			else:
 				title += '\n'
 			
