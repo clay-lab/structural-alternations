@@ -797,7 +797,7 @@ class Tuner:
 			lowest = series.min()
 			highest = series.max()
 			
-			if (highest - lowest) % target_num_ticks == 0 or (highest - lowest) < target_num_ticks:
+			if (highest - lowest) == target_num_ticks or (highest - lowest) < target_num_ticks:
 				return [i for i in range(lowest, highest + 1)]
 			
 			new_min = target_num_ticks - 1
@@ -824,6 +824,8 @@ class Tuner:
 			
 			if not int_axticks:
 				int_axticks = list(set([i for i in series.values]))
+			
+			breakpoint()
 			
 			return int_axticks
 		
