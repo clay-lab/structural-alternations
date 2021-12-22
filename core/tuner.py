@@ -689,8 +689,8 @@ class Tuner:
 		)
 		
 		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset'] = 'overall'
-		metrics = metrics.drop_duplicates().reset_index(drop=True)
 		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset_type'] = 'mean'
+		metrics = metrics.drop_duplicates().reset_index(drop=True)
 		
 		log.info(f"Saving metrics")
 		metrics.to_csv("metrics.csv", index = False, na_rep = 'NaN')
