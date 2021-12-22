@@ -390,7 +390,8 @@ class Tuner:
 		
 		# Collect Hyperparameters
 		lr = self.cfg.hyperparameters.lr
-		epochs = self.cfg.hyperparameters.epochs
+		epochs = self.cfg.hyperparameters.max_epochs
+		min_epochs = self.cfg.hyperparameters.min_epochs
 		optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=0)
 		
 		# Store the old embeddings so we can verify that only the new ones get updated
@@ -452,7 +453,7 @@ class Tuner:
 		masked_inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
 		masked_dev_inputs = {dataset: self.tokenizer(self.masked_dev_data[dataset], return_tensors='pt', padding=True) for dataset in self.masked_dev_data}
 		
-		log.info(f"Training model @ '{os.getcwd().replace(hydra.utils.get_original_cwd(), '')}' (patience={self.cfg.hyperparameters.patience}, \u0394={self.cfg.hyperparameters.delta})")
+		log.info(f"Training model @ '{os.getcwd().replace(hydra.utils.get_original_cwd(), '')}' (min_epochs={min_epochs}, max_epochs={epochs}, patience={self.cfg.hyperparameters.patience}, \u0394={self.cfg.hyperparameters.delta})")
 		
 		# Store weights pre-training so we can inspect the initial status later
 		saved_weights = {}
@@ -643,14 +644,14 @@ class Tuner:
 					patience_counter = 0
 				else:
 					patience_counter += 1
-					if patience_counter >= self.cfg.hyperparameters.patience:
-						metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
-						writer.add_scalars(f'{self.model_bert_name} remaining patience; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
-						t.set_postfix(pat=self.cfg.hyperparameters.patience-patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
-						break
+					patience_counter = min(self.cfg.hyperparameters.patience, patience_counter)
+					if patience_counter >= self.cfg.hyperparameters.patience and epoch + 1 >= min_epochs:
+							metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
+							writer.add_scalars(f'{self.model_bert_name} remaining patience; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
+							t.set_postfix(pat=self.cfg.hyperparameters.patience-patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
+							break
 				
 				writer.add_scalars(f'{self.model_bert_name} remaining patience; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
-				
 				metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
 				
 				# if self.cfg.dev:
@@ -660,7 +661,7 @@ class Tuner:
 		
 		# log this here so the progress bar doesn't get printed twice (which happens if we do the log in the loop)
 		if patience_counter >= self.cfg.hyperparameters.patience:
-			log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs. Halting training at epoch {epoch}.')
+			log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs (min epochs={min_epochs}). Halting training at epoch {epoch}.')
 		
 		# we do minus one here because we've also saved the randomly initialized weights @ 0
 		log.info(f"Saving weights for random initializations and each of {len(saved_weights)-1} training epochs")
@@ -670,13 +671,15 @@ class Tuner:
 		metrics['dataset_type'] = ['dev' if dataset.endswith('(dev)') else 'train' for dataset in metrics.dataset]
 		metrics = metrics.dropna().reset_index(drop=True)
 		
+		metrics = metrics.assign(max_epochs=epochs,min_epochs=min_epochs)
+		
 		log.info(f'Plotting metrics')
 		self.plot_metrics(metrics)
 		
 		metrics = pd.melt(
 			metrics, 
-			id_vars = ['epoch', 'dataset', 'dataset_type'], 
-			value_vars = [c for c in metrics.columns if not c in ['epoch', 'dataset', 'dataset_type']], 
+			id_vars = ['epoch', 'dataset', 'dataset_type', 'min_epochs', 'max_epochs'], 
+			value_vars = [c for c in metrics.columns if not c in ['epoch', 'dataset', 'dataset_type', 'min_epochs', 'max_epochs']], 
 			var_name = 'metric'
 		).assign(
 			model_id = os.path.split(os.getcwd())[1],
@@ -829,7 +832,7 @@ class Tuner:
 			
 			return int_axticks
 		
-		all_metrics = [m for m in metrics.columns if not m in ['epoch', 'dataset', 'dataset_type', 'remaining patience overall']]
+		all_metrics = [m for m in metrics.columns if not m in ['epoch', 'max_epochs', 'min_epochs', 'dataset', 'dataset_type', 'remaining patience overall']]
 		
 		xticks = determine_int_axticks(metrics.epoch)
 		
@@ -859,18 +862,17 @@ class Tuner:
 			adj = max(np.abs(ulim - llim)/40, 0.05)
 			
 			fig, ax = plt.subplots(1)
-			
 			# if metric != 'remaining patience':
 			# 	fig.set_size_inches(8, 6.5)
 			# else:
-			
 			fig.set_size_inches(8, 7)
 			ax.set_ylim(llim - adj, ulim + adj)
 			metrics.dataset = [dataset.replace('_', ' ') for dataset in metrics.dataset] # for legend titles
 			
 			# do this manually so we don't recycle colors
-			palette = sns.color_palette('husl', n_colors=len(metrics.dataset.unique())+1)
-			sns.set_palette(palette, n_colors=len(metrics.dataset.unique())+1)
+			num_datasets = len(metrics.dataset.unique())+1 # add one for mean
+			palette = sns.color_palette(n_colors=num_datasets) if num_datasets <= 10 else sns.color_palette('hls', num_datasets) # if we have more than 10 dev sets, don't repeat colors
+			sns.set_palette(palette)
 			
 			if len(metrics[metric].index) > 1:
 				if metric == 'remaining patience':
@@ -880,10 +882,10 @@ class Tuner:
 					handles, labels = ax.get_legend_handles_labels()
 				else:
 					sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
-					sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, color = palette[-1], ci = 95)
+					sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')], x = 'epoch', y = metric, ax = ax, color = palette[-1], ci = 68)
 					handles, labels = ax.get_legend_handles_labels()
 					handles += [ax.lines[-1]]
-					labels += ['mean']
+					labels += ['mean dev']
 					ax.legend(handles=handles,labels=labels)
 					ax.lines[-1].set_linestyle(':')
 				
@@ -897,10 +899,10 @@ class Tuner:
 				ax.legend(handles=handles, labels=labels, fontsize=9)
 			else:
 				sns.scatterplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset')
-				sns.scatterplot(data = metrics, x = 'epoch', y = metric, ax = ax, ci = 95)
+				sns.scatterplot(data = metrics, x = 'epoch', y = metric, color = palette[-1], ax = ax, ci = 68)
 				handles, labels = ax.get_legend_handles_labels()
 				handles += [ax._children[-1]]
-				labels += ['mean']
+				labels += ['mean dev']
 				ax.legend(handles=handles,labels=labels)
 			
 			plt.xticks(xticks)
@@ -909,10 +911,7 @@ class Tuner:
 			title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
 			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else " unmasked") + ', '
 			title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}\n'
-			if metric == 'loss' or metric == 'remaining patience':
-				title += f'epochs: {metrics.epoch.max()}, patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
-			else:
-				title += '\n'
+			title += f'epochs: {metrics.epoch.max()} (min: {metrics.min_epochs.unique()[0]}, max: {metrics.max_epochs.unique()[0]}), patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
 			
 			if metric == 'remaining patience':
 				# we don't see to say the max for patience, since it is already given and constant for every dataset
@@ -925,8 +924,8 @@ class Tuner:
 				for dataset in self.cfg.dev:
 					title += f'\n{dataset.replace("_", " ")} (dev): min @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
 			else:
-				mean = metrics[['epoch',metric]].groupby('epoch')[metric].agg('mean')
-				title += f'mean: max @ {int(mean.idxmax())}: {round(mean.max(), 2)}, '
+				mean = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')][['epoch',metric]].groupby('epoch')[metric].agg('mean')
+				title += f'mean dev: max @ {int(mean.idxmax())}: {round(mean.max(), 2)}, '
 				title += f'min @ {int(mean.idxmin())}: {round(mean.min(), 2)}'
 				
 				title += f'\n{self.cfg.tuning.name.replace("_", " ")} (training): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
@@ -1268,6 +1267,7 @@ class Tuner:
 		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
+		most_similar_tokens = most_similar_tokens.assign(min_epochs=self.cfg.hyperparameters.min_epochs,max_epochs=self.cfg.hyperparameters.max_epochs)
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv', index=False)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
@@ -1295,7 +1295,9 @@ class Tuner:
 			outputs = [self.model(**i) for i in inputs]
 		
 		summary = self.get_entailed_summary(sentences, outputs, labels, eval_cfg)
-		summary = summary.assign(eval_epoch = epoch, total_epochs = total_epochs)
+		summary = summary.assign(eval_epoch=epoch,total_epochs=total_epochs,
+								 min_epochs=self.cfg.hyperparameters.min_epochs,
+								 max_epochs=self.cfg.hyperparameters.max_epochs)
 		
 		# save the summary as a pickle and as a csv so that we have access to the original tensors
 		# these get converted to text in the csv, but the csv is easier to work with otherwise
@@ -1796,13 +1798,15 @@ class Tuner:
 			title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
 			title += (' @ epoch ' + str(np.unique(summary.eval_epoch)[0]) + '/') if len(np.unique(summary.eval_epoch)) == 1 else ' epochs: '
 			title += (str(np.unique(summary.total_epochs)[0])) if len(np.unique(summary.total_epochs)) == 1 else 'multiple'
+			title += f'\nmin_epochs: {np.unique(summary.min_epochs)[0] if len(np.unique(summary.min_epochs)) == 1 else "multiple"}, '
+			title += f'max_epochs: {np.unique(summary.max_epochs)[0] if len(np.unique(summary.max_epochs)) == 1 else "multiple"}'
+			title += f', patience: {np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else "multiple"}'
+			title += f' (\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"})'
 			
 			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
 			masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
 			masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
 			subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
-			subtitle += f', patience: {np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else "multiple"}'
-			subtitle += f' (\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"})'
 			
 			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 			subtitle += '\nTuning data: ' + tuning_data_str
@@ -1961,6 +1965,8 @@ class Tuner:
 		acc = acc.assign(
 			eval_epoch = np.unique(summary.eval_epoch)[0] if len(np.unique(summary.eval_epoch)) == 1 else 'multiple',
 			total_epochs = np.unique(summary.total_epochs)[0] if len(np.unique(summary.total_epochs)) == 1 else 'multiple',
+			min_epochs= np.unique(summary.min_epochs)[0] if len(np.unique(summary.min_epochs)) == 1 else 'multiple',
+			max_epochs= np.unique(summary.max_epochs)[0] if len(np.unique(summary.max_epochs)) == 1 else 'multiple',
 			model_id = np.unique(summary.model_id)[0] if len(np.unique(summary.model_id)) == 1 else 'multiple',
 			eval_data = np.unique(summary.eval_data)[0] if len(np.unique(summary.eval_data)) == 1 else 'multiple',
 			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple',
@@ -2170,7 +2176,9 @@ class Tuner:
 											sentence_num = [i],
 											target_position_name = [re.sub(r'\[|\]', '', target_position)],
 											eval_epoch = eval_epoch,
-											total_epochs = total_epochs
+											total_epochs = total_epochs,
+								 			min_epochs=self.cfg.hyperparameters.min_epochs,
+								 			max_epochs=self.cfg.hyperparameters.max_epochs
 										)
 										
 										mask_pos = mask_seq.index(self.mask_tok)
@@ -2208,7 +2216,7 @@ class Tuner:
 		
 		# Reorder the columns
 		columns = [
-			'model_id', 'model_name', 'total_epochs', 
+			'model_id', 'model_name', 'total_epochs', 'min_epochs', 'max_epochs',
 			'tuning', 'strip_punct', 'masked', 'masked_tuning_style', 
 			'patience', 'delta', # model properties
 			'eval_epoch', 'eval_data', # eval properties

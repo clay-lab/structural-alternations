@@ -12,7 +12,8 @@ n: 0 # How many models to fit? Only used when --multirun/-m is set. Specified as
 
 hyperparameters:
   lr: 0.001
-  epochs: 70 # how many epochs should the model tune for
+  max_epochs: 70 # how many epochs should the model be allowed to tune for
+  min_epochs: ${hyperparameters.epochs} # how many epochs must the model tune for?
   masked_tuning_style: 'always' # use the original style of bert tuning, roberta-style tuning, always used masked version, or don't mask
   strip_punct: false # Strip punctuation from sentences (true), or leave it intact (false)
   patience: ${hyperparameters.epochs} # how many epochs to continue training without improving mean loss on the dev set(s)?
