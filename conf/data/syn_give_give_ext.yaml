@@ -2,7 +2,7 @@
 
 name: syn_give_give_ext.data
 friendly_name: syn_give_give_ext
-description: Synthetic 'give'h tuples
+description: Synthetic 'give' tuples
 entail: true
 new_verb: false
 
