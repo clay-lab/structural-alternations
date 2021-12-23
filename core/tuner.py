@@ -520,7 +520,7 @@ class Tuner:
 				
 				# Log result
 				metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), 'loss'] = train_loss.item()
-				tb_loss_dict = {f'loss/{self.cfg.tuning.name.replace("_", " ") + " (train)"}': train_loss}
+				tb_loss_dict = {f'{self.cfg.tuning.name.replace("_", " ") + " (train)"}': train_loss}
 				if train_loss.item() < best_losses[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] - self.cfg.hyperparameters.delta:
 					best_losses[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] = train_loss.item()
 					patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] = self.cfg.hyperparameters.patience
@@ -541,7 +541,7 @@ class Tuner:
 					for token in epoch_metrics[metric]:
 						tb_metrics_dict[metric][token] = {}
 						metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), f'{token} mean {metric} in expected position'] = epoch_metrics[metric][token]
-						tb_metrics_dict[metric][token].update({f'{token} mean {metric}/{self.cfg.tuning.name.replace("_", " ") + " (train)"}': epoch_metrics[metric][token]})
+						tb_metrics_dict[metric][token].update({f'{self.cfg.tuning.name.replace("_", " ") + " (train)"}': epoch_metrics[metric][token]})
 				
 				# store weights of the relevant tokens so we can save them
 				saved_weights[epoch + 1] = get_updated_weights()
@@ -581,7 +581,7 @@ class Tuner:
 						dev_losses += [dev_loss.item()]
 						
 						metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.dev[dataset].name + ' (dev)'),'loss'] = dev_loss.item()
-						tb_loss_dict.update({f'loss/{self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_loss})
+						tb_loss_dict.update({f'{self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_loss})
 						
 						if dev_loss.item() < best_losses[self.cfg.dev[dataset].name.replace('_', ' ') + ' (dev)'] - self.cfg.hyperparameters.delta:
 							best_losses[self.cfg.dev[dataset].name.replace('_', ' ') + ' (dev)'] = dev_loss.item()
@@ -599,7 +599,7 @@ class Tuner:
 						for metric in dev_epoch_metrics:
 							for token in dev_epoch_metrics[metric]:
 								metrics.loc[(metrics['epoch'] == epoch + 1) & (metrics.dataset == self.cfg.dev[dataset].name + ' (dev)'), f'{token} mean {metric} in expected position'] = dev_epoch_metrics[metric][token]
-								tb_metrics_dict[metric][token].update({f'{token} mean {metric}/{self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_epoch_metrics[metric][token]})
+								tb_metrics_dict[metric][token].update({f'{self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"}': dev_epoch_metrics[metric][token]})
 					
 					# Compute loss on masked training data without dropout, 
 					# as this is most representative of the testing procedure
@@ -621,7 +621,7 @@ class Tuner:
 						
 					metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (masked, no dropout)'), 'remaining patience'] = patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (masked, no dropout)']
 					
-					tb_loss_dict = {f'loss/{self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"}': no_dropout_train_loss}
+					tb_loss_dict.update({f'{self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"}': no_dropout_train_loss})
 					
 					no_dropout_train_results = self.collect_results(masked_inputs, labels, self.tokens_to_mask, no_dropout_train_outputs)
 					
@@ -631,13 +631,32 @@ class Tuner:
 					for metric in no_dropout_epoch_metrics:
 						for token in no_dropout_epoch_metrics[metric]:
 							metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (masked, no dropout)'), f'{token} mean {metric} in expected position'] = no_dropout_epoch_metrics[metric][token]
-							tb_metrics_dict[metric][token].update({f'{token} mean {metric}/{self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"}': no_dropout_epoch_metrics[metric][token]})
+							tb_metrics_dict[metric][token].update({f'{self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"}': no_dropout_epoch_metrics[metric][token]})
 				
-				writer.add_scalars(f'{self.model_bert_name} loss; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', tb_loss_dict, epoch)
+				# we have to replace with - here because of two reasons: 
+				# tensorboard doesn't recognize parentheses (braces, brackets) in tags when using add_custom_scalars
+				# and all the better alternatives (<>, ||) can't be used in directory names in windows (tensorboard creates a directory when using this)
+				writer.add_scalars('loss', {dataset.replace("(", "-").replace(")", "-") : v for dataset, v in tb_loss_dict.items()}, epoch)
+				
+				# for dataset in tb_loss_dict:
+				# 	we do these replacements because tensorboard doesn't like to aggregate tags containing parentheses
+				#	writer.add_scalar(f'loss/{dataset.replace("(", "<").replace(")", ">")}', tb_loss_dict[dataset], epoch)
+				
+				writer.add_scalar('loss/average_dev', np.mean(dev_losses), epoch)
+				writer.add_scalar('loss/average_dev_lower_ci', np.mean(dev_losses) - np.std(dev_losses), epoch)
+				writer.add_scalar('loss/average_dev_upper_ci', np.mean(dev_losses) + np.std(dev_losses), epoch)
 				
 				for metric in tb_metrics_dict:
 					for token in tb_metrics_dict[metric]:
-						writer.add_scalars(f'{self.model_bert_name} {token} {metric}; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', tb_metrics_dict[metric][token], epoch)
+						writer.add_scalars(f'{token} mean {metric} in expected position', {dataset.replace("(", "-").replace(")", "-"): v for dataset, v in tb_metrics_dict[metric][token].items()}, epoch)
+						
+						# for dataset in tb_metrics_dict[metric][token]:
+						#	writer.add_scalar(f'{token} mean {metric} in expected position/{dataset.replace("(", "<").replace(")", ">")}', tb_metrics_dict[metric][token][dataset], epoch)
+						
+						dev_only_token_metric = [tb_metrics_dict[metric][token][dataset] for dataset in tb_metrics_dict[metric][token] if not dataset.endswith('(train)')]
+						writer.add_scalar(f'{token} mean {metric} in expected position/average_dev', np.mean(dev_only_token_metric), epoch)
+						writer.add_scalar(f'{token} mean {metric} in expected position/average_dev_lower_ci', np.mean(dev_only_token_metric) - np.std(dev_only_token_metric), epoch)
+						writer.add_scalar(f'{token} mean {metric} in expected position/average_dev_upper_ci', np.mean(dev_only_token_metric) + np.std(dev_only_token_metric), epoch)
 				
 				if np.mean(dev_losses) < best_mean_loss - self.cfg.hyperparameters.delta:
 					best_mean_loss = np.mean(dev_losses)
@@ -647,17 +666,47 @@ class Tuner:
 					patience_counter = min(self.cfg.hyperparameters.patience, patience_counter)
 					if patience_counter >= self.cfg.hyperparameters.patience and epoch + 1 >= min_epochs:
 							metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
-							writer.add_scalars(f'{self.model_bert_name} remaining patience; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
+							writer.add_scalars('remaining patience', {**{dataset.replace("(", "-").replace(")", "-") : v for dataset, v in patience_counters.items()}, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
+							# for dataset in patience_counters:
+							# 	writer.add_scalar(f'remaining patience/{dataset.replace("(", "<").replace(")", ">")}', patience_counters[dataset], epoch)
+							# writer.add_scalar('remaining patience/overall', self.cfg.hyperparameters.patience-patience_counter, epoch)
 							t.set_postfix(pat=self.cfg.hyperparameters.patience-patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
 							break
 				
-				writer.add_scalars(f'{self.model_bert_name} remaining patience; masking, {self.cfg.hyperparameters.masked_tuning_style}; {"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
+				writer.add_scalars('remaining patience', {**{dataset.replace("(", "-").replace(")", "-") : v for dataset, v in patience_counters.items()}, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
+				# for dataset in patience_counters:
+				#	writer.add_scalar(f'remaining patience/{dataset.replace("(", "<").replace(")", ">")}', patience_counters[dataset], epoch)
+				#	writer.add_scalar('remaining patience/overall', self.cfg.hyperparameters.patience-patience_counter, epoch)
+				
 				metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
 				
 				# if self.cfg.dev:
 				t.set_postfix(pat=self.cfg.hyperparameters.patience-patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
 				# else:
 				# 	t.set_postfix(train_loss='{0:5.2f}'.format(train_loss.item()))
+		
+		model_label = f'{self.model_bert_name} {self.cfg.tuning.name.replace("_", " ")}, '
+		model_label += f'masking: {self.cfg.hyperparameters.masked_tuning_style}, ' if self.masked else 'unmasked, '
+		model_label += f'{"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, '
+		model_label += f'epochs={epoch+1} (min={min_epochs}, max={epochs}), '
+		model_label += f'pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})'
+		
+		# Aggregate the plots and add a helpful label
+		# note that tensorboard does not support plotting means and CIs automatically even when aggregating
+		# Thus, we only do this manually for the average dev loss, since plots of other means are in the PDF
+		# and are less likely to be useful given the effort it would take to manually construct them
+		# metrics_labels = {'loss' : ['Multiline', [f'loss_{dataset.replace("(", "-").replace(")", "-")}' for dataset in tb_loss_dict]]}
+		metrics_labels = {'average dev loss' : ['Margin', ['loss/average_dev', 'loss/average_dev_lower_ci', 'loss/average_dev_upper_ci']]}
+		for metric in tb_metrics_dict:
+			for token in tb_metrics_dict[metric]:
+				# metrics_labels[f'{token} mean {metric} in expected position'] = ['Multiline', [f'{token} mean {metric} in expected position_{dataset.replace("(", "-").replace(")", "-")}' for dataset in tb_metrics_dict[metric][token]]]
+				metrics_labels[f'average dev {token} mean {metric} in expected position'] = ['Margin', [f'{token} mean {metric} in expected position/average_dev', f'{token} mean {metric} in expected position/average_dev_lower_ci', f'{token} mean {metric} in expected position/average_dev_upper_ci']]
+		
+		# metrics_labels['remaining patience'] = ['Multiline', [f'remaining patience_{dataset.replace("(", "-").replace(")", "-")}' for dataset in patience_counters] + ['remaining patience/overall']]
+		
+		layout = {model_label : metrics_labels}
+		
+		writer.add_custom_scalars(layout)
 		
 		# log this here so the progress bar doesn't get printed twice (which happens if we do the log in the loop)
 		if patience_counter >= self.cfg.hyperparameters.patience:
@@ -909,7 +958,7 @@ class Tuner:
 			
 			title = f'{self.model_bert_name} {metric}\n'
 			title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
-			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else " unmasked") + ', '
+			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
 			title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}\n'
 			title += f'epochs: {metrics.epoch.max()} (min: {metrics.min_epochs.unique()[0]}, max: {metrics.max_epochs.unique()[0]}), patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
 			
