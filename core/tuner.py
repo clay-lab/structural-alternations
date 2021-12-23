@@ -344,9 +344,9 @@ class Tuner:
 		# function to return the weight updates so we can save them every epoch
 		def get_updated_weights() -> Dict[int,torch.Tensor]:
 			updated_weights = {}
-			for tok in self.tokens_to_mask:
-				tok_id = self.tokenizer.get_vocab()[tok]
-				updated_weights[tok_id] = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id,:].clone()
+			for token in self.tokens_to_mask:
+				tok_id = self.tokenizer.get_vocab()[token]
+				updated_weights[token] = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id,:].clone()
 			
 			return updated_weights
 		
@@ -834,8 +834,9 @@ class Tuner:
 		log.info(f'Restoring saved weights from epoch {epoch}/{total_epochs}')
 		
 		with torch.no_grad():
-			for tok_id in weights[epoch]:
-				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id] = weights[epoch][tok_id]
+			for token in weights[epoch]:
+				tok_id = self.tokenizer.convert_tokens_to_ids(token)
+				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id] = weights[epoch][token]
 		
 		# return the epoch and total_epochs to help if we didn't specify it
 		return epoch, total_epochs
