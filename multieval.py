@@ -152,6 +152,8 @@ def multieval(cfg: DictConfig) -> None:
 			target_group = [target_group.replace(chr(288), '').upper() if not 'most similar' in target_group else target_group if len(summary_of_similarities[summary_of_similarities.target_group.str.endswith('most similar')].target_group.unique()) == 1 else 'multiple most similar' for target_group in summary_of_similarities.target_group],
 			eval_epoch = summary_of_similarities.eval_epoch if len(summary_of_similarities.eval_epoch.unique()) == 1 else 'multiple',
 			total_epochs = summary_of_similarities.total_epochs if len(summary_of_similarities.total_epochs.unique()) == 1 else 'multiple',
+			min_epochs = summary_of_similarities.min_epochs if len(summary_of_similarities.min_epochs.unique()) == 1 else 'multiple',
+			max_epochs = summary_of_similarities.max_epochs if len(summary_of_similarities.max_epochs.unique()) == 1 else 'multiple',
 			patience = summary_of_similarities.patience if len(summary_of_similarities.patience.unique()) == 1 else 'multiple',
 			delta = summary_of_similarities.delta if len(summary_of_similarities.delta.unique()) == 1 else 'multiple',
 			model_name = summary_of_similarities.model_name if len(summary_of_similarities.model_name.unique()) == 1 else 'multiple',
@@ -252,7 +254,7 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 				 'sentence_type', 'ratio_name', 
 				 'role_position', 'position_num',
 				 'model_name', 'masked', 
-				 'eval_epoch', 'total_epochs',
+				 'eval_epoch', 'total_epochs', 'min_epochs', 'max_epochs',
 				 'patience', 'delta',
 				 'masked_tuning_style', 'tuning', 'strip_punct']) \
 		['odds_ratio']. \
