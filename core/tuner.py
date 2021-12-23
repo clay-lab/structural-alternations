@@ -707,7 +707,7 @@ class Tuner:
 		
 		# log this here so the progress bar doesn't get printed twice (which happens if we do the log in the loop)
 		if patience_counter >= self.cfg.hyperparameters.patience:
-			log.info(f'Mean dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs (min epochs={min_epochs}). Halting training at epoch {epoch}.')
+			log.info(f'Mean dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs (min_epochs={min_epochs}). Halting training at epoch {epoch}.')
 		
 		# we do minus one here because we've also saved the randomly initialized weights @ 0
 		log.info(f"Saving weights for random initializations and each of {len(saved_weights)-1} training epochs")
@@ -1845,8 +1845,8 @@ class Tuner:
 			title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
 			title += (' @ epoch ' + str(np.unique(summary.eval_epoch)[0]) + '/') if len(np.unique(summary.eval_epoch)) == 1 else ' epochs: '
 			title += (str(np.unique(summary.total_epochs)[0])) if len(np.unique(summary.total_epochs)) == 1 else 'multiple'
-			title += f'\nmin_epochs: {np.unique(summary.min_epochs)[0] if len(np.unique(summary.min_epochs)) == 1 else "multiple"}, '
-			title += f'max_epochs: {np.unique(summary.max_epochs)[0] if len(np.unique(summary.max_epochs)) == 1 else "multiple"}'
+			title += f'\nmin epochs: {np.unique(summary.min_epochs)[0] if len(np.unique(summary.min_epochs)) == 1 else "multiple"}, '
+			title += f'max epochs: {np.unique(summary.max_epochs)[0] if len(np.unique(summary.max_epochs)) == 1 else "multiple"}'
 			title += f', patience: {np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else "multiple"}'
 			title += f' (\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"})'
 			
