@@ -633,30 +633,27 @@ class Tuner:
 							metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (masked, no dropout)'), f'{token} mean {metric} in expected position'] = no_dropout_epoch_metrics[metric][token]
 							tb_metrics_dict[metric][token].update({f'{self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"}': no_dropout_epoch_metrics[metric][token]})
 				
-				# we have to replace with - here because of two reasons: 
-				# tensorboard doesn't recognize parentheses (braces, brackets) in tags when using add_custom_scalars
-				# and all the better alternatives (<>, ||) can't be used in directory names in windows (tensorboard creates a directory when using this)
-				writer.add_scalars('loss', {dataset.replace("(", "-").replace(")", "-") : v for dataset, v in tb_loss_dict.items()}, epoch)
+				writer.add_scalars('loss', tb_loss_dict, epoch)
 				
 				# for dataset in tb_loss_dict:
 				# 	we do these replacements because tensorboard doesn't like to aggregate tags containing parentheses
 				#	writer.add_scalar(f'loss/{dataset.replace("(", "<").replace(")", ">")}', tb_loss_dict[dataset], epoch)
 				
-				writer.add_scalar('loss/average_dev', np.mean(dev_losses), epoch)
-				writer.add_scalar('loss/average_dev_lower_ci', np.mean(dev_losses) - np.std(dev_losses), epoch)
-				writer.add_scalar('loss/average_dev_upper_ci', np.mean(dev_losses) + np.std(dev_losses), epoch)
+				writer.add_scalar('loss/mean dev', np.mean(dev_losses), epoch)
+				writer.add_scalar('loss/mean dev lower ci', np.mean(dev_losses) - np.std(dev_losses), epoch)
+				writer.add_scalar('loss/mean dev upper ci', np.mean(dev_losses) + np.std(dev_losses), epoch)
 				
 				for metric in tb_metrics_dict:
 					for token in tb_metrics_dict[metric]:
-						writer.add_scalars(f'{token} mean {metric} in expected position', {dataset.replace("(", "-").replace(")", "-"): v for dataset, v in tb_metrics_dict[metric][token].items()}, epoch)
+						writer.add_scalars(f'{token} mean {metric} in expected position', tb_metrics_dict[metric][token], epoch)
 						
 						# for dataset in tb_metrics_dict[metric][token]:
 						#	writer.add_scalar(f'{token} mean {metric} in expected position/{dataset.replace("(", "<").replace(")", ">")}', tb_metrics_dict[metric][token][dataset], epoch)
 						
 						dev_only_token_metric = [tb_metrics_dict[metric][token][dataset] for dataset in tb_metrics_dict[metric][token] if not dataset.endswith('(train)')]
-						writer.add_scalar(f'{token} mean {metric} in expected position/average_dev', np.mean(dev_only_token_metric), epoch)
-						writer.add_scalar(f'{token} mean {metric} in expected position/average_dev_lower_ci', np.mean(dev_only_token_metric) - np.std(dev_only_token_metric), epoch)
-						writer.add_scalar(f'{token} mean {metric} in expected position/average_dev_upper_ci', np.mean(dev_only_token_metric) + np.std(dev_only_token_metric), epoch)
+						writer.add_scalar(f'{token} mean {metric} in expected position/mean dev', np.mean(dev_only_token_metric), epoch)
+						writer.add_scalar(f'{token} mean {metric} in expected position/mean dev lower ci', np.mean(dev_only_token_metric) - np.std(dev_only_token_metric), epoch)
+						writer.add_scalar(f'{token} mean {metric} in expected position/mean dev upper ci', np.mean(dev_only_token_metric) + np.std(dev_only_token_metric), epoch)
 				
 				if np.mean(dev_losses) < best_mean_loss - self.cfg.hyperparameters.delta:
 					best_mean_loss = np.mean(dev_losses)
@@ -666,14 +663,14 @@ class Tuner:
 					patience_counter = min(self.cfg.hyperparameters.patience, patience_counter)
 					if patience_counter >= self.cfg.hyperparameters.patience and epoch + 1 >= min_epochs:
 							metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
-							writer.add_scalars('remaining patience', {**{dataset.replace("(", "-").replace(")", "-") : v for dataset, v in patience_counters.items()}, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
+							writer.add_scalars('remaining patience', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
 							# for dataset in patience_counters:
 							# 	writer.add_scalar(f'remaining patience/{dataset.replace("(", "<").replace(")", ">")}', patience_counters[dataset], epoch)
 							# writer.add_scalar('remaining patience/overall', self.cfg.hyperparameters.patience-patience_counter, epoch)
 							t.set_postfix(pat=self.cfg.hyperparameters.patience-patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
 							break
 				
-				writer.add_scalars('remaining patience', {**{dataset.replace("(", "-").replace(")", "-") : v for dataset, v in patience_counters.items()}, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
+				writer.add_scalars('remaining patience', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
 				# for dataset in patience_counters:
 				#	writer.add_scalar(f'remaining patience/{dataset.replace("(", "<").replace(")", ">")}', patience_counters[dataset], epoch)
 				#	writer.add_scalar('remaining patience/overall', self.cfg.hyperparameters.patience-patience_counter, epoch)
@@ -696,11 +693,11 @@ class Tuner:
 		# Thus, we only do this manually for the average dev loss, since plots of other means are in the PDF
 		# and are less likely to be useful given the effort it would take to manually construct them
 		# metrics_labels = {'loss' : ['Multiline', [f'loss_{dataset.replace("(", "-").replace(")", "-")}' for dataset in tb_loss_dict]]}
-		metrics_labels = {'average dev loss' : ['Margin', ['loss/average_dev', 'loss/average_dev_lower_ci', 'loss/average_dev_upper_ci']]}
+		metrics_labels = {'mean dev loss' : ['Margin', ['loss/mean dev', 'loss/mean dev lower ci', 'loss/mean dev upper ci']]}
 		for metric in tb_metrics_dict:
 			for token in tb_metrics_dict[metric]:
 				# metrics_labels[f'{token} mean {metric} in expected position'] = ['Multiline', [f'{token} mean {metric} in expected position_{dataset.replace("(", "-").replace(")", "-")}' for dataset in tb_metrics_dict[metric][token]]]
-				metrics_labels[f'average dev {token} mean {metric} in expected position'] = ['Margin', [f'{token} mean {metric} in expected position/average_dev', f'{token} mean {metric} in expected position/average_dev_lower_ci', f'{token} mean {metric} in expected position/average_dev_upper_ci']]
+				metrics_labels[f'mean dev {token} mean {metric} in expected position'] = ['Margin', [f'{token} mean {metric} in expected position/mean dev', f'{token} mean {metric} in expected position/mean dev lower ci', f'{token} mean {metric} in expected position/mean dev upper ci']]
 		
 		# metrics_labels['remaining patience'] = ['Multiline', [f'remaining patience_{dataset.replace("(", "-").replace(")", "-")}' for dataset in patience_counters] + ['remaining patience/overall']]
 		
@@ -710,7 +707,7 @@ class Tuner:
 		
 		# log this here so the progress bar doesn't get printed twice (which happens if we do the log in the loop)
 		if patience_counter >= self.cfg.hyperparameters.patience:
-			log.info(f'Avg dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs (min epochs={min_epochs}). Halting training at epoch {epoch}.')
+			log.info(f'Mean dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs (min epochs={min_epochs}). Halting training at epoch {epoch}.')
 		
 		# we do minus one here because we've also saved the randomly initialized weights @ 0
 		log.info(f"Saving weights for random initializations and each of {len(saved_weights)-1} training epochs")
