@@ -740,7 +740,7 @@ class Tuner:
 		)
 		
 		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset'] = 'overall'
-		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset_type'] = 'mean'
+		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset_type'] = 'overall'
 		metrics = metrics.drop_duplicates().reset_index(drop=True)
 		
 		log.info(f"Saving metrics")
