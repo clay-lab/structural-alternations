@@ -295,7 +295,6 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], args: Dict[str,List[
 	return predictions
 
 def convert_predictions_to_df(predictions: Dict, candidate_freq_words: Dict[str,int]) -> pd.DataFrame:
-	
 	predictions = pd.DataFrame.from_dict({
 		(model_name, arg_position, prediction_type, *results.values(), i) : 
 		(model_name, arg_position, prediction_type, *results.values(), i) 
@@ -308,8 +307,8 @@ def convert_predictions_to_df(predictions: Dict, candidate_freq_words: Dict[str,
 		}, 
 		orient = 'index',
 		columns = ['model_name', 'position', 
-				   'prediction_type', 'sequence', 
-				   'p', 'token_idx', 'token', 
+				   'prediction_type', 'p', 
+				   'token_idx', 'token', 'sequence',
 				   'predicted_nouns', 'set_id']
 	).reset_index(drop=True)
 	
