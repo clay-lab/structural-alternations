@@ -682,6 +682,10 @@ class Tuner:
 				# else:
 				# 	t.set_postfix(train_loss='{0:5.2f}'.format(train_loss.item()))
 		
+		# note that we do not plot means in the pdfs if using only the no dropout training set as a dev set
+		# but we DO include them in the tensorboard plots. this is because that allows us to include the 
+		# hyperparameters info in the tensorboard log in SOME way without requiring us to create a directory
+		# name that contains all of it (which results in names that are too long for the filesystem)
 		model_label = f'{self.model_bert_name} {self.cfg.tuning.name.replace("_", " ")}, '
 		model_label += f'masking: {self.cfg.hyperparameters.masked_tuning_style}, ' if self.masked else 'unmasked, '
 		model_label += f'{"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, '
@@ -923,18 +927,24 @@ class Tuner:
 			
 			if len(metrics[metric].index) > 1:
 				if metric == 'remaining patience':
-					global_patience = metrics[['epoch', 'remaining patience overall']].drop_duplicates().reset_index(drop=True).rename({'remaining patience overall' : 'remaining patience'}, axis = 1).assign(dataset = 'overall', dataset_type = 'global')
-					sns.lineplot(data = metrics.append(global_patience, ignore_index=True), x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend ='full')
-					plt.yticks(determine_int_axticks(metrics['remaining patience'].append(metrics['remaining patience overall'], ignore_index=True).astype(int).append(pd.Series(0), ignore_index=True)))
-					handles, labels = ax.get_legend_handles_labels()
+					if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
+						global_patience = metrics[['epoch', 'remaining patience overall']].drop_duplicates().reset_index(drop=True).rename({'remaining patience overall' : 'remaining patience'}, axis = 1).assign(dataset = 'overall', dataset_type = 'global')
+						sns.lineplot(data = metrics.append(global_patience, ignore_index=True), x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend ='full')
+						plt.yticks(determine_int_axticks(metrics['remaining patience'].append(metrics['remaining patience overall'], ignore_index=True).astype(int).append(pd.Series(0), ignore_index=True)))
+						handles, labels = ax.get_legend_handles_labels()
+					else:
+						sns.lineplot(data = metrics, x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend='full')
+						plt.yticks(determine_int_axticks(metrics['remaining patience'].astype(int).append(pd.Series(0), ignore_index=True)))
+						handles, labels = ax.get_legend_handles_labels()
 				else:
 					sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
-					sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')], x = 'epoch', y = metric, ax = ax, color = palette[-1], ci = 68)
-					handles, labels = ax.get_legend_handles_labels()
-					handles += [ax.lines[-1]]
-					labels += ['mean dev']
-					ax.legend(handles=handles,labels=labels)
-					ax.lines[-1].set_linestyle(':')
+					if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
+						sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')], x = 'epoch', y = metric, ax = ax, color = palette[-1], ci = 68)
+						handles, labels = ax.get_legend_handles_labels()
+						handles += [ax.lines[-1]]
+						labels += ['mean dev']
+						ax.legend(handles=handles,labels=labels)
+						ax.lines[-1].set_linestyle(':')
 				
 				# remove redundant information from the legend
 				handles = ax.get_legend().legendHandles
@@ -946,11 +956,12 @@ class Tuner:
 				ax.legend(handles=handles, labels=labels, fontsize=9)
 			else:
 				sns.scatterplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset')
-				sns.scatterplot(data = metrics, x = 'epoch', y = metric, color = palette[-1], ax = ax, ci = 68)
-				handles, labels = ax.get_legend_handles_labels()
-				handles += [ax._children[-1]]
-				labels += ['mean dev']
-				ax.legend(handles=handles,labels=labels)
+				if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
+					sns.scatterplot(data = metrics, x = 'epoch', y = metric, color = palette[-1], ax = ax, ci = 68)
+					handles, labels = ax.get_legend_handles_labels()
+					handles += [ax._children[-1]]
+					labels += ['mean dev']
+					ax.legend(handles=handles,labels=labels)
 			
 			plt.xticks(xticks)
 			
@@ -961,21 +972,22 @@ class Tuner:
 			title += f'epochs: {metrics.epoch.max()} (min: {metrics.min_epochs.unique()[0]}, max: {metrics.max_epochs.unique()[0]}), patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
 			
 			if metric == 'remaining patience':
-				# we don't see to say the max for patience, since it is already given and constant for every dataset
-				title += f'overall: min @ {global_patience.sort_values(by=metric).reset_index(drop=True)["epoch"][0]}: {int(global_patience.sort_values(by=metric).reset_index(drop=True)[metric][0])}\n'
+				if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
+					# we don't see to say the max for patience, since it is already given and constant for every dataset
+					title += f'overall: min @ {global_patience.sort_values(by=metric).reset_index(drop=True)["epoch"][0]}: {int(global_patience.sort_values(by=metric).reset_index(drop=True)[metric][0])}\n'
 				
 				title += f'{self.cfg.tuning.name.replace("_", " ")} (training): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
-				
 				title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
 				
 				for dataset in self.cfg.dev:
 					title += f'\n{dataset.replace("_", " ")} (dev): min @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
 			else:
-				mean = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')][['epoch',metric]].groupby('epoch')[metric].agg('mean')
-				title += f'mean dev: max @ {int(mean.idxmax())}: {round(mean.max(), 2)}, '
-				title += f'min @ {int(mean.idxmin())}: {round(mean.min(), 2)}'
+				if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
+					mean = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')][['epoch',metric]].groupby('epoch')[metric].agg('mean')
+					title += f'mean dev: max @ {int(mean.idxmax())}: {round(mean.max(), 2)}, '
+					title += f'min @ {int(mean.idxmin())}: {round(mean.min(), 2)}\n'
 				
-				title += f'\n{self.cfg.tuning.name.replace("_", " ")} (training): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
+				title += f'{self.cfg.tuning.name.replace("_", " ")} (training): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
 				title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
 				
 				title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
