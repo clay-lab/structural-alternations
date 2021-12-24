@@ -7,7 +7,7 @@ import json
 import torch
 import random
 import logging
-import requests
+# import requests
 
 import numpy as np
 import pandas as pd
@@ -118,14 +118,20 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['Pre
 		with open('vocab.tmp', 'w', encoding = 'utf8') as tmp_vocab_file:
 			json.dump(vocab, tmp_vocab_file, ensure_ascii=False)
 		
-		try:
-			url = f'https://huggingface.co/{model_id}/resolve/main/merges.txt'
-			merges = requests.get(url).content.decode().split('\n')
-		except Exception:
-			raise FileNotFoundError(f'Unable to access {model_id} merges.txt file from huggingface. Are you connected to the Internet?')
+		# try:
+		# 	url = f'https://huggingface.co/{model_id}/resolve/main/merges.txt'
+		# 	merges = requests.get(url).content.decode().split('\n')
+		# except Exception:
+		# 	raise FileNotFoundError(f'Unable to access {model_id} merges.txt file from huggingface. Are you connected to the Internet?')
 		
-		merges = merges[:1] + get_roberta_merges_for_new_tokens(tokens_to_mask) + merges[1:]
-		merges = list(dict.fromkeys(merges)) # drop the duplicates while preserving order
+		# merges = merges[:1] + get_roberta_merges_for_new_tokens(tokens_to_mask) + merges[1:]
+		
+		merges = [' '.join(key) for key in roberta_tokenizer.bpe_ranks.keys()]
+		# we have to add a newline at the beginning of the file
+		# since it's expecting it to be a comment, so we add a blank string here
+		# that will get joined with a newline
+		merges = [''] + get_roberta_merges_for_new_tokens(tokens_to_mask) + merges
+		merges = list(dict.fromkeys(merges)) # drop any duplicates we may have happened to add while preserving order
 		with open('merges.tmp', 'w', encoding = 'utf-8') as tmp_merges_file:
 			tmp_merges_file.write('\n'.join(merges))
 		
@@ -150,7 +156,7 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['Pre
 			raise Exception('New tokens were not added correctly!')
 	
 	else:
-		raise ValueError('Only BERT, DistilBERT, and RoBERTa tokenizers are supported.')
+		raise ValueError('Only BERT, DistilBERT, and RoBERTa tokenizers are currently supported.')
 
 def get_roberta_merges_for_new_tokens(new_tokens: List[str]) -> List[str]:
 	roberta_merges = [gen_roberta_merges_pairs(new_token) for new_token in new_tokens]
