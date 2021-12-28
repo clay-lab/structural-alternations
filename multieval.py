@@ -13,6 +13,7 @@ import pandas as pd
 import pickle as pkl
 
 from glob import glob
+from math import floor
 from typing import List
 from omegaconf import DictConfig, OmegaConf, open_dict
 from distutils.dir_util import copy_tree, remove_tree
@@ -277,8 +278,9 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	tuner = Tuner(cfg)
 	log.info(f'Plotting results from {len(summary_of_summaries.model_id.unique())} models')
 	tuner.graph_entailed_results(summary_of_summaries, cfg)
+	magnitude = floor(1 + np.log10(summary_of_summaries.eval_epoch.max()))
 	if 'best' in cfg.epoch:
-		all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary_of_summaries.eval_epoch).tolist(), key = lambda x: x)])
+		all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary_of_summaries.eval_epoch).tolist(), key = lambda x: x)])
 		if os.path.exists(f'{cfg.data.friendly_name}-{cfg.epoch}-plots.pdf'):
 			os.remove(f'{cfg.data.friendly_name}-{cfg.epoch}-plots.pdf')
 		
@@ -286,7 +288,7 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	
 	acc = tuner.get_entailed_accuracies(summary_of_summaries)
 	if not 'best' in cfg.epoch:
-		all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
+		all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
 	else:
 		all_epochs = cfg.epoch
 	
