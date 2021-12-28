@@ -916,7 +916,7 @@ class Tuner:
 			# if metric != 'remaining patience':
 			# 	fig.set_size_inches(8, 6.5)
 			# else:
-			fig.set_size_inches(8, 7)
+			fig.set_size_inches(9, 7)
 			ax.set_ylim(llim - adj, ulim + adj)
 			metrics.dataset = [dataset.replace('_', ' ') for dataset in metrics.dataset] # for legend titles
 			
