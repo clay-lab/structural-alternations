@@ -1855,7 +1855,7 @@ class Tuner:
 			
 			# Set title
 			title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
-			title += (' @ epoch ' + str(np.unique(summary.eval_epoch)[0]) + '/') if len(np.unique(summary.eval_epoch)) == 1 else ' epochs: '
+			title += (' @ epoch ' + str(np.unique(summary.eval_epoch)[0]) + '/') if len(np.unique(summary.eval_epoch)) == 1 else ', epochs: '
 			title += (str(np.unique(summary.total_epochs)[0])) if len(np.unique(summary.total_epochs)) == 1 else 'multiple'
 			title += f'\nmin epochs: {np.unique(summary.min_epochs)[0] if len(np.unique(summary.min_epochs)) == 1 else "multiple"}, '
 			title += f'max epochs: {np.unique(summary.max_epochs)[0] if len(np.unique(summary.max_epochs)) == 1 else "multiple"}'
@@ -1908,7 +1908,8 @@ class Tuner:
 		total_epochs = max(summary.total_epochs)
 		magnitude = floor(1 + np.log10(total_epochs))
 		
-		all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
+		# all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
+		all_epochs = eval_cfg.epoch if len(np.unique(summary.eval_epoch)) > 1 else str(np.unique(summary.eval_epoch)[0]).zfill(magnitude)
 		merge_pdfs(pdfs, f'{dataset_name}-{all_epochs}-plots.pdf')
 	
 	def get_entailed_accuracies(self, summary: pd.DataFrame) -> pd.DataFrame:

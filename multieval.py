@@ -172,11 +172,13 @@ def multieval(cfg: DictConfig) -> None:
 			sort_values(['predicted_arg', 'target_group']). \
 			rename({'size' : 'num_points'}, axis = 1)
 		
-		if not 'best' in cfg.epoch:
-			all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
-		else:
-			all_epochs = cfg.epoch
+		# if not 'best' in cfg.epoch:
+		# 	all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
+		# else:
+		# 	all_epochs = cfg.epoch
 	
+		all_epochs = cfg.epoch if len(np.unique(summary_of_similarities.eval_epoch)) > 1 or np.unique(summary_of_similarities.eval_epoch)[0] == 'multiple' else np.unique(summary_of_similarities.eval_epoch)[0]
+		
 		summary_of_similarities.to_csv(f'{cfg.data.friendly_name}-{all_epochs}-similarities.csv', index = False, na_rep = 'NaN')
 		
 		if len(summary_of_similarities.predicted_arg.unique()) > 1:
@@ -218,10 +220,12 @@ def load_summaries(summary_files: List[str]) -> pd.DataFrame:
 def save_summary(cfg: DictConfig, save_dir: str, summary: pd.DataFrame) -> None:
 	# Get information for saved file names
 	dataset_name = cfg.data.friendly_name
-	if not 'best' in cfg.epoch:
-		all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
-	else:
-		all_epochs = cfg.epoch
+	# if not 'best' in cfg.epoch:
+	# 	all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
+	# else:
+	# 	all_epochs = cfg.epoch
+		
+	all_epochs = cfg.epoch if len(np.unique(summary.eval_epoch)) > 1 or np.unique(summary.eval_epoch)[0] == 'multiple' else np.unique(summary.eval_epoch)[0]
 	
 	os.chdir(save_dir)
 	summary.to_pickle(f"{dataset_name}-{all_epochs}-scores.pkl")
@@ -278,19 +282,21 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	tuner = Tuner(cfg)
 	log.info(f'Plotting results from {len(summary_of_summaries.model_id.unique())} models')
 	tuner.graph_entailed_results(summary_of_summaries, cfg)
-	magnitude = floor(1 + np.log10(summary_of_summaries.eval_epoch.max()))
-	if 'best' in cfg.epoch:
-		all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary_of_summaries.eval_epoch).tolist(), key = lambda x: x)])
-		if os.path.exists(f'{cfg.data.friendly_name}-{cfg.epoch}-plots.pdf'):
-			os.remove(f'{cfg.data.friendly_name}-{cfg.epoch}-plots.pdf')
-		
-		os.rename(f'{cfg.data.friendly_name}-{all_epochs}-plots.pdf', f'{cfg.data.friendly_name}-{cfg.epoch}-plots.pdf')
+	# magnitude = floor(1 + np.log10(summary_of_summaries.eval_epoch.max()))
+	# if 'best' in cfg.epoch:
+	#	all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary_of_summaries.eval_epoch).tolist(), key = lambda x: x)])
+	#	if os.path.exists(f'{cfg.data.friendly_name}-{cfg.epoch}-plots.pdf'):
+	#		os.remove(f'{cfg.data.friendly_name}-{cfg.epoch}-plots.pdf')
+	#	
+	#	os.rename(f'{cfg.data.friendly_name}-{all_epochs}-plots.pdf', f'{cfg.data.friendly_name}-{cfg.epoch}-plots.pdf')
 	
 	acc = tuner.get_entailed_accuracies(summary_of_summaries)
-	if not 'best' in cfg.epoch:
-		all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
-	else:
-		all_epochs = cfg.epoch
+	# if not 'best' in cfg.epoch:
+	# 	all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
+	# else:
+	# 	all_epochs = cfg.epoch
+	
+	all_epochs = cfg.epoch if len(np.unique(acc.eval_epoch)) > 1 or np.unique(acc.eval_epoch)[0] == 'multiple' else np.unique(acc.eval_epoch)[0]
 	
 	acc.to_csv(f'{cfg.data.friendly_name}-{all_epochs}-accuracies.csv', index = False)
 
