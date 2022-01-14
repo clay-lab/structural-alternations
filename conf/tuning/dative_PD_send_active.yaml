@@ -1,4 +1,4 @@
-name: dative_PD_send
+name: dative_PD_send_active
 
 reference_sentence_type: send PD active
 new_verb: false

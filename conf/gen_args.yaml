@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - tuning: new_verb3
+  - tuning: new_verb6_ext
   - override hydra/job_logging: tuner_log_conf
 
 dataset_loc: './subtlex_freq_formatted.csv'

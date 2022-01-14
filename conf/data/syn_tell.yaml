@@ -2,22 +2,26 @@
 
 name: syn_tell.data
 friendly_name: syn_tell
-description: "Synthetic 'tell' tuples"
+description: Synthetic 'tell' tuples
 entail: true
 new_verb: false
 
 sentence_types:
   - 'give DO active'
   - 'give PD active'
-  - "DO active"
-  - "DO passive"
-  - "PD active"
-  - "PD passive"
+  - DO active
+  - DO passive
+  - PD active
+  - PD passive
 
 eval_groups:
-  "theme" : "THAX"
-  "recipient" : "RICKET"
+  theme : THAX
+  recipient : RICKET
 
 to_mask:
- - "THAX"
- - "RICKET"
+ - THAX
+ - RICKET
+ 
+ masked_token_targets:
+  THAX : [apple, book, chair, table, phone, shoe, water, drink, cup, flower, plate, bottle, desk, watch, schedule, guitar, napkin, game, straw, ball, jar, mask, hat, lesson, couch, button, box, story, wire, paper, calendar]
+  RICKET : [person, man, woman, student, teacher, king, queen, prince, princess, writer, author, builder, driver, human, dog, bird, dancer, player, angel, actor, actress, singer, director, bee, friend, wolf, lion, scholar, pirate, spirit, fox]

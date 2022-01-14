@@ -7,18 +7,25 @@ import json
 import torch
 import random
 import logging
-import requests
-import numpy as np
+# import requests
 
-from typing import List
+import numpy as np
+import pandas as pd
+
+from typing import List, Type
 from PyPDF2 import PdfFileMerger, PdfFileReader
 from transformers import BertTokenizer, DistilBertTokenizer, RobertaTokenizer
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
 model_max_length = 512
 
 log = logging.getLogger(__name__)
 
-def set_seed(seed):
+def z_transform(x: np.ndarray) -> np.ndarray:
+	z = (x - np.mean(x))/np.std(x)
+	return z
+
+def set_seed(seed: int) -> None:
 	seed = int(seed)
 	random.seed(seed)
 	np.random.seed(seed)
@@ -26,7 +33,7 @@ def set_seed(seed):
 	torch.cuda.manual_seed(seed)
 	torch.cuda.manual_seed_all(seed)
 	
-def strip_punct(sentence):
+def strip_punct(sentence: str) -> str:
 	return re.sub(r'[^\[\]\<\>\w\s,]', '', sentence)
 	
 def merge_pdfs(pdfs: List[str], filename: str) -> None:
@@ -48,7 +55,7 @@ def merge_pdfs(pdfs: List[str], filename: str) -> None:
 		except Exception:
 			pass
 
-def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to_mask: List[str], delete_tmp_vocab_files: bool = True, **kwargs):
+def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['PreTrainedTokenizer'], tokens_to_mask: List[str], delete_tmp_vocab_files: bool = True, **kwargs) -> 'PreTrainedTokenizer':
 	if 'uncased' in model_id:
 		tokens_to_mask = [t.lower() for t in tokens_to_mask]
 	
@@ -111,14 +118,20 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to
 		with open('vocab.tmp', 'w', encoding = 'utf8') as tmp_vocab_file:
 			json.dump(vocab, tmp_vocab_file, ensure_ascii=False)
 		
-		try:
-			url = f'https://huggingface.co/{model_id}/resolve/main/merges.txt'
-			merges = requests.get(url).content.decode().split('\n')
-		except Exception:
-			raise FileNotFoundError(f'Unable to access {model_id} merges.txt file from huggingface. Are you connected to the Internet?')
+		# try:
+		# 	url = f'https://huggingface.co/{model_id}/resolve/main/merges.txt'
+		# 	merges = requests.get(url).content.decode().split('\n')
+		# except Exception:
+		# 	raise FileNotFoundError(f'Unable to access {model_id} merges.txt file from huggingface. Are you connected to the Internet?')
 		
-		merges = merges[:1] + get_roberta_merges_for_new_tokens(tokens_to_mask) + merges[1:]
-		merges = list(dict.fromkeys(merges)) # drop the duplicates while preserving order
+		# merges = merges[:1] + get_roberta_merges_for_new_tokens(tokens_to_mask) + merges[1:]
+		
+		merges = [' '.join(key) for key in roberta_tokenizer.bpe_ranks.keys()]
+		# we have to add a newline at the beginning of the file
+		# since it's expecting it to be a comment, so we add a blank string here
+		# that will get joined with a newline
+		merges = [''] + get_roberta_merges_for_new_tokens(tokens_to_mask) + merges
+		merges = list(dict.fromkeys(merges)) # drop any duplicates we may have happened to add while preserving order
 		with open('merges.tmp', 'w', encoding = 'utf-8') as tmp_merges_file:
 			tmp_merges_file.write('\n'.join(merges))
 		
@@ -143,7 +156,7 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class, tokens_to
 			raise Exception('New tokens were not added correctly!')
 	
 	else:
-		raise ValueError('Only BERT, DistilBERT, and RoBERTa tokenizers are supported.')
+		raise ValueError('Only BERT, DistilBERT, and RoBERTa tokenizers are currently supported.')
 
 def get_roberta_merges_for_new_tokens(new_tokens: List[str]) -> List[str]:
 	roberta_merges = [gen_roberta_merges_pairs(new_token) for new_token in new_tokens]
@@ -202,7 +215,7 @@ def gen_roberta_merges_pairs(new_token: str, highest: bool = True) -> List[str]:
 	
 	return pairs
 
-def verify_tokens_exist(tokenizer, tokens: List[str]) -> bool:
+def verify_tokens_exist(tokenizer: 'PreTrainedTokenizer', tokens: List[str]) -> bool:
 	for token in tokens:
 		if len(tokenizer.tokenize(token)) != 1:
 			return False
@@ -211,7 +224,7 @@ def verify_tokens_exist(tokenizer, tokens: List[str]) -> bool:
 	
 	return True
 
-def verify_tokenization_of_sentences(tokenizer, sentences: List[str], tokens_to_mask: List[str] = None, **kwargs) -> bool:
+def verify_tokenization_of_sentences(tokenizer: 'PreTrainedTokenizer', sentences: List[str], tokens_to_mask: List[str] = None, **kwargs) -> bool:
 	"""
 	verify that a custom tokenizer and one created using from_pretrained behave identically except on the tokens to mask
 	"""
@@ -249,3 +262,43 @@ def verify_tokenization_of_sentences(tokenizer, sentences: List[str], tokens_to_
 		return False
 	
 	return True
+
+def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean', frac: float = 0.1) -> int:
+	loss_df = loss_df.copy().sort_values(['dataset', 'epoch']).reset_index(drop=True)
+	
+	datasets = loss_df.dataset.unique()
+	
+	# replace the losses with the lowess
+	# this smooths the irregular losses we see in various circumstances
+	# no longer needed to due change in how we do the dev sets
+	# for dataset in datasets:
+	# 	loss_df.loc[loss_df.dataset == dataset, 'value'] = lowess(loss_df[loss_df.dataset == dataset].value.values, loss_df[loss_df.dataset == dataset].epoch.values, frac = frac)[:,1]
+	
+	if method == 'sumsq':
+		best_losses = loss_df.loc[loss_df.groupby('dataset').value.idxmin()].reset_index(drop=True)
+		
+		epoch_sumsqs = []
+		for dataset in datasets:
+			dataset_epoch = best_losses[best_losses.dataset == dataset].epoch.values[0]
+			epoch_losses = loss_df.loc[loss_df.epoch == dataset_epoch].reset_index(drop=True).value.values
+			epoch_avg_loss = np.mean(epoch_losses)
+			sumsq = sum((epoch_avg_loss - epoch_losses)**2)
+			epoch_sumsq = tuple([dataset_epoch, sumsq])
+			epoch_sumsqs.append(epoch_sumsq)
+		
+		epoch_sumsqs = sorted(epoch_sumsqs, key = lambda epoch_sumsq: epoch_sumsq[1])
+		best_epoch = epoch_sumsqs[0][0]
+		log.info(f'Best epoch is {best_epoch} (sumsq loss = ' + '{:.2f}'.format(epoch_sumsqs[0][1]) + f', minimum for {", ".join(best_losses[best_losses.epoch == best_epoch].dataset.values)}).')
+	elif method == 'mean':
+		mean_losses = loss_df.groupby('epoch').value.agg('mean')
+		lowest_loss = mean_losses.min()
+		best_epoch = loss_df.loc[loss_df.epoch == mean_losses.idxmin()].epoch.unique()[0]
+		log.info(f'Best epoch is {best_epoch} (mean loss = ' + '{:.2f}'.format(lowest_loss) + ').')
+	else:
+		best_epoch = loss_df.epoch.max()
+		log.warning(f'No method for determining best epoch provided (use "sumsq", "mean"). The highest epoch {best_epoch} will be used. This may not be the best epoch!')
+	
+	if best_epoch == max(loss_df.epoch):
+		log.warning('Note that the best epoch is the final epoch. This may indicate underfitting.')
+	
+	return best_epoch

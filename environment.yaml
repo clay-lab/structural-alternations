@@ -12,5 +12,7 @@ dependencies:
   - pandas
   - seaborn
   - PyPDF2
+  - setuptools<=59.5.0
+  - tokenizers<=0.10.1
   - pip:
     - -r requirements.txt
