@@ -13,6 +13,7 @@ epoch: best_mean
 # 'best_mean' means the epoch that has lowest mean loss
 
 k: 10 # get the subword tokens with the k most similar embeddings to the trained mask tokens
+num_pca_words: 1000 # plot the pca of the first num_pca_words embeddings + the added_tokens
 
 checkpoint_dir: outputs/active_DO/DistilBertForMaskedLM/masked-False/2021-06-15_12-43-59
 

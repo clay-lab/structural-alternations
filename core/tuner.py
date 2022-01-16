@@ -25,10 +25,12 @@ from math import ceil, floor
 from tqdm import trange, tqdm
 from typing import Dict, List, Tuple, Union, Type
 from omegaconf import DictConfig, OmegaConf, open_dict
+from nltk.corpus import stopwords
 from transformers import logging as lg
 from transformers import BertForMaskedLM, BertTokenizer
 from transformers import RobertaForMaskedLM, RobertaTokenizer
 from transformers import DistilBertForMaskedLM, DistilBertTokenizer
+from sklearn.decomposition import PCA
 
 from core.tuner_utils import *
 
@@ -1121,6 +1123,58 @@ class Tuner:
 		else:
 			return pd.DataFrame()
 	
+	def plot_pca(self, n: int = 1000, dataset_label: str = '', epoch_label: int = None, total_epochs_label: int = None) -> None:
+		sw = stopwords.words('english')
+		
+		# first n words, filtering out special tokens, numbers, and punctuation
+		first_n = {k : v for k, v in self.tokenizer.get_vocab().items() if not k in sw}
+		first_n = {k : v for k, v in first_n.items() if not re.search(r'[0-9]|\[|\]|\<|\>|\.|#', k) and len(k) > 1}
+		first_n = dict(tuple(first_n.items())[:n])
+		
+		first_n_embeddings = {k : getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[v] for k, v in first_n.items()}
+		word_vectors = torch.cat([first_n_embeddings[w].reshape(1, -1) for w in first_n_embeddings], dim=0)
+		words = list(first_n_embeddings.keys())
+		
+		added_word_vectors = torch.cat([getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[token_id].reshape(1,-1) for token_id in self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask)], dim=0)
+		added_words = self.tokens_to_mask
+		
+		pca = PCA(2)
+		with torch.no_grad():
+			two_dim = pca.fit_transform(word_vectors)
+			two_dim_added_words = pca.fit_transform(added_word_vectors)
+		
+		fig, ax = plt.subplots(1)
+		fig.set_size_inches(12, 10)
+		
+		sns.scatterplot(x = two_dim[:,0], y = two_dim[:,1], size=8, legend=False, ax=ax)
+		for line in range(0, two_dim.shape[0]):
+			ax.text(two_dim[line,0], two_dim[line,1]-0.003, words[line], size=6, horizontalalignment='center', verticalalignment='top', color='black')
+		
+		sns.scatterplot(x = two_dim_added_words[:,0], y = two_dim_added_words[:,1], size=8, legend=False, ax=ax)
+		for line in range(0, two_dim_added_words.shape[0]):
+			ax.text(two_dim_added_words[line,0], two_dim_added_words[line,1]-0.003, added_words[line], size=10, horizontalalignment='center', verticalalignment='top', color='blue')
+		
+		ax.set_xlabel('PC 1', fontsize=8)
+		ax.set_ylabel('PC 2', fontsize=8)
+		
+		title = f'{self.model_bert_name} PCs of first {n} tokens and added tokens (filtered)'
+		title += f' @ epoch {epoch_label}/{total_epochs_label}\n'
+		title += f'min epochs: {self.cfg.hyperparameters.min_epochs}, '
+		title += f'max epochs: {self.cfg.hyperparameters.max_epochs}'
+		title += f', patience: {self.cfg.hyperparameters.patience}'
+		title += f' (\u0394={self.cfg.hyperparameters.delta})\n'
+		title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
+		title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
+		title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}'
+		
+		fig.suptitle(title)
+		fig.tight_layout()
+		
+		magnitude = floor(1 + np.log10(total_epochs_label))
+		all_epochs = str(epoch_label).zfill(magnitude)
+		
+		plt.savefig(f'{dataset_label}-{all_epochs}-pca-plot.pdf')
+		
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
 		self.model.eval()
@@ -1147,6 +1201,9 @@ class Tuner:
 						for diff in means_diffs:
 							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
+		
+		self.plot_pca(n = eval_cfg.num_pca_words, dataset_label = dataset_name, epoch_label = epoch, total_epochs_label = total_epochs)
+		
 		# Load data
 		# the use of eval_cfg.data.to_mask will probably need to be updated here for roberta now
 		inputs, labels, sentences = self.load_eval_file(eval_cfg.data.name, eval_cfg.data.to_mask)
@@ -1340,6 +1397,8 @@ class Tuner:
 						for diff in means_diffs:
 							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
+		
+		self.plot_pca(n = eval_cfg.num_pca_words, dataset_label = dataset_name, epoch_label = epoch, total_epochs_label = total_epochs)
 		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 		inputs = data["inputs"]
@@ -2077,6 +2136,8 @@ class Tuner:
 						for diff in means_diffs:
 							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
+		
+		self.plot_pca(n = eval_cfg.num_pca_words, dataset_label = dataset_name, epoch_label = epoch, total_epochs_label = total_epochs)
 		
 		# Define a local function to get the probabilities
 		def get_probs(epoch: int) -> Dict[int,Dict]:
