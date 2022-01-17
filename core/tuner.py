@@ -1124,7 +1124,7 @@ class Tuner:
 		else:
 			return pd.DataFrame()
 	
-	def plot_pca(self, n: int = 1000, dataset_label: str = '', epoch_label: int = None, total_epochs_label: int = None) -> None:
+	def plot_pca(self, n: int = 1000, dataset_label: str = '', epoch: int = None, total_epochs: int = None, epoch_label: str = '', save_df: bool = True) -> None:
 		sw = stopwords.words('english')
 		
 		# first n words, filtering out special tokens, numbers, and punctuation
@@ -1169,7 +1169,7 @@ class Tuner:
 		ax.set_ylabel('PC 2', fontsize=8)
 		
 		title = f'{self.model_bert_name} PCs of first {n} tokens and added token(s) (filtered)'
-		title += f' @ epoch {epoch_label}/{total_epochs_label}\n'
+		title += f' @ epoch {epoch}/{total_epochs}\n'
 		title += f'min epochs: {self.cfg.hyperparameters.min_epochs}, '
 		title += f'max epochs: {self.cfg.hyperparameters.max_epochs}'
 		title += f', patience: {self.cfg.hyperparameters.patience}'
@@ -1181,11 +1181,31 @@ class Tuner:
 		fig.suptitle(title)
 		fig.tight_layout()
 		
-		magnitude = floor(1 + np.log10(total_epochs_label))
-		all_epochs = str(epoch_label).zfill(magnitude)
+		magnitude = floor(1 + np.log10(total_epochs))
 		
-		plt.savefig(f'{dataset_label}-{all_epochs}-pca-plot.pdf')
+		plt.savefig(f'{dataset_label}-{epoch_label}-pca-plot.pdf')
 		
+		if save_df:
+			pc_df = pd.DataFrame(list(zip(words, two_dim[:,0], two_dim[:,1])), columns= ['token', 'pc1', 'pc2'])
+			pc_df['token_id'] = [self.tokenizer.convert_tokens_to_ids(token) for token in words]
+			pc_df = pc_df.assign(
+				model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2] + '-' + self.model_bert_name[0],
+				model_name = self.model_bert_name,
+				tuning = self.cfg.tuning.name,
+				masked = self.masked,
+				masked_tuning_style = self.masked_tuning_style,
+				strip_punct = self.cfg.hyperparameters.strip_punct,
+				eval_epoch = epoch,
+				total_epochs = total_epochs,
+				token_type = ['added' if token in self.tokens_to_mask else 'original' for token in pc_df.token.values],
+				patience = self.cfg.hyperparameters.patience,
+				delta = self.cfg.hyperparameters.delta,
+				min_epochs = self.cfg.hyperparameters.min_epochs,
+				max_epochs = self.cfg.hyperparameters.max_epochs
+			)
+			
+			pc_df.to_csv(f'{dataset_label}-{epoch_label}-pca.csv.gz', index=False)
+	
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
 		self.model.eval()
@@ -1214,7 +1234,7 @@ class Tuner:
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		
 		log.info(f'Plotting principal components for first {eval_cfg.num_pca_words} tokens and added token(s)')
-		self.plot_pca(n = eval_cfg.num_pca_words, dataset_label = dataset_name, epoch_label = epoch, total_epochs_label = total_epochs)
+		self.plot_pca(n = eval_cfg.num_pca_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
 		
 		# Load data
 		# the use of eval_cfg.data.to_mask will probably need to be updated here for roberta now
@@ -1411,7 +1431,7 @@ class Tuner:
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		
 		log.info(f'Plotting principal components for first {eval_cfg.num_pca_words} tokens and added token(s)')
-		self.plot_pca(n = eval_cfg.num_pca_words, dataset_label = dataset_name, epoch_label = epoch, total_epochs_label = total_epochs)
+		self.plot_pca(n = eval_cfg.num_pca_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
 		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 		inputs = data["inputs"]
@@ -2151,7 +2171,7 @@ class Tuner:
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		
 		log.info(f'Plotting principal components for first {eval_cfg.num_pca_words} tokens and added token(s)')
-		self.plot_pca(n = eval_cfg.num_pca_words, dataset_label = dataset_name, epoch_label = epoch, total_epochs_label = total_epochs)
+		self.plot_pca(n = eval_cfg.num_pca_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
 		
 		# Define a local function to get the probabilities
 		def get_probs(epoch: int) -> Dict[int,Dict]:
