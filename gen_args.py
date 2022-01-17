@@ -6,6 +6,7 @@
 import os
 import re
 import sys
+import gzip
 import hydra
 import torch
 import joblib
@@ -87,12 +88,12 @@ def gen_args(cfg: DictConfig) -> None:
 		dataset = os.path.split(cfg.dataset_loc)[-1],
 	)
 	
-	predictions.to_csv(f'predictions.csv', index = False)
+	predictions.to_csv('predictions.csv.gz', index = False)
 	
 	# sort by the lowest average sumsq for convenience
 	predictions_summary_sort_keys = predictions_summary[predictions_summary['model_name'] == 'average'].copy().sort_values('SumSq')['set_id'].tolist()
 	predictions_summary = predictions_summary.sort_values('set_id', key = lambda col: col.map(lambda set_id: predictions_summary_sort_keys.index(set_id)))
-	predictions_summary.to_csv(f'predictions_summary.csv', index = False)
+	predictions_summary.to_csv('predictions_summary.csv.gz', index = False)
 	
 	# plot the correlations of the sumsq for each pair of model types and report R**2
 	plot_correlations(cfg, predictions_summary)

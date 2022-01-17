@@ -5,6 +5,7 @@
 import os
 import re
 import sys
+import gzip
 import hydra
 import logging
 
@@ -138,7 +139,7 @@ def multieval(cfg: DictConfig) -> None:
 			os.path.join(eval_dir, f)
 			for eval_dir in eval_dirs
 				for f in os.listdir(eval_dir)
-					if re.match(score_file_name.replace('-scores.pkl', '-similarities.csv'), f)
+					if re.match(score_file_name.replace('-scores.pkl', '-similarities.csv.gz'), f)
 		]
 		
 		summary_of_similarities = load_summaries(similarities_files)
@@ -179,7 +180,7 @@ def multieval(cfg: DictConfig) -> None:
 	
 		all_epochs = cfg.epoch if len(np.unique(summary_of_similarities.eval_epoch)) > 1 or np.unique(summary_of_similarities.eval_epoch)[0] == 'multiple' else np.unique(summary_of_similarities.eval_epoch)[0]
 		
-		summary_of_similarities.to_csv(f'{cfg.data.friendly_name}-{all_epochs}-similarities.csv', index = False, na_rep = 'NaN')
+		summary_of_similarities.to_csv(f'{cfg.data.friendly_name}-{all_epochs}-similarities.csv.gz', index = False, na_rep = 'NaN')
 		
 		if len(summary_of_similarities.predicted_arg.unique()) > 1:
 			with open(f'{cfg.data.friendly_name}-{all_epochs}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
@@ -229,7 +230,7 @@ def save_summary(cfg: DictConfig, save_dir: str, summary: pd.DataFrame) -> None:
 	
 	os.chdir(save_dir)
 	summary.to_pickle(f"{dataset_name}-{all_epochs}-scores.pkl")
-	summary.to_csv(f"{dataset_name}-{all_epochs}-scores.csv", index = False)
+	summary.to_csv(f"{dataset_name}-{all_epochs}-scores.csv.gz", index = False)
 
 def adjust_cfg(cfg: DictConfig, source_dir: str, summary: pd.DataFrame) -> DictConfig:
 	# Load the appropriate config file for model parameters,
@@ -298,7 +299,7 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	
 	all_epochs = cfg.epoch if len(np.unique(acc.eval_epoch)) > 1 or np.unique(acc.eval_epoch)[0] == 'multiple' else np.unique(acc.eval_epoch)[0]
 	
-	acc.to_csv(f'{cfg.data.friendly_name}-{all_epochs}-accuracies.csv', index = False)
+	acc.to_csv(f'{cfg.data.friendly_name}-{all_epochs}-accuracies.csv.gz', index = False)
 
 def multi_eval_new_verb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
 	return NotImplementedError('Comparison of new verb data not currently supported.')

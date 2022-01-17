@@ -4,6 +4,7 @@
 import os
 import re
 import sys
+import gzip
 import hydra
 import torch
 from torch.distributions import Categorical
@@ -386,7 +387,7 @@ class Tuner:
 			
 		if not self.tuning_data:
 			log.info(f'Saving randomly initialized weights')
-			with open('weights.pkl', 'wb') as f:
+			with gzip.open('weights.pkl.gz', 'wb') as f:
 				pkl.dump({0: get_updated_weights()}, f)
 			return
 		
@@ -717,7 +718,7 @@ class Tuner:
 		
 		# we do minus one here because we've also saved the randomly initialized weights @ 0
 		log.info(f"Saving weights for random initializations and each of {len(saved_weights)-1} training epochs")
-		with open('weights.pkl', 'wb') as f:
+		with gzip.open('weights.pkl.gz', 'wb') as f:
 			pkl.dump(saved_weights, f)
 		
 		metrics['dataset_type'] = ['dev' if dataset.endswith('(dev)') else 'train' for dataset in metrics.dataset]
@@ -750,7 +751,7 @@ class Tuner:
 		metrics = metrics.drop_duplicates().reset_index(drop=True)
 		
 		log.info(f"Saving metrics")
-		metrics.to_csv("metrics.csv", index = False, na_rep = 'NaN')
+		metrics.to_csv("metrics.csv.gz", index = False, na_rep = 'NaN')
 		
 		writer.flush()
 		writer.close()
@@ -823,9 +824,9 @@ class Tuner:
 		return epoch_metrics
 	
 	def restore_weights(self, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> Tuple[int,int]:
-		weights_path = os.path.join(checkpoint_dir, 'weights.pkl')
+		weights_path = os.path.join(checkpoint_dir, 'weights.pkl.gz')
 		
-		with open(weights_path, 'rb') as f:
+		with gzip.open(weights_path, 'rb') as f:
 			weights = pkl.load(f)
 			
 		total_epochs = max(weights.keys())
@@ -833,7 +834,7 @@ class Tuner:
 		if epoch == None:
 			epoch = total_epochs
 		elif 'best' in str(epoch):
-			metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv'))
+			metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv.gz'))
 			loss_df = metrics[(metrics.metric == 'loss') & (~metrics.dataset.str.endswith(' (train)'))]
 			epoch = get_best_epoch(loss_df, method = 'mean' if 'mean' in epoch else 'sumsq' if 'sumsq' in epoch else '')
 		
@@ -1198,7 +1199,7 @@ class Tuner:
 		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv', index=False)
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv.gz', index=False)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
 			with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
@@ -1395,7 +1396,7 @@ class Tuner:
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
 		most_similar_tokens = most_similar_tokens.assign(min_epochs=self.cfg.hyperparameters.min_epochs,max_epochs=self.cfg.hyperparameters.max_epochs)
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv', index=False)
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv.gz', index=False)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
 			with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
@@ -1431,11 +1432,11 @@ class Tuner:
 		
 		# save the summary as a pickle and as a csv so that we have access to the original tensors
 		# these get converted to text in the csv, but the csv is easier to work with otherwise
-		summary.to_pickle(f"{dataset_name}-{epoch_label}-scores.pkl")
+		summary.to_pickle(f"{dataset_name}-{epoch_label}-scores.pkl.gz")
 		
 		summary_csv = summary.copy()
 		summary_csv['odds_ratio'] = summary_csv['odds_ratio'].astype(float).copy()
-		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-scores.csv", index = False, na_rep = 'NaN')
+		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-scores.csv.gz", index = False, na_rep = 'NaN')
 		
 		log.info('Creating plots')
 		self.graph_entailed_results(summary, eval_cfg)
@@ -1447,7 +1448,7 @@ class Tuner:
 		os.rename(plots_file, f'{dataset_name}-{epoch_label}-plots.pdf')
 		
 		acc = self.get_entailed_accuracies(summary)
-		acc.to_csv(f'{dataset_name}-{epoch_label}-accuracies.csv', index = False, na_rep = 'NaN')
+		acc.to_csv(f'{dataset_name}-{epoch_label}-accuracies.csv.gz', index = False, na_rep = 'NaN')
 		
 		log.info('Evaluation complete')
 		print('')
@@ -2135,7 +2136,7 @@ class Tuner:
 		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv', index=False)
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv.gz', index=False)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
 			with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
@@ -2197,8 +2198,8 @@ class Tuner:
 		epoch = max(results.keys())
 		
 		log.info(f"SAVING TO: {os.getcwd()}")
-		summary.to_pickle(f"{dataset_name}-0-{epoch}-scores.pkl")
-		summary.to_csv(f"{dataset_name}-0-{epoch}-scores.csv", index = False, na_rep = 'NaN')
+		summary.to_pickle(f"{dataset_name}-0-{epoch}-scores.pkl.gz")
+		summary.to_csv(f"{dataset_name}-0-{epoch}-scores.csv.gz", index = False, na_rep = 'NaN')
 		
 		# Create graphs
 		log.info('Creating plots')
