@@ -38,12 +38,12 @@ def multieval(cfg: DictConfig) -> None:
 	# Get a regex for the score file name so we can just load it if it already exists
 	if cfg.epoch == 'None':
 		cfg.epoch = None
-		score_file_name = cfg.data.friendly_name + '-(([0-9]+)-+)+(accuracies.csv.gz|pca.csv.gz|pca-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz|similarities_ratios.txt)'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-(([0-9]+)-+)+(accuracies.csv.gz|pca.csv.gz|pca-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz|similarities_ratios.txt)))'
 		log.warning('Epoch not specified. If no evaluation has been performed, evaluation will be performed on the final epoch. Otherwise, all epochs on which evaluation has been performed will be loaded for each model.')
 	elif 'best' in cfg.epoch:
-		score_file_name = cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-(accuracies.csv.gz|pca.csv.gz|pca-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz|similarities_ratios.txt)'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-(accuracies.csv.gz|pca.csv.gz|pca-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz|similarities_ratios.txt)))'
 	else:
-		score_file_name = cfg.data.friendly_name + '-' + cfg.epoch + '-(accuracies.csv.gz|pca.csv.gz|pca-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz|similarities_ratios.txt)'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-' + cfg.epoch + '-(accuracies.csv.gz|pca.csv.gz|pca-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz|similarities_ratios.txt)))'
 	
 	# Get checkpoint dirs in outputs
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
@@ -66,8 +66,7 @@ def multieval(cfg: DictConfig) -> None:
 		eval_dir = os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}')
 		
 		# If we haven't already evaluated the model in the directory, evaluate it
-		breakpoint()
-		if not (os.path.exists(eval_dir) and all([re.search(score_file_name, f) if not f in ['.hydra', 'eval.log'] else True for f in os.listdir(eval_dir)])):
+		if not (os.path.exists(eval_dir) and all([re.search(score_file_name, f) for f in os.listdir(eval_dir)])):
 			
 			chkpt_cfg = OmegaConf.load(chkpt_cfg_path)
 				
