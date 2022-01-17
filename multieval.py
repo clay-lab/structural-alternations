@@ -38,16 +38,16 @@ def multieval(cfg: DictConfig) -> None:
 	# Get a regex for the score file name so we can just load it if it already exists
 	if cfg.epoch == 'None':
 		cfg.epoch = None
-		score_file_name = cfg.data.friendly_name + '-(([0-9]+)-+)+scores.pkl'
+		score_file_name = cfg.data.friendly_name + '-(([0-9]+)-+)+scores.pkl.gz'
 		log.warning('Epoch not specified. If no evaluation has been performed, evaluation will be performed on the final epoch. Otherwise, all epochs on which evaluation has been performed will be loaded for each model.')
 	elif 'best' in cfg.epoch:
-		score_file_name = cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-scores.pkl'
+		score_file_name = cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-scores.pkl.gz'
 	else:
-		score_file_name = cfg.data.friendly_name + '-' + cfg.epoch + '-scores.pkl'
+		score_file_name = cfg.data.friendly_name + '-' + cfg.epoch + '-scores.pkl.gz'
 	
 	# Get checkpoint dirs in outputs
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
-	chkpt_dirs = [os.path.split(f)[0] for f in glob(chkpt_dirs, recursive = True) if f.endswith('weights.pkl')]
+	chkpt_dirs = [os.path.split(f)[0] for f in glob(chkpt_dirs, recursive = True) if f.endswith('weights.pkl.gz')]
 	
 	if not chkpt_dirs:
 		print(f'No model information found in checkpoint_dir {cfg.checkpoint_dir}. Did you put in the right directory path?')
@@ -139,7 +139,7 @@ def multieval(cfg: DictConfig) -> None:
 			os.path.join(eval_dir, f)
 			for eval_dir in eval_dirs
 				for f in os.listdir(eval_dir)
-					if re.match(score_file_name.replace('-scores.pkl', '-similarities.csv.gz'), f)
+					if re.match(score_file_name.replace('-scores.pkl.gz', '-similarities.csv.gz'), f)
 		]
 		
 		summary_of_similarities = load_summaries(similarities_files)
@@ -208,8 +208,8 @@ def multieval(cfg: DictConfig) -> None:
 def load_summaries(summary_files: List[str]) -> pd.DataFrame:
 	summaries = pd.DataFrame()
 	for summary_file in summary_files:
-		if summary_file.endswith('.pkl'):
-			with open(summary_file, 'rb') as f:
+		if summary_file.endswith('.pkl.gz'):
+			with gzip.open(summary_file, 'rb') as f:
 				summary = pkl.load(f)
 				summaries = summaries.append(summary, ignore_index = True)
 		else:
@@ -229,7 +229,7 @@ def save_summary(cfg: DictConfig, save_dir: str, summary: pd.DataFrame) -> None:
 	all_epochs = cfg.epoch if len(np.unique(summary.eval_epoch)) > 1 or np.unique(summary.eval_epoch)[0] == 'multiple' else np.unique(summary.eval_epoch)[0]
 	
 	os.chdir(save_dir)
-	summary.to_pickle(f"{dataset_name}-{all_epochs}-scores.pkl")
+	summary.to_pickle(f"{dataset_name}-{all_epochs}-scores.pkl.gz")
 	summary.to_csv(f"{dataset_name}-{all_epochs}-scores.csv.gz", index = False)
 
 def adjust_cfg(cfg: DictConfig, source_dir: str, summary: pd.DataFrame) -> DictConfig:
