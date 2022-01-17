@@ -66,7 +66,7 @@ def multieval(cfg: DictConfig) -> None:
 		eval_dir = os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}')
 		
 		# If we haven't already evaluated the model in the directory, evaluate it
-		if not (os.path.exists(eval_dir) and all([re.search(score_file_name, f) for f in os.listdir(eval_dir)])):
+		if not (os.path.exists(eval_dir) and len([f for f in os.listdir(eval_dir) if re.search(score_file_name, f)]) == 10):
 			
 			chkpt_cfg = OmegaConf.load(chkpt_cfg_path)
 				
