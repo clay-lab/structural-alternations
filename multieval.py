@@ -122,7 +122,8 @@ def multieval(cfg: DictConfig) -> None:
 			os.path.join(eval_dir, f) 
 			for eval_dir in eval_dirs 
 				for f in os.listdir(eval_dir)
-					if re.match(score_file_name, f)
+					if re.match(score_file_name, f) and
+					   f.endswith('-scores.csv.gz')
 		]
 		
 		summary_of_summaries = load_summaries(summary_files)
@@ -139,7 +140,8 @@ def multieval(cfg: DictConfig) -> None:
 			os.path.join(eval_dir, f)
 			for eval_dir in eval_dirs
 				for f in os.listdir(eval_dir)
-					if re.match(score_file_name.replace('-scores.pkl.gz', '-similarities.csv.gz'), f)
+					if re.match(score_file_name, f) and
+					   f.endswith('-similarities.csv.gz')
 		]
 		
 		summary_of_similarities = load_summaries(similarities_files)
