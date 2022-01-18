@@ -26,12 +26,11 @@ from math import ceil, floor
 from tqdm import trange, tqdm
 from typing import Dict, List, Tuple, Union, Type
 from omegaconf import DictConfig, OmegaConf, open_dict
-from nltk.corpus import stopwords
 from transformers import logging as lg
 from transformers import BertForMaskedLM, BertTokenizer
 from transformers import RobertaForMaskedLM, RobertaTokenizer
 from transformers import DistilBertForMaskedLM, DistilBertTokenizer
-from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 
 from core.tuner_utils import *
 
@@ -1124,16 +1123,17 @@ class Tuner:
 		else:
 			return pd.DataFrame()
 	
-	def plot_pca(self, n: int = 1000, dataset_label: str = '', epoch: int = None, total_epochs: int = None, epoch_label: str = '', save_df: bool = True) -> None:
-		sw = stopwords.words('english')
+	def plot_tsne(self, n: int = 1000, dataset_label: str = '', epoch: int = None, total_epochs: int = None, epoch_label: str = '', save_df: bool = True) -> None:
+		pos = 'nouns' if not self.cfg.tuning.new_verb else 'verbs'
 		
-		# first n words, filtering out special tokens, numbers, and punctuation
-		first_n = {k : v for k, v in self.tokenizer.get_vocab().items() if not k.replace(chr(288), '').lower() in sw}
-		first_n = {k : v for k, v in first_n.items() if not re.search(r'[0-9]|[\[\]\<\>\.#\'\"\-]', k) and len(k.replace(chr(288), '')) > 1}
+		with open(os.path.join(hydra.utils.get_original_cwd(), 'conf', pos + '.txt'), 'r') as f:
+			targets = [w.lower().strip() for w in f.readlines()]
 		
-		# if we are using roberta, filter to tokens that either start with a capital letter or chr(288) (this is to filter out partial words)
+		first_n = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in targets}
+		
+		# if we are using roberta, filter to tokens that start with a preceeding space and are not followed by a capital letter (to avoid duplicates))
 		if self.model_bert_name == 'roberta':
-			first_n = {k : v for k, v in first_n.items() if k.startswith(chr(288)) or re.search(r'^[A-Z]', k)}
+			first_n = {k : v for k, v in first_n.items() if k.startswith(chr(288)) and not re.search('^' + chr(288) + '[A-Z]', k)}
 		
 		first_n = dict(tuple(first_n.items())[:n])
 		
@@ -1151,9 +1151,9 @@ class Tuner:
 		
 		added_word_vectors = torch.cat([getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[token_id].reshape(1,-1) for token_id in self.tokenizer.convert_tokens_to_ids(added_words)], dim=0)
 		
-		pca = PCA(2)
+		tsne = TSNE(2, random_state=0, learning_rate='auto', init='pca')
 		with torch.no_grad():
-			two_dim = pca.fit_transform(torch.cat((word_vectors, added_word_vectors)))
+			two_dim = tsne.fit_transform(torch.cat((word_vectors, added_word_vectors)))
 		
 		fig, ax = plt.subplots(1)
 		fig.set_size_inches(12, 10)
@@ -1161,14 +1161,14 @@ class Tuner:
 		sns.scatterplot(x = two_dim[:,0], y = two_dim[:,1], size=8, legend=False, ax=ax)
 		for line in range(0, two_dim.shape[0]):
 			if words[line] in added_words:
-				ax.text(two_dim[line,0], two_dim[line,1]-0.004, words[line], size=10, horizontalalignment='center', verticalalignment='top', color='blue')
+				ax.text(two_dim[line,0], two_dim[line,1]-0.5, words[line].replace(chr(288), ''), size=10, horizontalalignment='center', verticalalignment='top', color='blue')
 			else:
-				ax.text(two_dim[line,0], two_dim[line,1]-0.004, words[line], size=6, horizontalalignment='center', verticalalignment='top', color='black')
+				ax.text(two_dim[line,0], two_dim[line,1]-0.5, words[line].replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
 		
-		ax.set_xlabel('PC 1', fontsize=8)
-		ax.set_ylabel('PC 2', fontsize=8)
+		ax.set_xlabel('t-SNE 1', fontsize=8)
+		ax.set_ylabel('t-SNE 2', fontsize=8)
 		
-		title = f'{self.model_bert_name} PCs of first {n} tokens and added token(s) (filtered)'
+		title = f'{self.model_bert_name} t-SNEs of first {n} tokens and added token(s) (filtered)'
 		title += f' @ epoch {epoch}/{total_epochs}\n'
 		title += f'min epochs: {self.cfg.hyperparameters.min_epochs}, '
 		title += f'max epochs: {self.cfg.hyperparameters.max_epochs}'
@@ -1181,14 +1181,12 @@ class Tuner:
 		fig.suptitle(title)
 		fig.tight_layout()
 		
-		magnitude = floor(1 + np.log10(total_epochs))
-		
-		plt.savefig(f'{dataset_label}-{epoch_label}-pca-plot.pdf')
+		plt.savefig(f'{dataset_label}-{epoch_label}-tsne-plot.pdf')
 		
 		if save_df:
-			pc_df = pd.DataFrame(list(zip(words, two_dim[:,0], two_dim[:,1])), columns= ['token', 'pc1', 'pc2'])
-			pc_df['token_id'] = [self.tokenizer.convert_tokens_to_ids(token) for token in words]
-			pc_df = pc_df.assign(
+			tsne_df = pd.DataFrame(list(zip(words, two_dim[:,0], two_dim[:,1])), columns= ['token', 'tsne1', 'tsne2'])
+			tsne_df['token_id'] = [self.tokenizer.convert_tokens_to_ids(token) for token in words]
+			tsne_df = tsne_df.assign(
 				model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2] + '-' + self.model_bert_name[0],
 				model_name = self.model_bert_name,
 				tuning = self.cfg.tuning.name,
@@ -1197,14 +1195,14 @@ class Tuner:
 				strip_punct = self.cfg.hyperparameters.strip_punct,
 				eval_epoch = epoch,
 				total_epochs = total_epochs,
-				token_type = ['added' if token in self.tokens_to_mask else 'original' for token in pc_df.token.values],
+				token_type = ['added' if token in self.tokens_to_mask else 'original' for token in tsne_df.token.values],
 				patience = self.cfg.hyperparameters.patience,
 				delta = self.cfg.hyperparameters.delta,
 				min_epochs = self.cfg.hyperparameters.min_epochs,
 				max_epochs = self.cfg.hyperparameters.max_epochs
 			)
 			
-			pc_df.to_csv(f'{dataset_label}-{epoch_label}-pca.csv.gz', index=False)
+			tsne_df.to_csv(f'{dataset_label}-{epoch_label}-tsne.csv.gz', index=False)
 	
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
@@ -1233,8 +1231,8 @@ class Tuner:
 							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		
-		log.info(f'Plotting principal components for first {eval_cfg.num_pca_words} tokens and added token(s)')
-		self.plot_pca(n = eval_cfg.num_pca_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
+		log.info(f'Plotting principal components for first {eval_cfg.num_tsne_words} tokens and added token(s)')
+		self.plot_tsne(n = eval_cfg.num_tsne_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
 		
 		# Load data
 		# the use of eval_cfg.data.to_mask will probably need to be updated here for roberta now
@@ -1430,8 +1428,8 @@ class Tuner:
 							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		
-		log.info(f'Plotting principal components for first {eval_cfg.num_pca_words} tokens and added token(s)')
-		self.plot_pca(n = eval_cfg.num_pca_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
+		log.info(f'Plotting principal components for first {eval_cfg.num_tsne_words} tokens and added token(s)')
+		self.plot_tsne(n = eval_cfg.num_tsne_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
 		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 		inputs = data["inputs"]
@@ -2170,8 +2168,8 @@ class Tuner:
 							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		
-		log.info(f'Plotting principal components for first {eval_cfg.num_pca_words} tokens and added token(s)')
-		self.plot_pca(n = eval_cfg.num_pca_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
+		log.info(f'Plotting principal components for first {eval_cfg.num_tsne_words} tokens and added token(s)')
+		self.plot_tsne(n = eval_cfg.num_tsne_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
 		
 		# Define a local function to get the probabilities
 		def get_probs(epoch: int) -> Dict[int,Dict]:

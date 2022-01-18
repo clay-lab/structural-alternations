@@ -6,7 +6,7 @@ defaults:
 checkpoint_dir: outputs
 
 k: 10 # get the subword tokens with the k most similar embeddings to the trained mask tokens
-num_pca_words: 500 # plot the pca of the first num_pca_words embeddings + the added_tokens
+num_tsne_words: 500 # plot the tsne of the first num_tsne_words embeddings + the added_tokens
 
 criteria: 'all'
 
