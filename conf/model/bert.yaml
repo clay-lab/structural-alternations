@@ -3,7 +3,8 @@ tokenizer: BertTokenizer
 string_id: bert-base-uncased
 friendly_name: bert
 
-model_kwargs: {}
+model_kwargs:
+  local_files_only: true
 tokenizer_kwargs:
   do_basic_tokenize: false
   local_files_only: true
