@@ -978,7 +978,7 @@ class Tuner:
 					# we don't see to say the max for patience, since it is already given and constant for every dataset
 					title += f'overall: min @ {global_patience.sort_values(by=metric).reset_index(drop=True)["epoch"][0]}: {int(global_patience.sort_values(by=metric).reset_index(drop=True)[metric][0])}\n'
 				
-				title += f'{self.cfg.tuning.name.replace("_", " ")} (training): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
+				title += f'{self.cfg.tuning.name.replace("_", " ")} (train): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
 				title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
 				
 				for dataset in self.cfg.dev:
@@ -989,7 +989,7 @@ class Tuner:
 					title += f'mean dev: max @ {int(mean.idxmax())}: {round(mean.max(), 2)}, '
 					title += f'min @ {int(mean.idxmin())}: {round(mean.min(), 2)}\n'
 				
-				title += f'{self.cfg.tuning.name.replace("_", " ")} (training): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
+				title += f'{self.cfg.tuning.name.replace("_", " ")} (train): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
 				title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
 				
 				title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
