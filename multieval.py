@@ -38,12 +38,12 @@ def multieval(cfg: DictConfig) -> None:
 	# Get a regex for the score file name so we can just load it if it already exists
 	if cfg.epoch == 'None':
 		cfg.epoch = None
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-(([0-9]+)-+)+(accuracies.csv.gz|tsne.csv.gz|tsne-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz|similarities_ratios.txt)))'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-(([0-9]+)-+)+(accuracies.csv.gz|tsne.csv.gz|tsne-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz)))'
 		log.warning('Epoch not specified. If no evaluation has been performed, evaluation will be performed on the final epoch. Otherwise, all epochs on which evaluation has been performed will be loaded for each model.')
 	elif 'best' in cfg.epoch:
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-(accuracies.csv.gz|tsne.csv.gz|tsne-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz|similarities_ratios.txt)))'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-(accuracies.csv.gz|tsne.csv.gz|tsne-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz)))'
 	else:
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-' + cfg.epoch + '-(accuracies.csv.gz|tsne.csv.gz|tsne-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz|similarities_ratios.txt)))'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-' + cfg.epoch + '-(accuracies.csv.gz|tsne.csv.gz|tsne-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz)))'
 	
 	# Get checkpoint dirs in outputs
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
@@ -66,7 +66,7 @@ def multieval(cfg: DictConfig) -> None:
 		eval_dir = os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}')
 		
 		# If we haven't already evaluated the model in the directory, evaluate it
-		if not (os.path.exists(eval_dir) and len([f for f in os.listdir(eval_dir) if re.search(score_file_name, f)]) == 10):
+		if not (os.path.exists(eval_dir) and len([f for f in os.listdir(eval_dir) if re.search(score_file_name, f)]) == 9):
 			
 			chkpt_cfg = OmegaConf.load(chkpt_cfg_path)
 				

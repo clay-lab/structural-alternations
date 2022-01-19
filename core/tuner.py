@@ -1220,7 +1220,7 @@ class Tuner:
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv.gz', index=False)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
-			with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
+			with open(f'{dataset_name}-{epoch_label}-similarities_diffs.txt', 'w', encoding = 'utf-8') as f:
 				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
 					df = df.loc[~df.target_group.str.endswith('most similar')]
 					means = df.groupby('target_group').cossim.agg('mean')
@@ -1417,7 +1417,7 @@ class Tuner:
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv.gz', index=False)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
-			with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
+			with open(f'{dataset_name}-{epoch_label}-similarities_diffs.txt', 'w', encoding = 'utf-8') as f:
 				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
 					df = df.loc[~df.target_group.str.endswith('most similar')]
 					means = df.groupby('target_group').cossim.agg('mean')
@@ -2157,7 +2157,7 @@ class Tuner:
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv.gz', index=False)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
-			with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
+			with open(f'{dataset_name}-{epoch_label}-similarities_diffs.txt', 'w', encoding = 'utf-8') as f:
 				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
 					df = df.loc[~df.target_group.str.endswith('most similar')]
 					means = df.groupby('target_group')['cossim'].agg('mean')
