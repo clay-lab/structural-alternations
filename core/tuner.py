@@ -1231,7 +1231,7 @@ class Tuner:
 							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		
-		log.info(f'Plotting principal components for first {eval_cfg.num_tsne_words} tokens and added token(s)')
+		log.info(f'Plotting t-SNEs for first {eval_cfg.num_tsne_words} tokens and added token(s)')
 		self.plot_tsne(n = eval_cfg.num_tsne_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
 		
 		# Load data
@@ -1428,7 +1428,7 @@ class Tuner:
 							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		
-		log.info(f'Plotting principal components for first {eval_cfg.num_tsne_words} tokens and added token(s)')
+		log.info(f'Plotting t-SNEs for first {eval_cfg.num_tsne_words} tokens and added token(s)')
 		self.plot_tsne(n = eval_cfg.num_tsne_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
 		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
@@ -2168,7 +2168,7 @@ class Tuner:
 							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
 		
-		log.info(f'Plotting principal components for first {eval_cfg.num_tsne_words} tokens and added token(s)')
+		log.info(f'Plotting t-SNEs for first {eval_cfg.num_tsne_words} tokens and added token(s)')
 		self.plot_tsne(n = eval_cfg.num_tsne_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
 		
 		# Define a local function to get the probabilities
