@@ -1151,7 +1151,7 @@ class Tuner:
 		
 		added_word_vectors = torch.cat([getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[token_id].reshape(1,-1) for token_id in self.tokenizer.convert_tokens_to_ids(added_words)], dim=0)
 		
-		tsne = TSNE(2, random_state=42, learning_rate='auto', init='pca')
+		tsne = TSNE(2, random_state=0, learning_rate='auto', init='pca')
 		with torch.no_grad():
 			two_dim = tsne.fit_transform(torch.cat((word_vectors, added_word_vectors)))
 		
