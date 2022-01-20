@@ -185,7 +185,7 @@ def multieval(cfg: DictConfig) -> None:
 		summary_of_similarities.to_csv(f'{cfg.data.friendly_name}-{all_epochs}-similarities.csv.gz', index = False, na_rep = 'NaN')
 		
 		if len(summary_of_similarities.predicted_arg.unique()) > 1:
-			with open(f'{cfg.data.friendly_name}-{all_epochs}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
+			with open(f'{cfg.data.friendly_name}-{all_epochs}-similarities_diffs.txt', 'w', encoding = 'utf-8') as f:
 				for predicted_arg, df in summary_of_similarities.groupby('predicted_arg'):
 					df = df.loc[~df.target_group.str.endswith('most similar')]
 					means = df.groupby('target_group')['mean'].agg('mean')
