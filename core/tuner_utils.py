@@ -74,7 +74,7 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['Pre
 			tmp_vocab_file.write('\n'.join(vocab))
 		
 		tokenizer = tokenizer_class(name_or_path = model_id, vocab_file = 'vocab.tmp', **kwargs)
-		tokenizer.model_max_length = model_max_length
+		# tokenizer.model_max_length = model_max_length
 		
 		# for some reason, we have to re-add the [MASK] token to bert to get this to work, otherwise
 		# it breaks it apart into separate tokens '[', 'mask', and ']' when loading the vocab locally (???)
