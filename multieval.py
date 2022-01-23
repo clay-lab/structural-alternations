@@ -213,10 +213,10 @@ def load_summaries(summary_files: List[str]) -> pd.DataFrame:
 		if summary_file.endswith('.pkl.gz'):
 			with gzip.open(summary_file, 'rb') as f:
 				summary = pkl.load(f)
-				summaries = summaries.append(summary, ignore_index = True)
+				summaries = pd.concat([summaries, summary], ignore_index = True)
 		else:
 			summary = pd.read_csv(summary_file)
-			summaries = summaries.append(summary, ignore_index = True)
+			summaries = pd.concat([summaries, summary], ignore_index = True)
 	
 	return summaries
 

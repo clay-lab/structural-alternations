@@ -374,7 +374,7 @@ def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 	predictions_summary = predictions_summary[['model_name', 'set_id', 'SumSq'] + [c for c in predictions_summary.columns if re.search('( - )|(probability)|(bias)', c)]]
 	total = predictions_summary.groupby('set_id')[[c for c in predictions_summary.columns if not c in ['model_name', 'set_id']]].mean().reset_index()
 	total['model_name'] = 'average'
-	predictions_summary = predictions_summary.append(total, ignore_index = True)
+	predictions_summary = pd.concat([predictions_summary, total], ignore_index = True)
 	
 	noun_groups = predictions[['set_id'] + [c for c in predictions.columns if c.endswith('nouns')]].drop_duplicates()
 	
