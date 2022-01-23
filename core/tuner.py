@@ -931,12 +931,12 @@ class Tuner:
 				if metric == 'remaining patience':
 					if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
 						global_patience = metrics[['epoch', 'remaining patience overall']].drop_duplicates().reset_index(drop=True).rename({'remaining patience overall' : 'remaining patience'}, axis = 1).assign(dataset = 'overall', dataset_type = 'global')
-						sns.lineplot(data = metrics.append(global_patience, ignore_index=True), x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend ='full')
-						plt.yticks(determine_int_axticks(metrics['remaining patience'].append(metrics['remaining patience overall'], ignore_index=True).astype(int).append(pd.Series(0), ignore_index=True)))
+						sns.lineplot(data = pd.concat([metrics, global_patience], ignore_index=True), x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend ='full')
+						plt.yticks(determine_int_axticks(pd.concat([pd.concat([metrics['remaining patience'], metrics['remaining patience overall']], ignore_index=True).astype(int), pd.Series(0)], ignore_index=True)))
 						handles, labels = ax.get_legend_handles_labels()
 					else:
 						sns.lineplot(data = metrics, x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend='full')
-						plt.yticks(determine_int_axticks(metrics['remaining patience'].astype(int).append(pd.Series(0), ignore_index=True)))
+						plt.yticks(determine_int_axticks(pd.concat([metrics['remaining patience'].astype(int), pd.Series(0)], ignore_index=True)))
 						handles, labels = ax.get_legend_handles_labels()
 				else:
 					sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
@@ -1214,7 +1214,7 @@ class Tuner:
 		magnitude = floor(1 + np.log10(total_epochs))
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
 		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
+		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv.gz', index=False)
@@ -1410,7 +1410,7 @@ class Tuner:
 		dataset_name = eval_cfg.data.friendly_name
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
 		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
+		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
 		most_similar_tokens = most_similar_tokens.assign(min_epochs=self.cfg.hyperparameters.min_epochs,max_epochs=self.cfg.hyperparameters.max_epochs)
@@ -1600,7 +1600,7 @@ class Tuner:
 						odds_ratio = lambda df: df['exp_logit'] - df['logit'],
 					)
 					
-					summary = summary.append(token_summary, ignore_index = True)
+					summary = pd.concat([summary, token_summary], ignore_index = True)
 		
 		summary['role_position'] = [tokens_to_roles[token] + ' position' for token in summary['exp_token']]
 		
@@ -2057,7 +2057,7 @@ class Tuner:
 			s1_ex = x_data[x_data.sentence_num == 0].sentence.values[0]
 			s2_ex = y_data[y_data.sentence_num == 0].sentence.values[0]
 			
-			acc = acc.append(pd.DataFrame(
+			acc = pd.concat([acc, pd.DataFrame(
 				[[pair[0], pair[1], 'any', 'any',
 				  x_data.position_num.unique()[0] if len(x_data.position_num.unique()) == 1 else 'multiple',
 				  y_data.position_num.unique()[0] if len(y_data.position_num.unique()) == 1 else 'multiple',
@@ -2070,7 +2070,7 @@ class Tuner:
 				  # specificity_z, specificity_z_sem,
 				  s1_ex, s2_ex]],
 				  columns = acc_columns
-			))
+			)])
 			
 			for name, x_group in x_data.groupby('ratio_name'):
 				arg = name.split('/')[0]
@@ -2097,7 +2097,7 @@ class Tuner:
 				# specificity_z = np.mean(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)
 				# specificity_z_sem = np.std(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2/np.sqrt(np.size(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)))
 				
-				acc = acc.append(pd.DataFrame(
+				acc = pd.concat([acc, pd.DataFrame(
 					[[pair[0], pair[1], arg, x_group.role_position.unique()[0].split()[0],
 					  x_group.position_num.unique()[0] if len(x_group.position_num.unique()) == 1 else 'multiple',
 					  y_group.position_num.unique()[0] if len(y_group.position_num.unique()) == 1 else 'multiple',
@@ -2110,7 +2110,7 @@ class Tuner:
 					  # specificity_z, specificity_z_sem,
 					  s1_ex, s2_ex]],
 					  columns = acc_columns
-				))
+				)])
 		
 		acc = acc.assign(
 			eval_epoch = np.unique(summary.eval_epoch)[0] if len(np.unique(summary.eval_epoch)) == 1 else 'multiple',
@@ -2151,7 +2151,7 @@ class Tuner:
 		dataset_name = eval_cfg.data.friendly_name
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
 		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
+		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv.gz', index=False)
@@ -2349,7 +2349,7 @@ class Tuner:
 												
 										target_position_num = ['position ' + str(position_num)],
 										
-										summary = summary.append(summary_, ignore_index = True)
+										summary = pd.concat([summary, summary_], ignore_index = True)
 			
 			summary = summary.assign(
 				model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2],
