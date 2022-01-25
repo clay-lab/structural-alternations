@@ -4,6 +4,7 @@
 import os
 import re
 import json
+import gzip
 import torch
 import random
 import logging
@@ -12,7 +13,10 @@ import logging
 import numpy as np
 import pandas as pd
 
+from tqdm import tqdm
+from glob import glob
 from typing import List, Type
+from shutil import copyfileobj
 from PyPDF2 import PdfFileMerger, PdfFileReader
 from transformers import BertTokenizer, DistilBertTokenizer, RobertaTokenizer
 from statsmodels.nonparametric.smoothers_lowess import lowess
@@ -302,3 +306,16 @@ def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean', frac: float = 0.
 		log.warning('Note that the best epoch is the final epoch. This may indicate underfitting.')
 	
 	return best_epoch
+
+# Used with the R analysis script since it's much quicker to do this in Python
+def unzip_csv_gzs(csv_gzs: List[str]) -> None:
+	dests = [f.replace('.gz', '') for f in csv_gzs]
+	fs_dests = tuple(zip(csv_gzs, dests))
+	for f, dest in tqdm(fs_dests):
+		with gzip.open(f, "rb") as f_in, open(dest, "wb") as f_out:
+			copyfileobj(f_in, f_out)
+
+# Used with the R analysis script since it's much quicker to do this in Python
+def delete_files(files: List[str]) -> None:
+	for f in tqdm(files):
+		os.remove(f)
