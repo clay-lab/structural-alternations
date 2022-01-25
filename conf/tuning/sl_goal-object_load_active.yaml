@@ -1,4 +1,4 @@
-name: sprayload_goal-object_load_active
+name: sl_goal-object_load_active
 
 reference_sentence_type: load goal-object active
 new_verb: false

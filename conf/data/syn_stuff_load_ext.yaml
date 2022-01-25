@@ -91,7 +91,7 @@ sentence_types:
 
 eval_groups:
   theme : THAX
-  recipient : GORX
+  goal : GORX
 
 to_mask:
   - THAX
