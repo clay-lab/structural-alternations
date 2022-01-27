@@ -38,12 +38,12 @@ def multieval(cfg: DictConfig) -> None:
 	# Get a regex for the score file name so we can just load it if it already exists
 	if cfg.epoch == 'None':
 		cfg.epoch = None
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-(([0-9]+)-+)+(accuracies.csv.gz|tsne.csv.gz|tsne-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz)))'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-(([0-9]+)-+)+(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|cossim.csv.gz)))'
 		log.warning('Epoch not specified. If no evaluation has been performed, evaluation will be performed on the final epoch. Otherwise, all epochs on which evaluation has been performed will be loaded for each model.')
 	elif 'best' in cfg.epoch:
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-(accuracies.csv.gz|tsne.csv.gz|tsne-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz)))'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|cossim.csv.gz)))'
 	else:
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-' + cfg.epoch + '-(accuracies.csv.gz|tsne.csv.gz|tsne-plot.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|similarities.csv.gz)))'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-' + cfg.epoch + '-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|cossim.csv.gz)))'
 	
 	# Get checkpoint dirs in outputs
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
@@ -141,7 +141,7 @@ def multieval(cfg: DictConfig) -> None:
 			for eval_dir in eval_dirs
 				for f in os.listdir(eval_dir)
 					if re.match(score_file_name, f) and
-					   f.endswith('-similarities.csv.gz')
+					   f.endswith('-cossim.csv.gz')
 		]
 		
 		summary_of_similarities = load_summaries(similarities_files)
@@ -182,10 +182,10 @@ def multieval(cfg: DictConfig) -> None:
 	
 		all_epochs = cfg.epoch if len(np.unique(summary_of_similarities.eval_epoch)) > 1 or np.unique(summary_of_similarities.eval_epoch)[0] == 'multiple' else np.unique(summary_of_similarities.eval_epoch)[0]
 		
-		summary_of_similarities.to_csv(f'{cfg.data.friendly_name}-{all_epochs}-similarities.csv.gz', index = False, na_rep = 'NaN')
+		summary_of_similarities.to_csv(f'{cfg.data.friendly_name}-{all_epochs}-cossim.csv.gz', index = False, na_rep = 'NaN')
 		
 		if len(summary_of_similarities.predicted_arg.unique()) > 1:
-			with open(f'{cfg.data.friendly_name}-{all_epochs}-similarities_diffs.txt', 'w', encoding = 'utf-8') as f:
+			with open(f'{cfg.data.friendly_name}-{all_epochs}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
 				for predicted_arg, df in summary_of_similarities.groupby('predicted_arg'):
 					df = df.loc[~df.target_group.str.endswith('most similar')]
 					means = df.groupby('target_group')['mean'].agg('mean')

@@ -1123,23 +1123,37 @@ class Tuner:
 		else:
 			return pd.DataFrame()
 	
-	def plot_tsne(self, n: int = 1000, dataset_label: str = '', epoch: int = None, total_epochs: int = None, epoch_label: str = '', save_df: bool = True) -> None:
-		pos = 'nouns' if not self.cfg.tuning.new_verb else 'verbs'
+	def plot_tsnes(self, summary: pd.DataFrame, eval_cfg: DictConfig) -> None:
+		n = eval_cfg.num_tsne_words
+		set_targets = eval_cfg.data.masked_token_targets
+		dataset_name = summary.eval_data.unique()[0]
+		
+		epoch_label = ('-' + eval_cfg.epoch) if isinstance(eval_cfg.epoch, str) else '-manual'
+		magnitude = floor(1 + np.log10(summary.total_epochs.unique()[0]))
+		epoch_label = f'{str(summary.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
+		
+		pos = 'nouns' if not eval_cfg.data.new_verb else 'verbs'
 		
 		with open(os.path.join(hydra.utils.get_original_cwd(), 'conf', pos + '.txt'), 'r') as f:
 			targets = [w.lower().strip() for w in f.readlines()]
 		
 		first_n = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in targets}
+		set_targets_dict = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in list(itertools.chain(*list(set_targets.values())))}
 		
 		# if we are using roberta, filter to tokens that start with a preceeding space and are not followed by a capital letter (to avoid duplicates))
 		if self.model_bert_name == 'roberta':
 			first_n = {k : v for k, v in first_n.items() if k.startswith(chr(288)) and not re.search('^' + chr(288) + '[A-Z]', k)}
+			set_targets_dict = {k : v for k, v in set_targets_dict.items() if k.startswith(chr(288)) and not re.search('^' + chr(288) + '[A-Z]', k)}
 		
 		first_n = dict(tuple(first_n.items())[:n])
 		
 		first_n_embeddings = {k : getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[v] for k, v in first_n.items()}
-		word_vectors = torch.cat([first_n_embeddings[w].reshape(1, -1) for w in first_n_embeddings], dim=0)
-		words = list(first_n_embeddings.keys())
+		first_n_word_vectors = torch.cat([first_n_embeddings[w].reshape(1, -1) for w in first_n_embeddings], dim=0)
+		first_n_words = list(first_n_embeddings.keys())
+		
+		set_targets_embeddings = {k : getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[v] for k, v in set_targets_dict.items()}
+		set_targets_word_vectors = torch.cat([set_targets_embeddings[w].reshape(1, -1) for w in set_targets_embeddings], dim=0)
+		set_targets_words = list(set_targets_embeddings.keys())
 		
 		added_words = self.tokens_to_mask
 		
@@ -1147,62 +1161,100 @@ class Tuner:
 		if self.model_bert_name == 'roberta':
 			added_words = [token for token in added_words if token.startswith(chr(288))]
 		
-		words = words + added_words
+		first_n_words += added_words
+		set_targets_words += added_words
 		
 		added_word_vectors = torch.cat([getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[token_id].reshape(1,-1) for token_id in self.tokenizer.convert_tokens_to_ids(added_words)], dim=0)
 		
-		tsne = TSNE(2, random_state=0, learning_rate='auto', init='pca')
-		with torch.no_grad():
-			two_dim = tsne.fit_transform(torch.cat((word_vectors, added_word_vectors)))
+		tsne_df = pd.DataFrame(columns= ['target_group', 'token', 'tsne1', 'tsne2'])
 		
-		fig, ax = plt.subplots(1)
-		fig.set_size_inches(12, 10)
-		
-		sns.scatterplot(x = two_dim[:,0], y = two_dim[:,1], size=8, legend=False, ax=ax)
-		for line in range(0, two_dim.shape[0]):
-			if words[line] in added_words:
-				ax.text(two_dim[line,0], two_dim[line,1]-0.5, words[line].replace(chr(288), ''), size=10, horizontalalignment='center', verticalalignment='top', color='blue')
-			else:
-				ax.text(two_dim[line,0], two_dim[line,1]-0.5, words[line].replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
-		
-		ax.set_xlabel('t-SNE 1', fontsize=8)
-		ax.set_ylabel('t-SNE 2', fontsize=8)
-		
-		title = f'{self.model_bert_name} t-SNEs of first {n} tokens and added token(s) (filtered)'
-		title += f' @ epoch {epoch}/{total_epochs}\n'
-		title += f'min epochs: {self.cfg.hyperparameters.min_epochs}, '
-		title += f'max epochs: {self.cfg.hyperparameters.max_epochs}'
-		title += f', patience: {self.cfg.hyperparameters.patience}'
-		title += f' (\u0394={self.cfg.hyperparameters.delta})\n'
-		title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
-		title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
-		title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}'
-		
-		fig.suptitle(title)
-		fig.tight_layout()
-		
-		plt.savefig(f'{dataset_label}-{epoch_label}-tsne-plot.pdf')
-		
-		if save_df:
-			tsne_df = pd.DataFrame(list(zip(words, two_dim[:,0], two_dim[:,1])), columns= ['token', 'tsne1', 'tsne2'])
-			tsne_df['token_id'] = [self.tokenizer.convert_tokens_to_ids(token) for token in words]
-			tsne_df = tsne_df.assign(
-				model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2] + '-' + self.model_bert_name[0],
-				model_name = self.model_bert_name,
-				tuning = self.cfg.tuning.name,
-				masked = self.masked,
-				masked_tuning_style = self.masked_tuning_style,
-				strip_punct = self.cfg.hyperparameters.strip_punct,
-				eval_epoch = epoch,
-				total_epochs = total_epochs,
-				token_type = ['added' if token in self.tokens_to_mask else 'original' for token in tsne_df.token.values],
-				patience = self.cfg.hyperparameters.patience,
-				delta = self.cfg.hyperparameters.delta,
-				min_epochs = self.cfg.hyperparameters.min_epochs,
-				max_epochs = self.cfg.hyperparameters.max_epochs
-			)
+		for word_vectors, words in ((first_n_word_vectors, first_n_words), (set_targets_word_vectors, set_targets_words)):
+			tsne = TSNE(2, random_state=0, learning_rate='auto', init='pca')
+			with torch.no_grad():
+				two_dim = tsne.fit_transform(torch.cat((word_vectors, added_word_vectors)))
 			
-			tsne_df.to_csv(f'{dataset_label}-{epoch_label}-tsne.csv.gz', index=False)
+			two_dim_df = pd.DataFrame(list(zip(words, two_dim[:,0], two_dim[:,1])), columns = ['token', 'tsne1', 'tsne2'])
+			two_dim_df['token_category'] = ['existing' if not w in added_words else 'added' for w in two_dim_df.token.values]
+			target_group = [f'first {n}' if not w in added_words else 'added' for w in two_dim_df.token.values] if words == first_n_words else []
+			if not target_group:
+				for w in two_dim_df.token.values:
+					if w.replace(chr(288), '') in list(itertools.chain(*list(set_targets.values()))):
+						for k in set_targets:
+							if w.replace(chr(288), '') in set_targets[k]:
+								target_group.append(k + ' target')
+					else:
+						target_group.append('added')
+			
+			two_dim_df['target_group'] = target_group
+			two_dim_df['tsne_type'] = f'first {n}' if words == first_n_words else 'set targets'
+			
+			fig, ax = plt.subplots(1)
+			fig.set_size_inches(12, 10)
+			
+			sns.scatterplot(data = two_dim_df.sort_values(by=['target_group'], key = lambda col: -col.str.match('^added$')), x = 'tsne1', y = 'tsne2', size=8, ax=ax, hue='target_group', legend='full')
+			v_adjust = (ax.get_ylim()[1] - ax.get_ylim()[0])/150
+			
+			for line in range(0, len(two_dim_df)):
+				if two_dim_df.loc[line].token in added_words:
+					ax.text(two_dim_df.loc[line].tsne1, two_dim_df.loc[line].tsne2-v_adjust, two_dim_df.loc[line].token.replace(chr(288), ''), size=10, horizontalalignment='center', verticalalignment='top', color='black')
+				else:
+					ax.text(two_dim_df.loc[line].tsne1, two_dim_df.loc[line].tsne2-v_adjust, two_dim_df.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
+			
+			handles_labels = tuple(zip(ax.get_legend_handles_labels()[0], ax.get_legend_handles_labels()[1]))
+			handles_labels = [(h, l) for h, l in handles_labels if not re.match(r'[0-9]+', l)]
+			handles = [hl[0] for hl in handles_labels]
+			labels = [hl[1] for hl in handles_labels]
+			ax.legend(handles=handles, labels=labels)
+			
+			ax.set_xlabel('t-SNE 1', fontsize=8)
+			ax.set_ylabel('t-SNE 2', fontsize=8)
+			
+			if words == first_n_words:
+				title = f'{self.model_bert_name} t-SNEs of first {n} token(s) and added token(s) (filtered)'
+			else:
+				title = f'{self.model_bert_name} t-SNEs of {summary.eval_data.unique()[0]} target group(s) token(s) and added token(s) (filtered)'
+			
+			title += f' @ epoch {summary.eval_epoch.unique()[0]}/{summary.total_epochs.unique()[0]}\n'
+			title += f'min epochs: {summary.min_epochs.unique()[0]}, '
+			title += f'max epochs: {summary.max_epochs.unique()[0]}'
+			title += f', patience: {summary.patience.unique()[0]}'
+			title += f' (\u0394={summary.delta.unique()[0]})\n'
+			title += f'tuning: {summary.tuning.unique()[0]}, '
+			title += ((f'masking: ' + summary.masked_tuning_style.unique()[0]) if summary.masked.unique()[0] else "unmasked") + ', '
+			title += f'{"with punctuation" if not summary.strip_punct.unique()[0] else "no punctuation"}'
+			
+			fig.suptitle(title)
+			fig.tight_layout()
+			
+			if words == first_n_words:
+				plt.savefig(f'{dataset_name}-{epoch_label}-first_{n}-tsne-plot.pdf')
+			else:
+				plt.savefig(f'{dataset_name}-{epoch_label}-set_targets-tsne-plot.pdf')
+			
+			tsne_df_tmp = two_dim_df
+			tsne_df_tmp['token_id'] = [self.tokenizer.convert_tokens_to_ids(token) for token in words]
+			tsne_df_tmp = tsne_df_tmp.assign(
+				model_id = summary.model_id.unique()[0],
+				model_name = summary.model_name.unique()[0],
+				eval_data = summary.eval_data.unique()[0],
+				tuning = summary.tuning.unique()[0],
+				masked = summary.masked.unique()[0],
+				masked_tuning_style = summary.masked_tuning_style.unique()[0],
+				strip_punct = summary.strip_punct.unique()[0],
+				eval_epoch = summary.eval_epoch.unique()[0],
+				total_epochs = summary.total_epochs.unique()[0],
+				patience = summary.patience.unique()[0],
+				delta = summary.delta.unique()[0],
+				min_epochs = summary.min_epochs.unique()[0],
+				max_epochs = summary.max_epochs.unique()[0]
+			)
+				
+			tsne_df = pd.concat([tsne_df, tsne_df_tmp], ignore_index=True)
+		
+		tsne_df.to_csv(f'{dataset_name}-{epoch_label}-tsne.csv.gz', index=False)
+		
+		pdfs = [f for f in os.listdir(os.getcwd()) if f.endswith('-tsne-plot.pdf') and epoch_label in f]
+		merge_pdfs(pdfs, f'{dataset_name}-{epoch_label}-tsne-plots.pdf')
 	
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
@@ -1217,10 +1269,10 @@ class Tuner:
 		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv.gz', index=False)
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
-			with open(f'{dataset_name}-{epoch_label}-similarities_diffs.txt', 'w', encoding = 'utf-8') as f:
+			with open(f'{dataset_name}-{epoch_label}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
 				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
 					df = df.loc[~df.target_group.str.endswith('most similar')]
 					means = df.groupby('target_group').cossim.agg('mean')
@@ -1230,9 +1282,6 @@ class Tuner:
 						for diff in means_diffs:
 							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
-		
-		log.info(f'Plotting t-SNEs for first {eval_cfg.num_tsne_words} tokens and added token(s)')
-		self.plot_tsne(n = eval_cfg.num_tsne_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
 		
 		# Load data
 		# the use of eval_cfg.data.to_mask will probably need to be updated here for roberta now
@@ -1246,7 +1295,10 @@ class Tuner:
 		results = self.collect_results(inputs, eval_cfg.data.eval_groups, outputs)
 		summary = self.summarize_results(results, labels)
 		
-		log.info("Creating graphs")
+		log.info(f'Creating t-SNE plots')
+		self.plot_tsnes(summary, eval_cfg)
+		
+		log.info("Creating aconf and entropy plots")
 		self.graph_results(results, summary, eval_cfg)
 	
 	def load_eval_file(self, data_path: str, replacing: Dict[str,str]) -> Tuple[Dict,Dict,List[str]]:
@@ -1406,18 +1458,18 @@ class Tuner:
 		epoch_label = ('-' + epoch) if isinstance(epoch, str) else '-manual'
 		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
 		
-		magnitude = floor(1 + np.log10(total_epochs))
 		dataset_name = eval_cfg.data.friendly_name
+		magnitude = floor(1 + np.log10(total_epochs))
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
 		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
 		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
 		most_similar_tokens = most_similar_tokens.assign(min_epochs=self.cfg.hyperparameters.min_epochs,max_epochs=self.cfg.hyperparameters.max_epochs)
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv.gz', index=False)
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
-			with open(f'{dataset_name}-{epoch_label}-similarities_diffs.txt', 'w', encoding = 'utf-8') as f:
+			with open(f'{dataset_name}-{epoch_label}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
 				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
 					df = df.loc[~df.target_group.str.endswith('most similar')]
 					means = df.groupby('target_group').cossim.agg('mean')
@@ -1427,9 +1479,6 @@ class Tuner:
 						for diff in means_diffs:
 							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
-		
-		log.info(f'Plotting t-SNEs for first {eval_cfg.num_tsne_words} tokens and added token(s)')
-		self.plot_tsne(n = eval_cfg.num_tsne_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
 		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 		inputs = data["inputs"]
@@ -1444,7 +1493,7 @@ class Tuner:
 			outputs = [self.model(**i) for i in inputs]
 		
 		summary = self.get_entailed_summary(sentences, outputs, labels, eval_cfg)
-		summary = summary.assign(eval_epoch=epoch,total_epochs=total_epochs,
+		summary = summary.assign(eval_epoch=epoch, total_epochs=total_epochs,
 								 min_epochs=self.cfg.hyperparameters.min_epochs,
 								 max_epochs=self.cfg.hyperparameters.max_epochs)
 		
@@ -1456,7 +1505,10 @@ class Tuner:
 		summary_csv['odds_ratio'] = summary_csv['odds_ratio'].astype(float).copy()
 		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-scores.csv.gz", index = False, na_rep = 'NaN')
 		
-		log.info('Creating plots')
+		log.info(f'Creating t-SNE plots')
+		self.plot_tsnes(summary, eval_cfg)
+		
+		log.info('Creating odds ratio plots')
 		self.graph_entailed_results(summary, eval_cfg)
 		
 		plots_file = f'{dataset_name}-{str(epoch).zfill(magnitude)}-plots.pdf'
@@ -2154,10 +2206,10 @@ class Tuner:
 		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv.gz', index=False)
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
-			with open(f'{dataset_name}-{epoch_label}-similarities_diffs.txt', 'w', encoding = 'utf-8') as f:
+			with open(f'{dataset_name}-{epoch_label}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
 				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
 					df = df.loc[~df.target_group.str.endswith('most similar')]
 					means = df.groupby('target_group')['cossim'].agg('mean')
@@ -2167,9 +2219,6 @@ class Tuner:
 						for diff in means_diffs:
 							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
 							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
-		
-		log.info(f'Plotting t-SNEs for first {eval_cfg.num_tsne_words} tokens and added token(s)')
-		self.plot_tsne(n = eval_cfg.num_tsne_words, dataset_label = dataset_name, epoch = epoch, total_epochs = total_epochs, epoch_label = epoch_label)
 		
 		# Define a local function to get the probabilities
 		def get_probs(epoch: int) -> Dict[int,Dict]:
@@ -2220,7 +2269,10 @@ class Tuner:
 		summary.to_csv(f"{dataset_name}-0-{epoch}-scores.csv.gz", index = False, na_rep = 'NaN')
 		
 		# Create graphs
-		log.info('Creating plots')
+		log.info(f'Creating t-SNE plots')
+		self.plot_tsnes(summary, eval_cfg)
+		
+		log.info('Creating surprisal plots')
 		self.graph_new_verb_results(summary, eval_cfg)
 		
 		plots_file = f'{dataset_name}-0-{str(epoch).zfill(magnitude)}-plots.pdf'
