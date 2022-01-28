@@ -85,20 +85,17 @@ def multieval(cfg: DictConfig) -> None:
 				tuner.eval_new_verb(
 					eval_cfg = cfg,
 					args_cfg = args_cfg,
-					checkpoint_dir = chkpt_dir,
-					epoch = cfg.epoch	
+					checkpoint_dir = chkpt_dir
 				)
 			elif cfg.data.entail:
 				tuner.eval_entailments(
 					eval_cfg = cfg,
-					checkpoint_dir = chkpt_dir,
-					epoch = cfg.epoch
+					checkpoint_dir = chkpt_dir
 				)
 			else:
 				tuner.eval(
 					eval_cfg = cfg, 
-					checkpoint_dir = chkpt_dir,
-					epoch = cfg.epoch
+					checkpoint_dir = chkpt_dir
 				)
 				
 			# Switch back to the starting dir and copy the eval information to each individual directory
@@ -174,18 +171,13 @@ def multieval(cfg: DictConfig) -> None:
 			reset_index(). \
 			sort_values(['predicted_arg', 'target_group']). \
 			rename({'size' : 'num_points'}, axis = 1)
-		
-		# if not 'best' in cfg.epoch:
-		# 	all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
-		# else:
-		# 	all_epochs = cfg.epoch
 	
-		all_epochs = cfg.epoch if len(np.unique(summary_of_similarities.eval_epoch)) > 1 or np.unique(summary_of_similarities.eval_epoch)[0] == 'multiple' else np.unique(summary_of_similarities.eval_epoch)[0]
+		eval_epoch = cfg.epoch if len(np.unique(summary_of_similarities.eval_epoch)) > 1 or np.unique(summary_of_similarities.eval_epoch)[0] == 'multiple' else np.unique(summary_of_similarities.eval_epoch)[0]
 		
-		summary_of_similarities.to_csv(f'{cfg.data.friendly_name}-{all_epochs}-cossim.csv.gz', index = False, na_rep = 'NaN')
+		summary_of_similarities.to_csv(f'{cfg.data.friendly_name}-{eval_epoch}-cossim.csv.gz', index = False, na_rep = 'NaN')
 		
 		if len(summary_of_similarities.predicted_arg.unique()) > 1:
-			with open(f'{cfg.data.friendly_name}-{all_epochs}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
+			with open(f'{cfg.data.friendly_name}-{eval_epoch}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
 				for predicted_arg, df in summary_of_similarities.groupby('predicted_arg'):
 					df = df.loc[~df.target_group.str.endswith('most similar')]
 					means = df.groupby('target_group')['mean'].agg('mean')
@@ -223,16 +215,12 @@ def load_summaries(summary_files: List[str]) -> pd.DataFrame:
 def save_summary(cfg: DictConfig, save_dir: str, summary: pd.DataFrame) -> None:
 	# Get information for saved file names
 	dataset_name = cfg.data.friendly_name
-	# if not 'best' in cfg.epoch:
-	# 	all_epochs = '-'.join([str(x) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
-	# else:
-	# 	all_epochs = cfg.epoch
-		
-	all_epochs = cfg.epoch if len(np.unique(summary.eval_epoch)) > 1 or np.unique(summary.eval_epoch)[0] == 'multiple' else np.unique(summary.eval_epoch)[0]
+	
+	eval_epoch = cfg.epoch if len(np.unique(summary.eval_epoch)) > 1 or np.unique(summary.eval_epoch)[0] == 'multiple' else np.unique(summary.eval_epoch)[0]
 	
 	os.chdir(save_dir)
-	summary.to_pickle(f"{dataset_name}-{all_epochs}-scores.pkl.gz")
-	summary.to_csv(f"{dataset_name}-{all_epochs}-scores.csv.gz", index = False)
+	summary.to_pickle(f"{dataset_name}-{eval_epoch}-scores.pkl.gz")
+	summary.to_csv(f"{dataset_name}-{eval_epoch}-scores.csv.gz", index = False)
 
 def adjust_cfg(cfg: DictConfig, source_dir: str, summary: pd.DataFrame) -> DictConfig:
 	# Load the appropriate config file for model parameters,
@@ -262,7 +250,7 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 				 'sentence_type', 'ratio_name', 
 				 'role_position', 'position_num',
 				 'model_name', 'masked', 
-				 'eval_epoch', 'total_epochs', 'min_epochs', 'max_epochs',
+				 'eval_epoch', 'total_epochs', 'epoch_criteria', 'min_epochs', 'max_epochs',
 				 'patience', 'delta',
 				 'masked_tuning_style', 'tuning', 'strip_punct']) \
 		['odds_ratio']. \
@@ -285,23 +273,10 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	tuner = Tuner(cfg)
 	log.info(f'Plotting results from {len(summary_of_summaries.model_id.unique())} models')
 	tuner.graph_entailed_results(summary_of_summaries, cfg)
-	# magnitude = floor(1 + np.log10(summary_of_summaries.eval_epoch.max()))
-	# if 'best' in cfg.epoch:
-	#	all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary_of_summaries.eval_epoch).tolist(), key = lambda x: x)])
-	#	if os.path.exists(f'{cfg.data.friendly_name}-{cfg.epoch}-plots.pdf'):
-	#		os.remove(f'{cfg.data.friendly_name}-{cfg.epoch}-plots.pdf')
-	#	
-	#	os.rename(f'{cfg.data.friendly_name}-{all_epochs}-plots.pdf', f'{cfg.data.friendly_name}-{cfg.epoch}-plots.pdf')
 	
 	acc = tuner.get_entailed_accuracies(summary_of_summaries)
-	# if not 'best' in cfg.epoch:
-	# 	all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
-	# else:
-	# 	all_epochs = cfg.epoch
-	
-	all_epochs = cfg.epoch if len(np.unique(acc.eval_epoch)) > 1 or np.unique(acc.eval_epoch)[0] == 'multiple' else np.unique(acc.eval_epoch)[0]
-	
-	acc.to_csv(f'{cfg.data.friendly_name}-{all_epochs}-accuracies.csv.gz', index = False)
+	eval_epoch = cfg.epoch if len(np.unique(acc.eval_epoch)) > 1 or np.unique(acc.eval_epoch)[0] == 'multiple' else np.unique(acc.eval_epoch)[0]
+	acc.to_csv(f'{cfg.data.friendly_name}-{eval_epoch}-accuracies.csv.gz', index = False)
 
 def multi_eval_new_verb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
 	return NotImplementedError('Comparison of new verb data not currently supported.')

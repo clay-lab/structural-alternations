@@ -39,25 +39,6 @@ def set_seed(seed: int) -> None:
 	
 def strip_punct(sentence: str) -> str:
 	return re.sub(r'[^\[\]\<\>\w\s,]', '', sentence)
-	
-def merge_pdfs(pdfs: List[str], filename: str) -> None:
-	if not pdfs:
-		return
-	
-	merged_pdfs = PdfFileMerger()
-	
-	for pdf in pdfs:
-		with open(pdf, 'rb') as f:
-			merged_pdfs.append(PdfFileReader(f))
-	
-	merged_pdfs.write(filename)
-	
-	# Clean up (if the os doesn't happen to lock the file)
-	for pdf in pdfs:
-		try:
-			os.remove(pdf)
-		except Exception:
-			pass
 
 def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['PreTrainedTokenizer'], tokens_to_mask: List[str], delete_tmp_vocab_files: bool = True, **kwargs) -> 'PreTrainedTokenizer':
 	if 'uncased' in model_id:
@@ -319,3 +300,24 @@ def unzip_csv_gzs(csv_gzs: List[str]) -> None:
 def delete_files(files: List[str]) -> None:
 	for f in tqdm(files):
 		os.remove(f)
+		
+# deprecated; now we use matplotlib's PdfPages instead
+"""def merge_pdfs(pdfs: List[str], filename: str) -> None:
+	if not pdfs:
+		return
+
+	merged_pdfs = PdfFileMerger()
+	
+	for pdf in pdfs:
+		with open(pdf, 'rb') as f:
+			merged_pdfs.append(PdfFileReader(f))
+	
+	merged_pdfs.write(filename)
+	
+	# Clean up (if the os doesn't happen to lock the file)
+	for pdf in pdfs:
+		try:
+			os.remove(pdf)
+		except Exception:
+			pass
+"""
