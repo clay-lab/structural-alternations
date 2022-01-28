@@ -1166,7 +1166,7 @@ class Tuner:
 		
 		added_word_vectors = torch.cat([getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[token_id].reshape(1,-1) for token_id in self.tokenizer.convert_tokens_to_ids(added_words)], dim=0)
 		
-		tsne_df = pd.DataFrame(columns= ['target_group', 'token', 'tsne1', 'tsne2'])
+		tsne_df = pd.DataFrame(columns=['target_group', 'token', 'tsne1', 'tsne2'])
 		
 		for word_vectors, words in ((first_n_word_vectors, first_n_words), (set_targets_word_vectors, set_targets_words)):
 			tsne = TSNE(2, random_state=0, learning_rate='auto', init='pca')
@@ -1181,7 +1181,7 @@ class Tuner:
 					if w.replace(chr(288), '') in list(itertools.chain(*list(set_targets.values()))):
 						for k in set_targets:
 							if w.replace(chr(288), '') in set_targets[k]:
-								target_group.append(k + ' target')
+								target_group.append((k.lower() if 'uncased' in self.string_id else k) + ' target')
 					else:
 						target_group.append('added')
 			
