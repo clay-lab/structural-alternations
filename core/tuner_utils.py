@@ -8,7 +8,6 @@ import gzip
 import torch
 import random
 import logging
-# import requests
 
 import numpy as np
 import pandas as pd
@@ -17,7 +16,6 @@ from tqdm import tqdm
 from glob import glob
 from typing import List, Type
 from shutil import copyfileobj
-from PyPDF2 import PdfFileMerger, PdfFileReader
 from transformers import BertTokenizer, DistilBertTokenizer, RobertaTokenizer
 from statsmodels.nonparametric.smoothers_lowess import lowess
 
