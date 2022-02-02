@@ -18,8 +18,6 @@ abbesses
 abbey
 abbreviation
 abbreviations
-abd
-abdicates
 abdication
 abdomen
 abdomens
@@ -1544,7 +1542,6 @@ ardors
 ardour
 area
 areas
-aren
 arena
 arenas
 areola
@@ -7729,7 +7726,6 @@ cougars
 cough
 cougher
 coul
-couldn
 coulee
 coulees
 coulis
@@ -9985,8 +9981,6 @@ dizzies
 dizziness
 dj
 djinn
-dm
-dn
 doating
 doats
 dobbin
@@ -10033,7 +10027,6 @@ dodoes
 dodos
 doer
 doers
-doesn
 dog
 dogbite
 dogcatcher
@@ -15281,7 +15274,6 @@ hasenpfeffer
 hash
 hasheesh
 hasidim
-hasn
 hasp
 hassle
 hassles
@@ -15321,7 +15313,6 @@ haunches
 haunty
 hausfrau
 haute
-hav
 haven
 havens
 haversack
@@ -17577,7 +17568,6 @@ islands
 isle
 isles
 isms
-isn
 iso
 isocyanate
 isolation
@@ -36073,7 +36063,6 @@ vulnerability
 vulture
 vultures
 vulva
-wa
 wabe
 wac
 wacker
@@ -36264,7 +36253,6 @@ washtub
 washtubs
 washup
 washwoman
-wasn
 wasp
 wasps
 wassail
@@ -36465,7 +36453,6 @@ wenches
 wende
 wendigo
 wendish
-weren
 werewolf
 werewolves
 weskits
@@ -36485,8 +36472,6 @@ wetlands
 wetness
 wetsuit
 wetters
-weve
-wf
 whacker
 whale
 whaleboat
@@ -37006,12 +36991,10 @@ worthlessness
 worths
 worts
 wotcha
-wouldn
 wound
 wounds
 wows
 wowser
-wr
 wraith
 wraiths
 wrangler
