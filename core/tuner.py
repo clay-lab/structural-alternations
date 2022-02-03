@@ -1260,6 +1260,7 @@ class Tuner:
 		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(
+			eval_data = eval_cfg.data.friendly_name,
 			patience=self.cfg.hyperparameters.patience,
 			delta=self.cfg.hyperparameters.delta,
 			min_epochs=self.cfg.hyperparameters.min_epochs,
@@ -2194,6 +2195,7 @@ class Tuner:
 		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(
+			eval_data=eval_cfg.data.friendly_name,
 			patience=self.cfg.hyperparameters.patience,
 			delta=self.cfg.hyperparameters.delta,
 			min_epochs=self.cfg.hyperparameters.min_epochs,
