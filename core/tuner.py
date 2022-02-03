@@ -1223,6 +1223,7 @@ class Tuner:
 				fig.tight_layout()
 				
 				pdf.savefig()
+				plt.close()
 				
 				tsne_df_tmp = two_dim_df
 				tsne_df_tmp['token_id'] = [self.tokenizer.convert_tokens_to_ids(token) for token in words]
