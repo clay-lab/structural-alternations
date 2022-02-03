@@ -1121,6 +1121,8 @@ class Tuner:
 	def plot_tsnes(self, summary: pd.DataFrame, eval_cfg: DictConfig) -> None:
 		n = eval_cfg.num_tsne_words
 		set_targets = eval_cfg.data.masked_token_targets
+
+
 		dataset_name = summary.eval_data.unique()[0]
 		
 		epoch_label = '-' + summary.epoch_criteria.unique()[0]
@@ -1248,6 +1250,88 @@ class Tuner:
 		
 		tsne_df.to_csv(f'{dataset_name}-{epoch_label}-tsne.csv.gz', index=False)
 	
+	def plot_cossims(self, cossims: pd.DataFrame) -> None:
+		cossims = cossims[~cossims.target_group.str.endswith('most similar')].reset_index(drop=True)
+		if cossims.empty:
+			log.info('No target groups were provided for cosine similarities. No comparison plots will be created.')
+			return
+		
+		filename = cossims.eval_data.unique()[0] + '-'
+		epoch_label = '-' + cossims.epoch_criteria.unique()[0]
+		magnitude = floor(1 + np.log10(cossims.total_epochs.unique()[0]))
+		epoch_label = f'{str(cossims.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
+		filename += epoch_label + '-cossim-plots.pdf'
+		
+		if len(cossims.target_group.unique()) > 1:
+			with PdfPages(filename) as pdf:
+				for target_group in tqdm(cossims.target_group.unique()):
+					group = cossims[cossims.target_group == target_group].copy().reset_index(drop=True)
+					group = group[['predicted_arg', 'target_group', 'token', 'cossim']]
+					
+					group = group.pivot(index=['target_group', 'token'], columns='predicted_arg', values='cossim')
+					group.columns.name = None
+					group = group.reset_index()
+					
+					pairs = [c for c in group.columns if not c in ['target_group', 'token']]
+					pairs = [(target_group, c) for c in pairs if not c == target_group]
+					
+					row_plots = len(pairs)
+					
+					fig, ax = plt.subplots(row_plots, 2)
+					ax = ax.reshape(row_plots,2)
+					fig.set_size_inches(10,(5*row_plots)+2)
+					
+					for i, (in_token, out_token) in enumerate(pairs):
+						sns.scatterplot(data=group, x=in_token, y=out_token, ax=ax[i][0])
+						
+						lim = max([abs(v) for v in [*ax[i][0].get_xlim(), *ax[i][0].get_ylim()]])
+						ax[i][0].set_xlim((-lim, lim))
+						ax[i][0].set_ylim((-lim, lim))
+						
+						v_adjust = (2*lim)/150
+						for line in range(0, len(group)):
+							 ax[i][0].text(group.loc[line][in_token], group.loc[line][out_token]-v_adjust, group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
+						
+						ax[i][0].set_aspect(1./ax[i][0].get_data_ratio(), adjustable='box')
+						ax[i][0].plot((-lim, lim), (-lim, lim), linestyle='--', color='black', scalex=False, scaley=False)
+						ax[i][0].set_xlabel(f'{in_token} cosine similarity')
+						ax[i][0].set_ylabel(f'{out_token} cosine similarity')
+						
+						# y = y - x plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
+						sns.scatterplot(data=group, x=in_token, y=group[out_token]-group[in_token], ax=ax[i][1])
+						ax[i][1].set_xlim((-lim, lim))
+										
+						lim = max([abs(v) for v in [*ax[i][1].get_xlim(), *ax[i][1].get_ylim()]])
+						ax[i][1].set_ylim((-lim, lim))
+						
+						v_adjust = (2*lim)/150
+						for line in range(0, len(group)):
+							ax[i][1].text(group.loc[line][in_token], group.loc[line][out_token]-group.loc[line][in_token]-v_adjust, group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
+						
+						ax[i][1].set_aspect(1./ax[i][1].get_data_ratio(), adjustable='box')
+						ax[i][1].plot((-lim, lim), (0, 0), linestyle='--', color='black', scalex=False, scaley=False)
+						
+						ax[i][1].set_xlabel(f'{in_token} cosine similarity')
+						ax[i][1].set_ylabel(f'{out_token} oversimilarity')
+					
+					title = f'{cossims.model_name.unique()[0]} cosine similarities to {str(np.unique(cossims.eval_data)[0])} {target_group} target group tokens'
+					title += f' @ epoch {cossims.eval_epoch.unique()[0]}/{cossims.total_epochs.unique()[0]} ({cossims.epoch_criteria.unique()[0].replace("_", " ")})\n'
+					title += f'min epochs: {cossims.min_epochs.unique()[0]}, '
+					title += f'max epochs: {cossims.max_epochs.unique()[0]}'
+					title += f', patience: {cossims.patience.unique()[0]}'
+					title += f' (\u0394={cossims.delta.unique()[0]})\n'
+					title += f'tuning: {cossims.tuning.unique()[0].replace("_", " ")}, '
+					title += ((f'masking: ' + cossims.masked_tuning_style.unique()[0]) if cossims.masked.unique()[0] else "unmasked") + ', '
+					title += f'{"with punctuation" if not cossims.strip_punct.unique()[0] else "no punctuation"}'
+					fig.suptitle(title)
+					
+					fig.tight_layout()
+						
+					pdf.savefig()
+					plt.close()
+		else:
+			log.info(f'Only one target group was provided for cosine similarities ({cossims.target_group.unique()[0]}). No comparison plots for cosine similarities can be created.')
+		
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str) -> None:
 		self.model.eval()
@@ -1269,6 +1353,8 @@ class Tuner:
 			epoch_criteria = eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual'
 		)
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
+		
+		# self.plot_cossims(most_similar_tokens) (do this after we've added the eval data to the cossim dfs)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
 			with open(f'{dataset_name}-{epoch_label}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
@@ -1472,6 +1558,8 @@ class Tuner:
 			epoch_criteria = eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 		)
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
+		
+		# self.plot_cossims(most_similar_tokens) (do this after we've added the eval data to the cossim dfs)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
 			with open(f'{dataset_name}-{epoch_label}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
@@ -2204,6 +2292,8 @@ class Tuner:
 			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 		)
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
+		
+		# self.plot_cossims(most_similar_tokens) (do this after we've added the eval data to the cossim dfs)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
 			with open(f'{dataset_name}-{epoch_label}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
