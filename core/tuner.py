@@ -1255,8 +1255,8 @@ class Tuner:
 			log.info('No target groups were provided for cosine similarities. No comparison plots for cosine similarities can be created.')
 			return
 		
-		if len(cossims.target_group.unique()) <= 1:
-			log.info(f'Fewer than one target group was provided for cosine similarities ({cossims.target_group.unique()[0]}). No comparison plots for cosine similarities can be created.')
+		if len(cossims.predicted_arg.unique()) <= 1:
+			log.info(f'One or fewer predicted arguments were provided for cosine similarities ({cossims.target_group.unique()[0]}). No comparison plots for cosine similarities can be created.')
 			return
 		
 		if cossims.model_id.unique()[0] == 'multiple':
@@ -1290,7 +1290,7 @@ class Tuner:
 				group_sems = group_sems.reset_index().drop(['target_group'], axis=1)
 				
 				pairs = [c for c in group.columns if not c == 'token']
-				pairs = [(target_group, c) for c in pairs if not c == target_group]
+				pairs = [(predicted_arg, c) for c in pairs if not c == predicted_arg]
 				
 				fig, ax = plt.subplots(len(pairs), 2)
 				ax = ax.reshape(len(pairs), 2)
