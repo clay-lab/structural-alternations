@@ -327,7 +327,6 @@ class Tuner:
 		self.cfg = cfg
 		
 		if self.string_id != 'multi':
-			
 			log.info(f"Initializing Tokenizer:\t{self.cfg.model.tokenizer}")
 			
 			# we do this with the self.cfg.tuning.to_mask data so that 
@@ -1253,85 +1252,120 @@ class Tuner:
 	def plot_cossims(self, cossims: pd.DataFrame) -> None:
 		cossims = cossims[~cossims.target_group.str.endswith('most similar')].reset_index(drop=True)
 		if cossims.empty:
-			log.info('No target groups were provided for cosine similarities. No comparison plots will be created.')
+			log.info('No target groups were provided for cosine similarities. No comparison plots for cosine similarities can be created.')
 			return
 		
+		if len(cossims.target_group.unique()) <= 1:
+			log.info(f'Fewer than one target group was provided for cosine similarities ({cossims.target_group.unique()[0]}). No comparison plots for cosine similarities can be created.')
+			return
+		
+		if cossims.model_id.unique()[0] == 'multiple':
+			cossims['cossim'] = cossims['mean']
+			cossims = cossims.drop('mean', axis = 1)
+		else:
+			cossims['sem'] = 0
+		
 		filename = cossims.eval_data.unique()[0] + '-'
-		epoch_label = '-' + cossims.epoch_criteria.unique()[0]
-		magnitude = floor(1 + np.log10(cossims.total_epochs.unique()[0]))
-		epoch_label = f'{str(cossims.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
+		epoch_label = cossims.epoch_criteria.unique()[0]
+		if cossims.model_id.unique()[0] != 'multiple':
+			epoch_label = '-' + epoch_label
+			magnitude = floor(1 + np.log10(cossims.max_epochs.unique()[0]))
+			epoch_label = f'{str(cossims.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
+		
 		filename += epoch_label + '-cossim-plots.pdf'
 		
-		if len(cossims.target_group.unique()) > 1:
-			with PdfPages(filename) as pdf:
-				for target_group in tqdm(cossims.target_group.unique()):
-					group = cossims[cossims.target_group == target_group].copy().reset_index(drop=True)
-					group = group[['predicted_arg', 'target_group', 'token', 'cossim']]
+		with PdfPages(filename) as pdf:
+			for target_group in cossims.target_group.unique():
+				group = cossims[cossims.target_group == target_group].copy().reset_index(drop=True)
+				
+				group_sems = group[['predicted_arg', 'target_group', 'token', 'sem']]
+				group = group[['predicted_arg', 'target_group', 'token', 'cossim']]
+				
+				group = group.pivot(index=['target_group', 'token'], columns='predicted_arg', values='cossim')
+				group.columns.name = None
+				group = group.reset_index().drop(['target_group'], axis=1)
+				
+				group_sems = group_sems.pivot(index=['target_group', 'token'], columns='predicted_arg', values='sem')
+				group_sems.columns.name = None
+				group_sems = group_sems.reset_index().drop(['target_group'], axis=1)
+				
+				pairs = [c for c in group.columns if not c == 'token']
+				pairs = [(target_group, c) for c in pairs if not c == target_group]
+				
+				fig, ax = plt.subplots(len(pairs), 2)
+				ax = ax.reshape(len(pairs), 2)
+				fig.set_size_inches(12, (6*len(pairs))+0.75)
+				
+				for i, (in_token, out_token) in enumerate(pairs):
+					sns.scatterplot(data=group, x=in_token, y=out_token, ax=ax[i][0], zorder=10)
+					ax[i][0].errorbar(data=group, x=in_token, xerr=group_sems[in_token], y=out_token, yerr=group_sems[out_token], ls='none', zorder=5)
 					
-					group = group.pivot(index=['target_group', 'token'], columns='predicted_arg', values='cossim')
-					group.columns.name = None
-					group = group.reset_index()
+					ulim = max([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
+					llim = min([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
 					
-					pairs = [c for c in group.columns if not c in ['target_group', 'token']]
-					pairs = [(target_group, c) for c in pairs if not c == target_group]
+					v_adjust = (ulim-llim)/90
+					# we do this so longer text can fit inside the plot instead of overflowing
+					ulim += v_adjust + (ulim-llim)/90
+					llim -= (v_adjust + (ulim-llim)/90)
+					ax[i][0].set_xlim((llim, ulim))
+					ax[i][0].set_ylim((llim, ulim))
 					
-					row_plots = len(pairs)
+					ax[i][0].set_aspect(1./ax[i][0].get_data_ratio(), adjustable='box')
+					ax[i][0].plot((llim, ulim), (llim, ulim), linestyle='--', color='gray', scalex=False, scaley=False, zorder=0)
 					
-					fig, ax = plt.subplots(row_plots, 2)
-					ax = ax.reshape(row_plots,2)
-					fig.set_size_inches(10,(5*row_plots)+2)
+					for line in range(0, len(group)):
+						 ax[i][0].text(group.loc[line][in_token], group.loc[line][out_token]-v_adjust, group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=10)
 					
-					for i, (in_token, out_token) in enumerate(pairs):
-						sns.scatterplot(data=group, x=in_token, y=out_token, ax=ax[i][0])
-						
-						lim = max([abs(v) for v in [*ax[i][0].get_xlim(), *ax[i][0].get_ylim()]])
-						ax[i][0].set_xlim((-lim, lim))
-						ax[i][0].set_ylim((-lim, lim))
-						
-						v_adjust = (2*lim)/150
-						for line in range(0, len(group)):
-							 ax[i][0].text(group.loc[line][in_token], group.loc[line][out_token]-v_adjust, group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
-						
-						ax[i][0].set_aspect(1./ax[i][0].get_data_ratio(), adjustable='box')
-						ax[i][0].plot((-lim, lim), (-lim, lim), linestyle='--', color='black', scalex=False, scaley=False)
-						ax[i][0].set_xlabel(f'{in_token} cosine similarity')
-						ax[i][0].set_ylabel(f'{out_token} cosine similarity')
-						
-						# y = y - x plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
-						sns.scatterplot(data=group, x=in_token, y=group[out_token]-group[in_token], ax=ax[i][1])
-						ax[i][1].set_xlim((-lim, lim))
-										
-						lim = max([abs(v) for v in [*ax[i][1].get_xlim(), *ax[i][1].get_ylim()]])
-						ax[i][1].set_ylim((-lim, lim))
-						
-						v_adjust = (2*lim)/150
-						for line in range(0, len(group)):
-							ax[i][1].text(group.loc[line][in_token], group.loc[line][out_token]-group.loc[line][in_token]-v_adjust, group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
-						
-						ax[i][1].set_aspect(1./ax[i][1].get_data_ratio(), adjustable='box')
-						ax[i][1].plot((-lim, lim), (0, 0), linestyle='--', color='black', scalex=False, scaley=False)
-						
-						ax[i][1].set_xlabel(f'{in_token} cosine similarity')
-						ax[i][1].set_ylabel(f'{out_token} oversimilarity')
+					ax[i][0].set_xlabel(f'{in_token} cosine similarity')
+					ax[i][0].set_ylabel(f'{out_token} cosine similarity')
 					
-					title = f'{cossims.model_name.unique()[0]} cosine similarities to {str(np.unique(cossims.eval_data)[0])} {target_group} target group tokens'
-					title += f' @ epoch {cossims.eval_epoch.unique()[0]}/{cossims.total_epochs.unique()[0]} ({cossims.epoch_criteria.unique()[0].replace("_", " ")})\n'
-					title += f'min epochs: {cossims.min_epochs.unique()[0]}, '
-					title += f'max epochs: {cossims.max_epochs.unique()[0]}'
-					title += f', patience: {cossims.patience.unique()[0]}'
-					title += f' (\u0394={cossims.delta.unique()[0]})\n'
-					title += f'tuning: {cossims.tuning.unique()[0].replace("_", " ")}, '
-					title += ((f'masking: ' + cossims.masked_tuning_style.unique()[0]) if cossims.masked.unique()[0] else "unmasked") + ', '
-					title += f'{"with punctuation" if not cossims.strip_punct.unique()[0] else "no punctuation"}'
-					fig.suptitle(title)
+					# y = y - x plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
+					sns.scatterplot(data=group, x=in_token, y=group[out_token]-group[in_token], ax=ax[i][1], zorder=10)
+					ax[i][1].errorbar(x=group[in_token], xerr=group_sems[in_token], y=group[out_token]-group[in_token], yerr=group_sems[out_token], ls='none', zorder=5)
 					
-					fig.tight_layout()
-						
-					pdf.savefig()
-					plt.close()
-		else:
-			log.info(f'Only one target group was provided for cosine similarities ({cossims.target_group.unique()[0]}). No comparison plots for cosine similarities can be created.')
-		
+					ax[i][1].set_xlim((llim, ulim))
+					ax[i][1].plot((llim, ulim), (0, 0), linestyle='--', color='gray', scalex=False, scaley=False, zorder=0)
+					
+					ulim = max([abs(v) for v in [*ax[i][1].get_ylim()]])
+					llim = -ulim
+					
+					v_adjust = (ulim-llim)/90
+					# we do this so longer text can fit inside the plot instead of overflowing
+					ulim += v_adjust + (ulim-llim)/90
+					llim -= (v_adjust + (ulim-llim)/90)
+					ax[i][1].set_ylim((llim, ulim))
+					
+					for line in range(0, len(group)):
+						ax[i][1].text(group.loc[line][in_token], group.loc[line][out_token]-group.loc[line][in_token]-v_adjust, group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=10)
+					
+					ax[i][1].set_aspect(1./ax[i][1].get_data_ratio(), adjustable='box')
+					
+					ax[i][1].set_xlabel(f'{in_token} cosine similarity')
+					ax[i][1].set_ylabel(f'{out_token} oversimilarity')
+				
+				title = cossims.model_name.unique()[0] if cossims.model_name.unique()[0] != 'multiple' else "Multiple models'"
+				title += f' cosine similarities to '
+				title += cossims.eval_data.unique()[0] if cossims.eval_data.unique()[0] != 'multiple' else "multiple eval sets'"
+				title += f' {target_group} target group tokens'
+				title += (' @ epoch ' + str(cossims.eval_epoch.unique()[0]) + '/') if cossims.eval_epoch.unique()[0] != 'multiple' else ', epochs: '
+				title += str(cossims.total_epochs.unique()[0])
+				title += f' ({cossims.epoch_criteria.unique()[0].replace("_", " ")})' if cossims.epoch_criteria.unique()[0] != 'multiple' else ' (multiple criteria)'
+				title += f'\nmin epochs: {cossims.min_epochs.unique()[0]}, '
+				title += f'max epochs: {cossims.max_epochs.unique()[0]}'
+				title += f', patience: {cossims.patience.unique()[0]}'
+				title += f' (\u0394={cossims.delta.unique()[0]})'
+				title += '\ntuning: ' + cossims.tuning.unique()[0].replace("_", " ")
+				title += ', masking' if all(cossims.masked == True) else ' unmasked' if all(1 - (cossims.masked == True)) else ''
+				title += (': ' + cossims.masked_tuning_style[(cossims.masked == True)].unique()[0] if cossims.masked_tuning_style[(cossims.masked == True)].unique().size > 0 else '') if not 'multiple' in cossims.masked_tuning_style[cossims.masked == True].unique() else ', masking: multiple' if any(cossims.masked == 'multiple') or any(cossims.masked == True) else ''
+				title += ', ' + ('no punctuation' if all(cossims.strip_punct == True) else "with punctuation" if not cossims.strip_punct.unique()[0] == 'multiple' and not any(cossims.strip_punct == True) else 'multiple punctuation')
+				
+				fig.suptitle(title)
+				
+				fig.tight_layout()
+				
+				pdf.savefig()
+				plt.close()
+	
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str) -> None:
 		self.model.eval()
@@ -1550,7 +1584,7 @@ class Tuner:
 		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
 		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
 		most_similar_tokens = most_similar_tokens.assign(
-			eval_data = eval_cfg.data.friendly_name,
+			eval_data=eval_cfg.data.friendly_name,
 			patience=self.cfg.hyperparameters.patience,
 			delta=self.cfg.hyperparameters.delta,
 			min_epochs=self.cfg.hyperparameters.min_epochs,
@@ -1593,10 +1627,12 @@ class Tuner:
 		# save the summary as a pickle and as a csv so that we have access to the original tensors
 		# these get converted to text in the csv, but the csv is easier to work with otherwise
 		summary.to_pickle(f"{dataset_name}-{epoch_label}-scores.pkl.gz")
+		# summary.to_pickle(f"{dataset_name}-{epoch_label}-odds_ratios.pkl.gz")
 		
 		summary_csv = summary.copy()
 		summary_csv['odds_ratio'] = summary_csv['odds_ratio'].astype(float).copy()
 		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-scores.csv.gz", index = False, na_rep = 'NaN')
+		# summary_csv.to_csv(f"{dataset_name}-{epoch_label}-odds_ratios.csv.gz", index = False, na_rep = 'NaN')
 		
 		log.info(f'Creating t-SNE plots')
 		self.plot_tsnes(summary, eval_cfg)
@@ -1792,7 +1828,10 @@ class Tuner:
 		if len(np.unique(summary.model_id.values)) > 1:
 			summary['odds_ratio'] = summary['mean']
 			summary = summary.drop('mean', axis = 1)
-			
+		else:
+			summary['sem'] = 0
+		
+		if len(np.unique(summary.model_name.values)) > 1:
 			# if we are dealing with multiple models, we want to compare them by removing the idiosyncratic variation in how
 			# tokenization works. bert and distilbert are uncased, which means the tokens are converted to lower case.
 			# here, we convert them back to upper case so they can be plotted in the same group as the roberta tokens,
@@ -1816,13 +1855,11 @@ class Tuner:
 				
 				# first, replace the ones that don't start with spaces before with a preceding ^
 				summary.loc[(summary['model_name'] == 'roberta') & ~(summary['ratio_name'].str.startswith(chr(288))), 'ratio_name'] = \
-				summary[(summary['model_name'] == 'roberta') & ~(summary['ratio_name'].str.startswith(chr(288)))].replace({r'((^\w)|(?<=\/)\w)' : r'^\1'})
+				summary[(summary['model_name'] == 'roberta') & ~(summary['ratio_name'].str.startswith(chr(288)))]['ratio_name'].replace({r'((^\w)|(?<=\/)\w)' : r'^\1'})
 				
 				# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
 				summary.loc[(summary['model_name'] == 'roberta') & (summary['ratio_name'].str.startswith(chr(288))), 'ratio_name'] = \
 				[re.sub(chr(288), '', ratio_name) for ratio_name in summary[(summary['model_name'] == 'roberta') & (summary['ratio_name'].str.startswith(chr(288)))].ratio_name]
-		else:
-			summary['sem'] = 0
 		
 		# Set colors for every unique odds ratio we are plotting
 		all_ratios = summary['ratio_name'].unique()
@@ -2353,7 +2390,9 @@ class Tuner:
 		
 		log.info(f"SAVING TO: {os.getcwd()}")
 		summary.to_pickle(f"{dataset_name}-0-{epoch}-scores.pkl.gz")
+		# summary.to_pickle(f"{dataset_name}-0-{epoch}-surprisals.pkl.gz")
 		summary.to_csv(f"{dataset_name}-0-{epoch}-scores.csv.gz", index = False, na_rep = 'NaN')
+		# summary.to_csv(f"{dataset_name}-0-{epoch}-surprisals.csv.gz", index = False, na_rep = 'NaN')
 		
 		# Create graphs
 		log.info(f'Creating t-SNE plots')
@@ -2524,7 +2563,6 @@ class Tuner:
 		return summary
 	
 	def graph_new_verb_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, axis_size: int = 10, pt_size: int = 24) -> None:
-		
 		if len(np.unique(summary.model_id.values)) > 1:
 			summary['surprisal'] = summary['mean']
 			summary = summary.drop('mean', axis = 1)

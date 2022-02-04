@@ -26,21 +26,11 @@ def eval(cfg: DictConfig) -> None:
 		args_cfg_path = os.path.join(chkpt_dir, 'args.yaml')
 		args_cfg = OmegaConf.load(args_cfg_path)
 		
-		tuner.eval_new_verb(
-			eval_cfg = cfg,
-			args_cfg = args_cfg,
-			checkpoint_dir = chkpt_dir
-		)
+		tuner.eval_new_verb(eval_cfg=cfg, args_cfg=args_cfg, checkpoint_dir=chkpt_dir)
 	elif cfg.data.entail:
-		tuner.eval_entailments(
-			eval_cfg = cfg,
-			checkpoint_dir = chkpt_dir
-		)
+		tuner.eval_entailments(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
 	else:
-		tuner.eval(
-			eval_cfg = cfg, 
-			checkpoint_dir=chkpt_dir
-		)
+		tuner.eval(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
 
 if __name__ == "__main__":
 	eval()

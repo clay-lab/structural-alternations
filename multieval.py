@@ -36,6 +36,7 @@ def multieval(cfg: DictConfig) -> None:
 	starting_dir = os.getcwd()
 	
 	# Get a regex for the score file name so we can just load it if it already exists
+	# change the regexes to use an appropriate metric instead of 'scores'
 	if cfg.epoch == 'None':
 		cfg.epoch = None
 		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-(([0-9]+)-+)+(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|cossim.csv.gz)))'
@@ -82,21 +83,11 @@ def multieval(cfg: DictConfig) -> None:
 				args_cfg_path = os.path.join(chkpt_dir, 'args.yaml')
 				args_cfg = OmegaConf.load(args_cfg_path)
 				
-				tuner.eval_new_verb(
-					eval_cfg = cfg,
-					args_cfg = args_cfg,
-					checkpoint_dir = chkpt_dir
-				)
+				tuner.eval_new_verb(eval_cfg=cfg, args_cfg=args_cfg, checkpoint_dir=chkpt_dir)
 			elif cfg.data.entail:
-				tuner.eval_entailments(
-					eval_cfg = cfg,
-					checkpoint_dir = chkpt_dir
-				)
+				tuner.eval_entailments(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
 			else:
-				tuner.eval(
-					eval_cfg = cfg, 
-					checkpoint_dir = chkpt_dir
-				)
+				tuner.eval(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
 				
 			# Switch back to the starting dir and copy the eval information to each individual directory
 			if not eval_dir == starting_dir:
@@ -109,7 +100,6 @@ def multieval(cfg: DictConfig) -> None:
 				
 				os.rename(os.path.join(eval_dir, 'multieval.log'), os.path.join(eval_dir, 'eval.log'))
 				os.remove(os.path.join(starting_dir, 'multieval.log'))
-				
 	
 	# If we are comparing the models, get the summary files and run the comparison
 	if cfg.compare:
@@ -121,6 +111,7 @@ def multieval(cfg: DictConfig) -> None:
 				for f in os.listdir(eval_dir)
 					if re.match(score_file_name, f) and
 					   f.endswith('-scores.csv.gz')
+					   # change this to a filename with the appropriate metric
 		]
 		
 		summary_of_summaries = load_summaries(summary_files)
@@ -133,6 +124,7 @@ def multieval(cfg: DictConfig) -> None:
 		else:
 			multi_eval(cfg, source_dir, starting_dir, summary_of_summaries)
 			
+		# move this stuff so we can plot the cossims for the summaries (this requires instatiating a dummy tuner)
 		similarities_files = [
 			os.path.join(eval_dir, f)
 			for eval_dir in eval_dirs
@@ -147,6 +139,23 @@ def multieval(cfg: DictConfig) -> None:
 		log.info(f'Summarizing similarity predictions for {n_models} models')
 		summary_of_similarities = summary_of_similarities.drop_duplicates().reset_index(drop=True)
 		
+		roberta_summary_of_similarities = summary_of_similarities[(~summary_of_similarities.target_group.str.endswith('most similar')) & (summary_of_similarities.model_name == 'roberta')].copy()
+		num_tokens_in_summary_of_similarities = len(roberta_summary_of_similarities.token.unique())
+		
+		roberta_summary_of_similarities['token'] = [re.sub(chr(288), '', token) for token in roberta_summary_of_similarities.token]
+		num_tokens_after_change = len(roberta_summary_of_similarities.token.unique())
+		if num_tokens_in_summary_of_similarities != num_tokens_after_change:
+			# this isn't going to actually get rid of any info, but it's worth logging
+			log.warning('RoBERTa cossim target tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
+		
+		# first, replace the ones that don't start with spaces before with a preceding ^
+		summary_of_similarities.loc[(summary_of_similarities['model_name'] == 'roberta') & ~(summary_of_similarities.token.str.startswith(chr(288))) & ~(summary_of_similarities.target_group.str.endswith('most similar')), 'token'] = \
+		summary_of_similarities[(summary_of_similarities['model_name'] == 'roberta') & ~(summary_of_similarities.token.str.startswith(chr(288))) & ~(summary_of_similarities.target_group.str.endswith('most similar'))]['token'].replace({r'((^\w)|(?<=\/)\w)' : r'^\1'})
+		
+		# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
+		summary_of_similarities.loc[(summary_of_similarities['model_name'] == 'roberta') & (summary_of_similarities.token.str.startswith(chr(288))) & ~(summary_of_similarities.target_group.str.endswith('most similar')), 'token'] = \
+		[re.sub(chr(288), '', token) for token in summary_of_similarities[(summary_of_similarities['model_name'] == 'roberta') & (summary_of_similarities['predicted_arg'].str.startswith(chr(288))) & ~(summary_of_similarities.target_group.str.endswith('most similar'))].token]
+		
 		summary_of_similarities = summary_of_similarities.assign(
 			model_id = summary_of_similarities.model_id if n_models == 1 else 'multiple',
 			predicted_arg = [predicted_arg.replace(chr(288), '').upper() for predicted_arg in summary_of_similarities.predicted_arg],
@@ -155,6 +164,7 @@ def multieval(cfg: DictConfig) -> None:
 			total_epochs = summary_of_similarities.total_epochs if len(summary_of_similarities.total_epochs.unique()) == 1 else 'multiple',
 			min_epochs = summary_of_similarities.min_epochs if len(summary_of_similarities.min_epochs.unique()) == 1 else 'multiple',
 			max_epochs = summary_of_similarities.max_epochs if len(summary_of_similarities.max_epochs.unique()) == 1 else 'multiple',
+			eval_data = summary_of_similarities.eval_data if len(summary_of_similarities.eval_data.unique()) == 1 else 'multiple',
 			patience = summary_of_similarities.patience if len(summary_of_similarities.patience.unique()) == 1 else 'multiple',
 			delta = summary_of_similarities.delta if len(summary_of_similarities.delta.unique()) == 1 else 'multiple',
 			model_name = summary_of_similarities.model_name if len(summary_of_similarities.model_name.unique()) == 1 else 'multiple',
@@ -163,14 +173,19 @@ def multieval(cfg: DictConfig) -> None:
 			masked_tuning_style = summary_of_similarities.masked_tuning_style if len(summary_of_similarities.masked_tuning_style.unique()) == 1 else 'multiple',
 			strip_punct = summary_of_similarities.strip_punct if len(summary_of_similarities.strip_punct.unique()) == 1 else 'multiple'
 		)
-			
+		
+		# different models have different token ids for the same token, so we need to fix that when that happens
+		for token in summary_of_similarities.token:
+			if len(summary_of_similarities[summary_of_similarities.token == token].token_id.unique()) > 1:
+				summary_of_similarities.loc[summary_of_similarities.token == token, 'token_id'] = 'multiple'
+		
 		summary_of_similarities = summary_of_similarities. \
 			groupby([c for c in summary_of_similarities.columns if not c == 'cossim']) \
 			['cossim']. \
 			agg(['mean', 'sem', 'size']). \
 			reset_index(). \
 			sort_values(['predicted_arg', 'target_group']). \
-			rename({'size' : 'num_points'}, axis = 1)
+			rename({'size' : 'num_points'}, axis=1)
 	
 		eval_epoch = cfg.epoch if len(np.unique(summary_of_similarities.eval_epoch)) > 1 or np.unique(summary_of_similarities.eval_epoch)[0] == 'multiple' else np.unique(summary_of_similarities.eval_epoch)[0]
 		
@@ -203,9 +218,8 @@ def load_summaries(summary_files: List[str]) -> pd.DataFrame:
 	summaries = pd.DataFrame()
 	for summary_file in summary_files:
 		if summary_file.endswith('.pkl.gz'):
-			with gzip.open(summary_file, 'rb') as f:
-				summary = pkl.load(f)
-				summaries = pd.concat([summaries, summary], ignore_index = True)
+			summary = pd.read_pickle(f)
+			summaries = pd.concat([summaries, summary], ignore_index = True)
 		else:
 			summary = pd.read_csv(summary_file)
 			summaries = pd.concat([summaries, summary], ignore_index = True)
@@ -221,6 +235,7 @@ def save_summary(cfg: DictConfig, save_dir: str, summary: pd.DataFrame) -> None:
 	os.chdir(save_dir)
 	summary.to_pickle(f"{dataset_name}-{eval_epoch}-scores.pkl.gz")
 	summary.to_csv(f"{dataset_name}-{eval_epoch}-scores.csv.gz", index = False)
+	# save these with appropriate file names depending on the metric
 
 def adjust_cfg(cfg: DictConfig, source_dir: str, summary: pd.DataFrame) -> DictConfig:
 	# Load the appropriate config file for model parameters,
