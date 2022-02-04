@@ -1388,6 +1388,7 @@ class Tuner:
 		)
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
 		
+		# log.info('Creating cosine similarity plots')
 		# self.plot_cossims(most_similar_tokens) (do this after we've added the eval data to the cossim dfs)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
@@ -1593,6 +1594,7 @@ class Tuner:
 		)
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
 		
+		# log.info('Creating cosine similarity plots')
 		# self.plot_cossims(most_similar_tokens) (do this after we've added the eval data to the cossim dfs)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
@@ -2330,6 +2332,7 @@ class Tuner:
 		)
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
 		
+		# log.info('Creating cosine similarity plots')
 		# self.plot_cossims(most_similar_tokens) (do this after we've added the eval data to the cossim dfs)
 		
 		if len(most_similar_tokens.predicted_arg.unique()) > 1:
