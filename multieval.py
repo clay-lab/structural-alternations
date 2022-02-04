@@ -139,22 +139,23 @@ def multieval(cfg: DictConfig) -> None:
 		log.info(f'Summarizing similarity predictions for {n_models} models')
 		summary_of_similarities = summary_of_similarities.drop_duplicates().reset_index(drop=True)
 		
-		roberta_summary_of_similarities = summary_of_similarities[(~summary_of_similarities.target_group.str.endswith('most similar')) & (summary_of_similarities.model_name == 'roberta')].copy()
-		num_tokens_in_summary_of_similarities = len(roberta_summary_of_similarities.token.unique())
+		# roberta_summary_of_similarities = summary_of_similarities[(~summary_of_similarities.target_group.str.endswith('most similar')) & (summary_of_similarities.model_name == 'roberta')].copy()
+		# num_tokens_in_summary_of_similarities = len(roberta_summary_of_similarities.token.unique())
 		
-		roberta_summary_of_similarities['token'] = [re.sub(chr(288), '', token) for token in roberta_summary_of_similarities.token]
-		num_tokens_after_change = len(roberta_summary_of_similarities.token.unique())
-		if num_tokens_in_summary_of_similarities != num_tokens_after_change:
-			# this isn't going to actually get rid of any info, but it's worth logging
-			log.warning('RoBERTa cossim target tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
+		# roberta_summary_of_similarities['token'] = [re.sub(chr(288), '', token) for token in roberta_summary_of_similarities.token]
+		# num_tokens_after_change = len(roberta_summary_of_similarities.token.unique())
+		# if num_tokens_in_summary_of_similarities != num_tokens_after_change:
+		# 	# this isn't going to actually get rid of any info, but it's worth logging
+		#   # we only check this for the target tokens, because the situation is common enough with found tokens that it's not really worth mentioning
+		# 	log.warning('RoBERTa cossim target tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
 		
-		# first, replace the ones that don't start with spaces before with a preceding ^
-		summary_of_similarities.loc[(summary_of_similarities['model_name'] == 'roberta') & ~(summary_of_similarities.token.str.startswith(chr(288))) & ~(summary_of_similarities.target_group.str.endswith('most similar')), 'token'] = \
-		summary_of_similarities[(summary_of_similarities['model_name'] == 'roberta') & ~(summary_of_similarities.token.str.startswith(chr(288))) & ~(summary_of_similarities.target_group.str.endswith('most similar'))]['token'].replace({r'((^\w)|(?<=\/)\w)' : r'^\1'})
+		# # first, replace the ones that don't start with spaces before with a preceding ^
+		# summary_of_similarities.loc[(summary_of_similarities['model_name'] == 'roberta') & ~(summary_of_similarities.token.str.startswith(chr(288))), 'token'] = \
+		# summary_of_similarities[(summary_of_similarities['model_name'] == 'roberta') & ~(summary_of_similarities.token.str.startswith(chr(288)))]['token'].replace({r'((^\w)|(?<=\/)\w)' : r'^\1'})
 		
-		# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
-		summary_of_similarities.loc[(summary_of_similarities['model_name'] == 'roberta') & (summary_of_similarities.token.str.startswith(chr(288))) & ~(summary_of_similarities.target_group.str.endswith('most similar')), 'token'] = \
-		[re.sub(chr(288), '', token) for token in summary_of_similarities[(summary_of_similarities['model_name'] == 'roberta') & (summary_of_similarities['predicted_arg'].str.startswith(chr(288))) & ~(summary_of_similarities.target_group.str.endswith('most similar'))].token]
+		# # then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
+		# summary_of_similarities.loc[(summary_of_similarities['model_name'] == 'roberta') & (summary_of_similarities.token.str.startswith(chr(288))), 'token'] = \
+		# [re.sub(chr(288), '', token) for token in summary_of_similarities[(summary_of_similarities['model_name'] == 'roberta') & (summary_of_similarities.token.str.startswith(chr(288)))].token]
 		
 		summary_of_similarities = summary_of_similarities.assign(
 			model_id = summary_of_similarities.model_id if n_models == 1 else 'multiple',
