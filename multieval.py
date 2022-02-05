@@ -333,7 +333,7 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 			rename({'size' : 'num_points'}, axis=1)
 	
 	cossims = pd.concat([targets, most_similars], ignore_index=True)
-	breakpoint()
+	
 	# cfg = adjust_cfg(cfg, source_dir, cossims)
 	#
 	# Plot the overall results
