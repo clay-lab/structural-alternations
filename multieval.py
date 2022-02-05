@@ -139,7 +139,7 @@ def multieval(cfg: DictConfig) -> None:
 		n_models = len(summary_of_similarities.model_id.unique())
 		log.info(f'Comparing cosine similarity data for {n_models} models')
 		
-		summary_of_similarities = multi_eval_cossims(summary_of_similarities)
+		summary_of_similarities = multi_eval_cossims(cfg, source_dir, starting_dir, summary_of_similarities)
 		
 		filename = summary_of_similarities.eval_data.unique()[0] + '-'
 		epoch_label = summary_of_similarities.epoch_criteria.unique()[0] if len(summary_of_similarities.epoch_criteria.unique()) == 1 else ''
@@ -245,7 +245,7 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 def multi_eval_new_verb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
 	return NotImplementedError('Comparison of new verb data not currently supported.')
 
-def multi_eval_cossims(cossims: pd.DataFrame) -> pd.DataFrame:
+def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims: pd.DataFrame) -> pd.DataFrame:
 	cossims = cossims.copy()
 	
 	if not (len(cossims.model_name.unique()) == 1 and cossims.model_name.unique()[0] == 'roberta'):
@@ -334,6 +334,13 @@ def multi_eval_cossims(cossims: pd.DataFrame) -> pd.DataFrame:
 	
 	cossims = pd.concat([targets, most_similars], ignore_index=True)
 	
+	# cfg = adjust_cfg(cfg, source_dir, cossims)
+	#
+	# Plot the overall results
+	# tuner = Tuner(cfg)
+	# log.info(f'Plotting cosine similarities from {len(cossims.model_id.unique())} models')
+	# tuner.plot_cossims(cossims)
+	
 	filename = cossims.eval_data.unique()[0] + '-'
 	epoch_label = cossims.epoch_criteria.unique()[0] if len(cossims.epoch_criteria.unique()) == 1 else ''
 	if len(cossims.model_id.unique()) == 1:
@@ -354,6 +361,8 @@ def multi_eval_cossims(cossims: pd.DataFrame) -> pd.DataFrame:
 					for diff in means_diffs:
 						log.info(f'Mean cossim {diff} targets for {predicted_arg} across {n_models} models: {"{:.2f}".format(means_diffs[diff])}')
 						f.write(f'Mean cossim {diff} targets for {predicted_arg} across {n_models} models: {means_diffs[diff]}\n')
+	
+	return cossims
 
 
 if __name__ == "__main__":

@@ -1362,7 +1362,7 @@ class Tuner:
 					ax[i][0].text(
 						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0], 
 						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == out_token)].cossim.values[0], 
-						model_name, size=10, horizontalalignment='center', verticalalignment='center', color='black', zorder=15, alpha=0.75, fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')]
+						model_name, size=10, horizontalalignment='center', verticalalignment='center', color='black', zorder=15, alpha=0.5, fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')]
 					)
 			
 			ax[i][0].set_xlabel(f'{in_token} cosine similarity')
@@ -1397,7 +1397,7 @@ class Tuner:
 					ax[i][1].text(
 						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0], 
 						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == out_token)].cossim.values[0] - model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0],
-						model_name, size=10, horizontalalignment='center', verticalalignment='center', color='black', zorder=15, alpha=0.75, fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')])
+						model_name, size=10, horizontalalignment='center', verticalalignment='center', color='black', zorder=15, alpha=0.5, fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')])
 			
 			ax[i][1].set_aspect(1./ax[i][1].get_data_ratio(), adjustable='box')
 			
