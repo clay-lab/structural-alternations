@@ -1280,7 +1280,7 @@ class Tuner:
 		group = cossims[['predicted_arg', 'target_group', idx_col, 'cossim']]
 		group_sems = cossims[['predicted_arg', 'target_group', idx_col, 'sem']]
 		
-		if idx_col = 'model_id':
+		if idx_col == 'model_id':
 			model_means = cossims.groupby(['model_name', 'predicted_arg']).cossim.agg('mean')
 			model_means = model_means.reset_index()
 		
@@ -1303,13 +1303,13 @@ class Tuner:
 		for i, (in_token, out_token) in enumerate(pairs):
 			# we might be able to use a sns.jointplot to plot histograms instead of just ticks for the means,
 			# but this causes other complex problems that I haven't figured out yet. So we'll stick with the simple thing for now
-			sns.scatterplot(data=group, x=in_token, y=out_token, ax=ax[i][0], zorder=5, hue='target_group')
+			sns.scatterplot(data=group, x=in_token, y=out_token, ax=ax[i][0], zorder=5, hue='target_group', linewidth=0)
 			legend = [c for c in ax[i][0].get_children() if isinstance(c, matplotlib.legend.Legend)][0]
 			legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ')
 			
 			collections = ax[i][0].collections[1:].copy()
 			for (_, eb_group), (_, eb_group_sems), collection in zip(group.groupby('target_group'), group_sems.groupby('target_group'), collections):
-				ax[i][0].errorbar(data=eb_group, x=in_token, xerr=eb_group_sems[in_token], y=out_token, yerr=eb_group_sems[out_token], color=collection._original_edgecolor, ls='none', zorder=10)
+				ax[i][0].errorbar(data=eb_group, x=in_token, xerr=eb_group_sems[in_token], y=out_token, yerr=eb_group_sems[out_token], color=collection._original_edgecolor, ls='none', zorder=2.5)
 			
 			ulim = max([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
 			llim = min([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
@@ -1325,7 +1325,7 @@ class Tuner:
 			ax[i][0].set_ylim((llim, ulim))
 			
 			# here we add ticks to show the mean and standard errors along each axis
-			group_means = group.drop(idx_col, axis=1).groupby('target_group').agg({'mean', 'sem'})
+			group_means = group.drop(idx_col, axis=1).groupby(['target_group']).agg({'mean', 'sem'})
 			cols = list(set([c[0] for c in group_means.columns]))
 			group_means.columns = ['_'.join(c) for c in group_means.columns]
 			for predicted_arg in cols:
@@ -1334,16 +1334,16 @@ class Tuner:
 						ax[i][0].plot((group_means.loc[target_group][predicted_arg + '_mean'], group_means.loc[target_group][predicted_arg + '_mean']), (llim, llim+range_mean_tick*3), linestyle='-', color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3)
 						ax[i][0].plot(
 							(
-								group_means.loc[target_group][predicted_arg + '_mean']-group_means.loc[target_group][predicted_arg + '_sem'], 
+								group_means.loc[target_group][predicted_arg + '_mean']-group_means.loc[target_group][predicted_arg + '_sem'],
 							 	group_means.loc[target_group][predicted_arg + '_mean']+group_means.loc[target_group][predicted_arg + '_sem']
 							), 
-							(llim+v_adjust*1.5, llim+v_adjust*1.5), 
+							(llim+range_mean_tick*1.5, llim+range_mean_tick*1.5),
 							linestyle='-', linewidth=0.75, color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3
 						)
 					else:
 						ax[i][0].plot((llim, llim+range_mean_tick*3), (group_means.loc[target_group][predicted_arg + '_mean'], group_means.loc[target_group][predicted_arg + '_mean']), linestyle='-', color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3)
 						ax[i][0].plot(
-							(llim+v_adjust*1.5, llim+v_adjust*1.5), 
+							(llim+range_mean_tick*1.5, llim+range_mean_tick*1.5), 
 							(
 								group_means.loc[target_group][predicted_arg + '_mean']-group_means.loc[target_group][predicted_arg + '_sem'], 
 								group_means.loc[target_group][predicted_arg + '_mean']+group_means.loc[target_group][predicted_arg + '_sem']
@@ -1362,20 +1362,20 @@ class Tuner:
 					ax[i][0].text(
 						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0], 
 						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == out_token)].cossim.values[0], 
-						model_name, size=10, horizontalalignment='center', verticalalignment='center', color='black', zorder=15, alpha=0.5, fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')]
+						model_name, size=10, horizontalalignment='center', verticalalignment='center', color='black', zorder=15, alpha=0.65, fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')]
 					)
 			
 			ax[i][0].set_xlabel(f'{in_token} cosine similarity')
 			ax[i][0].set_ylabel(f'{out_token} cosine similarity')
 			
 			# y = y - x plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
-			sns.scatterplot(data=group, x=in_token, y=group[out_token]-group[in_token], ax=ax[i][1], zorder=10, hue='target_group')
+			sns.scatterplot(data=group, x=in_token, y=group[out_token]-group[in_token], ax=ax[i][1], zorder=10, hue='target_group', linewidth=0)
 			legend = [c for c in ax[i][1].get_children() if isinstance(c, matplotlib.legend.Legend)][0]
 			legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ')
 			
 			collections = ax[i][1].collections[1:].copy()
 			for (_, eb_group), (_, eb_group_sems), collection in zip(group.groupby('target_group'), group_sems.groupby('target_group'), collections):
-				ax[i][1].errorbar(x=eb_group[in_token], xerr=eb_group_sems[in_token], y=eb_group[out_token]-eb_group[in_token], yerr=eb_group_sems[out_token], color=collection._original_edgecolor, ls='none', zorder=10)
+				ax[i][1].errorbar(x=eb_group[in_token], xerr=eb_group_sems[in_token], y=eb_group[out_token]-eb_group[in_token], yerr=eb_group_sems[out_token], color=collection._original_edgecolor, ls='none', zorder=2.5)
 			
 			ax[i][1].set_xlim((llim, ulim))
 			ax[i][1].plot((llim, ulim), (0, 0), linestyle='--', color='black', scalex=False, scaley=False, zorder=0, alpha=0.3)
@@ -1397,7 +1397,7 @@ class Tuner:
 					ax[i][1].text(
 						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0], 
 						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == out_token)].cossim.values[0] - model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0],
-						model_name, size=10, horizontalalignment='center', verticalalignment='center', color='black', zorder=15, alpha=0.5, fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')])
+						model_name, size=10, horizontalalignment='center', verticalalignment='center', color='black', zorder=15, alpha=0.65, fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')])
 			
 			ax[i][1].set_aspect(1./ax[i][1].get_data_ratio(), adjustable='box')
 			
