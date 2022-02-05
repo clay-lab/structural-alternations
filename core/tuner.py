@@ -23,8 +23,8 @@ import pickle as pkl
 import seaborn as sns
 import torch.nn as nn
 
-from math import ceil, floor
 from tqdm import trange, tqdm
+from math import ceil, floor, sqrt
 from typing import Dict, List, Tuple, Union, Type
 from omegaconf import DictConfig, OmegaConf, open_dict
 from transformers import logging as lg
@@ -1250,7 +1250,7 @@ class Tuner:
 		tsne_df.to_csv(f'{dataset_name}-{epoch_label}-tsne.csv.gz', index=False)
 	
 	def plot_cossims(self, cossims: pd.DataFrame) -> None:
-		cossims = cossims[~cossims.target_group.str.endswith('most similar')].reset_index(drop=True)
+		cossims = cossims[~cossims.target_group.str.endswith('most similar')].copy().reset_index(drop=True)
 		if cossims.empty:
 			log.info('No target groups were provided for cosine similarities. No comparison plots for cosine similarities can be created.')
 			return
@@ -1269,102 +1269,145 @@ class Tuner:
 		epoch_label = cossims.epoch_criteria.unique()[0]
 		if cossims.model_id.unique()[0] != 'multiple':
 			epoch_label = '-' + epoch_label
-			magnitude = floor(1 + np.log10(cossims.max_epochs.unique()[0]))
+			magnitude = floor(1 + np.log10(cossims.total_epochs.unique()[0]))
 			epoch_label = f'{str(cossims.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
 		
 		filename += epoch_label + '-cossim-plots.pdf'
 		
-		with PdfPages(filename) as pdf:
-			for target_group in cossims.target_group.unique():
-				group = cossims[cossims.target_group == target_group].copy().reset_index(drop=True)
+		group = cossims[['predicted_arg', 'target_group', 'token', 'cossim']]
+		group_sems = cossims[['predicted_arg', 'target_group', 'token', 'sem']]
+		
+		group = group.pivot(index=['target_group', 'token'], columns='predicted_arg', values='cossim')
+		group.columns.name = None
+		group = group.reset_index()#.drop(['target_group'], axis=1)
+		
+		group_sems = group_sems.pivot(index=['target_group', 'token'], columns='predicted_arg', values='sem')
+		group_sems.columns.name = None
+		group_sems = group_sems.reset_index()#.drop(['target_group'], axis=1)
+		
+		pairs = [c for c in group.columns if not c in ['token', 'target_group']]
+		pairs = [pair for pair in itertools.combinations(pairs, 2) if not pair[0] == pair[1]]
+		pairs = list(set(tuple(sorted(pair)) for pair in pairs))
+		
+		fig, ax = plt.subplots(len(pairs), 2)
+		ax = ax.reshape(len(pairs), 2)
+		fig.set_size_inches(12.5, (6*len(pairs))+(0.6*len(cossims.predicted_arg.unique()))+(0.6*len(cossims.target_group.unique()))+0.25)
+		
+		for i, (in_token, out_token) in enumerate(pairs):
+			sns.scatterplot(data=group, x=in_token, y=out_token, ax=ax[i][0], zorder=5, hue='target_group')
+			legend = [c for c in ax[i][0].get_children() if isinstance(c, matplotlib.legend.Legend)][0]
+			legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ')
+			
+			collections = ax[i][0].collections[1:].copy()
+			for (_, eb_group), (_, eb_group_sems), collection in zip(group.groupby('target_group'), group_sems.groupby('target_group'), collections):
+				ax[i][0].errorbar(data=eb_group, x=in_token, xerr=eb_group_sems[in_token], y=out_token, yerr=eb_group_sems[out_token], color=collection._original_edgecolor, ls='none', zorder=10)
+			
+			ulim = max([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
+			llim = min([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
+			
+			v_adjust = (ulim-llim)/90
+			# we do this so longer text can fit inside the plot instead of overflowing
+			ulim += v_adjust + (ulim-llim)/90
+			llim -= (v_adjust + (ulim-llim)/90)
+			ax[i][0].set_xlim((llim, ulim))
+			ax[i][0].set_ylim((llim, ulim))
+			
+			ax[i][0].set_aspect(1./ax[i][0].get_data_ratio(), adjustable='box')
+			ax[i][0].plot((llim, ulim), (llim, ulim), linestyle='--', color='gray', scalex=False, scaley=False, zorder=0)
+			
+			for line in range(0, len(group)):
+				ax[i][0].text(group.loc[line][in_token], group.loc[line][out_token]-(v_adjust if group_sems.loc[line][out_token] == 0 else (group_sems.loc[line][out_token]+(v_adjust/2))), group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15)
+			
+			ax[i][0].set_xlabel(f'{in_token} cosine similarity')
+			ax[i][0].set_ylabel(f'{out_token} cosine similarity')
+			
+			# y = y - x plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
+			sns.scatterplot(data=group, x=in_token, y=group[out_token]-group[in_token], ax=ax[i][1], zorder=10, hue='target_group')
+			legend = [c for c in ax[i][1].get_children() if isinstance(c, matplotlib.legend.Legend)][0]
+			legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ')
+			
+			collections = ax[i][1].collections[1:].copy()
+			for (_, eb_group), (_, eb_group_sems), collection in zip(group.groupby('target_group'), group_sems.groupby('target_group'), collections):
+				ax[i][1].errorbar(x=eb_group[in_token], xerr=eb_group_sems[in_token], y=eb_group[out_token]-eb_group[in_token], yerr=eb_group_sems[out_token], color=collection._original_edgecolor, ls='none', zorder=10)
+			
+			ax[i][1].set_xlim((llim, ulim))
+			ax[i][1].plot((llim, ulim), (0, 0), linestyle='--', color='gray', scalex=False, scaley=False, zorder=0)
+			
+			ulim = max([abs(v) for v in [*ax[i][1].get_ylim()]])
+			llim = -ulim
+			
+			v_adjust = (ulim-llim)/90
+			# we do this so longer text can fit inside the plot instead of overflowing
+			ulim += v_adjust + (ulim-llim)/90
+			llim -= (v_adjust + (ulim-llim)/90)
+			ax[i][1].set_ylim((llim, ulim))
+			
+			for line in range(0, len(group)):
+				ax[i][1].text(group.loc[line][in_token], group.loc[line][out_token]-group.loc[line][in_token]-(v_adjust if group_sems.loc[line][out_token] == 0 else (group_sems.loc[line][out_token]+(v_adjust/2))), group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=10)
+			
+			ax[i][1].set_aspect(1./ax[i][1].get_data_ratio(), adjustable='box')
+			
+			ax[i][1].set_xlabel(f'{in_token} cosine similarity')
+			ax[i][1].set_ylabel(f'{out_token} \u2212 {in_token} cosine similarity')
+		
+		title = cossims.model_name.unique()[0] if cossims.model_name.unique()[0] != 'multiple' else "Multiple models'"
+		title += f' cosine similarities to '
+		title += cossims.eval_data.unique()[0] if cossims.eval_data.unique()[0] != 'multiple' else "multiple eval sets'"
+		title += f' target group tokens'
+		title += (' @ epoch ' + str(cossims.eval_epoch.unique()[0]) + '/') if cossims.eval_epoch.unique()[0] != 'multiple' else ', epochs: '
+		title += str(cossims.total_epochs.unique()[0])
+		title += f' ({cossims.epoch_criteria.unique()[0].replace("_", " ")})' if cossims.epoch_criteria.unique()[0] != 'multiple' else ' (multiple criteria)'
+		title += f'\nmin epochs: {cossims.min_epochs.unique()[0]}, '
+		title += f'max epochs: {cossims.max_epochs.unique()[0]}'
+		title += f', patience: {cossims.patience.unique()[0]}'
+		title += f' (\u0394={cossims.delta.unique()[0]})'
+		title += '\ntuning: ' + cossims.tuning.unique()[0].replace("_", " ")
+		title += ', masking' if all(cossims.masked == True) else ' unmasked' if all(1 - (cossims.masked == True)) else ''
+		title += (': ' + cossims.masked_tuning_style[(cossims.masked == True)].unique()[0] if cossims.masked_tuning_style[(cossims.masked == True)].unique().size > 0 else '') if not 'multiple' in cossims.masked_tuning_style[cossims.masked == True].unique() else ', masking: multiple' if any(cossims.masked == 'multiple') or any(cossims.masked == True) else ''
+		title += ', ' + ('no punctuation' if all(cossims.strip_punct == True) else "with punctuation" if not cossims.strip_punct.unique()[0] == 'multiple' and not any(cossims.strip_punct == True) else 'multiple punctuation')
+		title += '\n'
+		
+		if len(cossims.target_group.unique()) > 1:
+			for target_group, df in cossims.groupby('target_group'):
+				means = df.groupby('predicted_arg').cossim.agg({'mean', 'sem', 'size'})
+				out_group_means = means.loc[[i for i in means.index if not i == target_group]]
+				exprs = [
+					(
+						f'\nMean cosine similarity of {target_group} to {target_group} \u2212 {target_group} to {arg} targets: ' +
+						'{:.4f}'.format(means['mean'][target_group]) + ' (\u00b1' + '{:.4f}'.format(means['sem'][target_group]) + ') \u2212 ' +
+						'{:.4f}'.format(out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(out_group_means['sem'][arg]) + ') = ' +
+						'{:.4f}'.format(means['mean'][target_group] - out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(sqrt(((means['sem'][target_group]**2)/means['size'][target_group]) + ((out_group_means['sem'][arg]**2)/out_group_means['size'][arg]))) + ')'
+					).replace('-', '\u2212') 
+					for arg in out_group_means.index
+				]
 				
-				group_sems = group[['predicted_arg', 'target_group', 'token', 'sem']]
-				group = group[['predicted_arg', 'target_group', 'token', 'cossim']]
-				
-				group = group.pivot(index=['target_group', 'token'], columns='predicted_arg', values='cossim')
-				group.columns.name = None
-				group = group.reset_index().drop(['target_group'], axis=1)
-				
-				group_sems = group_sems.pivot(index=['target_group', 'token'], columns='predicted_arg', values='sem')
-				group_sems.columns.name = None
-				group_sems = group_sems.reset_index().drop(['target_group'], axis=1)
-				
-				pairs = [c for c in group.columns if not c == 'token']
-				pairs = [(predicted_arg, c) for c in pairs if not c == predicted_arg]
-				
-				fig, ax = plt.subplots(len(pairs), 2)
-				ax = ax.reshape(len(pairs), 2)
-				fig.set_size_inches(12, (6*len(pairs))+0.75)
-				
-				for i, (in_token, out_token) in enumerate(pairs):
-					sns.scatterplot(data=group, x=in_token, y=out_token, ax=ax[i][0], zorder=10)
-					ax[i][0].errorbar(data=group, x=in_token, xerr=group_sems[in_token], y=out_token, yerr=group_sems[out_token], ls='none', zorder=5)
-					
-					ulim = max([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
-					llim = min([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
-					
-					v_adjust = (ulim-llim)/90
-					# we do this so longer text can fit inside the plot instead of overflowing
-					ulim += v_adjust + (ulim-llim)/90
-					llim -= (v_adjust + (ulim-llim)/90)
-					ax[i][0].set_xlim((llim, ulim))
-					ax[i][0].set_ylim((llim, ulim))
-					
-					ax[i][0].set_aspect(1./ax[i][0].get_data_ratio(), adjustable='box')
-					ax[i][0].plot((llim, ulim), (llim, ulim), linestyle='--', color='gray', scalex=False, scaley=False, zorder=0)
-					
-					for line in range(0, len(group)):
-						 ax[i][0].text(group.loc[line][in_token], group.loc[line][out_token]-v_adjust, group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=10)
-					
-					ax[i][0].set_xlabel(f'{in_token} cosine similarity')
-					ax[i][0].set_ylabel(f'{out_token} cosine similarity')
-					
-					# y = y - x plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
-					sns.scatterplot(data=group, x=in_token, y=group[out_token]-group[in_token], ax=ax[i][1], zorder=10)
-					ax[i][1].errorbar(x=group[in_token], xerr=group_sems[in_token], y=group[out_token]-group[in_token], yerr=group_sems[out_token], ls='none', zorder=5)
-					
-					ax[i][1].set_xlim((llim, ulim))
-					ax[i][1].plot((llim, ulim), (0, 0), linestyle='--', color='gray', scalex=False, scaley=False, zorder=0)
-					
-					ulim = max([abs(v) for v in [*ax[i][1].get_ylim()]])
-					llim = -ulim
-					
-					v_adjust = (ulim-llim)/90
-					# we do this so longer text can fit inside the plot instead of overflowing
-					ulim += v_adjust + (ulim-llim)/90
-					llim -= (v_adjust + (ulim-llim)/90)
-					ax[i][1].set_ylim((llim, ulim))
-					
-					for line in range(0, len(group)):
-						ax[i][1].text(group.loc[line][in_token], group.loc[line][out_token]-group.loc[line][in_token]-v_adjust, group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=10)
-					
-					ax[i][1].set_aspect(1./ax[i][1].get_data_ratio(), adjustable='box')
-					
-					ax[i][1].set_xlabel(f'{in_token} cosine similarity')
-					ax[i][1].set_ylabel(f'{out_token} oversimilarity')
-				
-				title = cossims.model_name.unique()[0] if cossims.model_name.unique()[0] != 'multiple' else "Multiple models'"
-				title += f' cosine similarities to '
-				title += cossims.eval_data.unique()[0] if cossims.eval_data.unique()[0] != 'multiple' else "multiple eval sets'"
-				title += f' {target_group} target group tokens'
-				title += (' @ epoch ' + str(cossims.eval_epoch.unique()[0]) + '/') if cossims.eval_epoch.unique()[0] != 'multiple' else ', epochs: '
-				title += str(cossims.total_epochs.unique()[0])
-				title += f' ({cossims.epoch_criteria.unique()[0].replace("_", " ")})' if cossims.epoch_criteria.unique()[0] != 'multiple' else ' (multiple criteria)'
-				title += f'\nmin epochs: {cossims.min_epochs.unique()[0]}, '
-				title += f'max epochs: {cossims.max_epochs.unique()[0]}'
-				title += f', patience: {cossims.patience.unique()[0]}'
-				title += f' (\u0394={cossims.delta.unique()[0]})'
-				title += '\ntuning: ' + cossims.tuning.unique()[0].replace("_", " ")
-				title += ', masking' if all(cossims.masked == True) else ' unmasked' if all(1 - (cossims.masked == True)) else ''
-				title += (': ' + cossims.masked_tuning_style[(cossims.masked == True)].unique()[0] if cossims.masked_tuning_style[(cossims.masked == True)].unique().size > 0 else '') if not 'multiple' in cossims.masked_tuning_style[cossims.masked == True].unique() else ', masking: multiple' if any(cossims.masked == 'multiple') or any(cossims.masked == True) else ''
-				title += ', ' + ('no punctuation' if all(cossims.strip_punct == True) else "with punctuation" if not cossims.strip_punct.unique()[0] == 'multiple' and not any(cossims.strip_punct == True) else 'multiple punctuation')
-				
-				fig.suptitle(title)
-				
-				fig.tight_layout()
-				
-				pdf.savefig()
-				plt.close()
+				for expr in exprs:
+					title += expr
+			
+			title += '\n'
+		
+		for predicted_arg, df in cossims.groupby('predicted_arg'):
+			means = df.groupby('target_group').cossim.agg({'mean', 'sem', 'size'})
+			out_group_means = means.loc[[i for i in means.index if not i == predicted_arg]]
+			exprs = [
+				(
+					f'\nMean cosine similarity of {predicted_arg} to {predicted_arg} \u2212 {predicted_arg} to {arg} targets: ' +
+					'{:.4f}'.format(means['mean'][predicted_arg]) + ' (\u00b1' + '{:.4f}'.format(means['sem'][predicted_arg]) + ') \u2212 ' +
+					'{:.4f}'.format(out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(out_group_means['sem'][arg]) + ') = ' + 
+					'{:.4f}'.format(means['mean'][predicted_arg] - out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(sqrt(((means['sem'][predicted_arg]**2)/means['size'][predicted_arg]) + ((out_group_means['sem'][arg]**2)/out_group_means['size'][arg]))) + ')'
+				).replace('-', '\u2212')
+				for arg in out_group_means.index
+			]
+			
+			for expr in exprs:
+				title += expr
+		
+		fig.suptitle(title)
+		
+		fig.tight_layout()
+		
+		plt.savefig(filename)
+		plt.close()
 	
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str) -> None:
@@ -1890,6 +1933,7 @@ class Tuner:
 		epoch_label = eval_epoch + epoch_label
 		
 		# For each pair, we create a different plot
+		# with PdfPages(f'{dataset_name}{epoch_label}-odds_ratio-plots.pdf') as pdf:
 		with PdfPages(f'{dataset_name}{epoch_label}-plots.pdf') as pdf:
 			for pair in tqdm(paired_sentence_types, total = len(paired_sentence_types)):
 				x_data = summary[summary['sentence_type'] == pair[0]].reset_index(drop = True)
@@ -2593,6 +2637,7 @@ class Tuner:
 		epoch_label = eval_epoch + epoch_label
 		
 		# For each sentence type, we create a different plot
+		# with PdfPages(f'{dataset_name}{epoch_label}-surprisal-plots.pdf') as pdf:
 		with PdfPages(f'{dataset_name}{epoch_label}-plots.pdf') as pdf:
 			for sentence_type in tqdm(sentence_types, total = len(sentence_types)):
 				
