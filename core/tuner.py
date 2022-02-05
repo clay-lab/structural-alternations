@@ -1294,6 +1294,8 @@ class Tuner:
 		fig.set_size_inches(12.5, (6*len(pairs))+(0.6*len(cossims.predicted_arg.unique()))+(0.6*len(cossims.target_group.unique()))+0.25)
 		
 		for i, (in_token, out_token) in enumerate(pairs):
+			# we might be able to use a sns.jointplot to plot histograms instead of just ticks for the means,
+			# but this causes other complex problems that I haven't figured out yet. So we'll stick with the simple thing for now
 			sns.scatterplot(data=group, x=in_token, y=out_token, ax=ax[i][0], zorder=5, hue='target_group')
 			legend = [c for c in ax[i][0].get_children() if isinstance(c, matplotlib.legend.Legend)][0]
 			legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ')
@@ -1311,6 +1313,33 @@ class Tuner:
 			llim -= (v_adjust + (ulim-llim)/90)
 			ax[i][0].set_xlim((llim, ulim))
 			ax[i][0].set_ylim((llim, ulim))
+			
+			# here we add ticks to show the mean and standard errors along each axis
+			group_means = group.drop('token', axis=1).groupby('target_group').agg({'mean', 'sem'})
+			cols = list(set([c[0] for c in group_means.columns]))
+			group_means.columns = ['_'.join(c) for c in group_means.columns]
+			for predicted_arg in cols:
+				for target_group, collection in zip(group_means.index, collections):
+					if predicted_arg == in_token:
+						ax[i][0].plot((group_means.loc[target_group][predicted_arg + '_mean'], group_means.loc[target_group][predicted_arg + '_mean']), (llim, llim+v_adjust*3), linestyle='-', color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3)
+						ax[i][0].plot(
+							(
+								group_means.loc[target_group][predicted_arg + '_mean']-group_means.loc[target_group][predicted_arg + '_sem'], 
+							 	group_means.loc[target_group][predicted_arg + '_mean']+group_means.loc[target_group][predicted_arg + '_sem']
+							), 
+							(llim+v_adjust*1.5, llim+v_adjust*1.5), 
+							linestyle='-', linewidth=0.75, color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3
+						)
+					else:
+						ax[i][0].plot((llim, llim+v_adjust*3), (group_means.loc[target_group][predicted_arg + '_mean'], group_means.loc[target_group][predicted_arg + '_mean']), linestyle='-', color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3)
+						ax[i][0].plot(
+							(llim+v_adjust*1.5, llim+v_adjust*1.5), 
+							(
+								group_means.loc[target_group][predicted_arg + '_mean']-group_means.loc[target_group][predicted_arg + '_sem'], 
+								group_means.loc[target_group][predicted_arg + '_mean']+group_means.loc[target_group][predicted_arg + '_sem']
+							), 
+							linestyle='-', linewidth=0.75, color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3
+						)
 			
 			ax[i][0].set_aspect(1./ax[i][0].get_data_ratio(), adjustable='box')
 			ax[i][0].plot((llim, ulim), (llim, ulim), linestyle='--', color='gray', scalex=False, scaley=False, zorder=0)
@@ -1373,7 +1402,7 @@ class Tuner:
 				out_group_means = means.loc[[i for i in means.index if not i == target_group]]
 				exprs = [
 					(
-						f'\nMean cosine similarity of {target_group} to {target_group} \u2212 {target_group} to {arg} targets: ' +
+						f'\nMean cosine similarity of {target_group} to {target_group} \u2212 {arg} to {target_group} targets: ' +
 						'{:.4f}'.format(means['mean'][target_group]) + ' (\u00b1' + '{:.4f}'.format(means['sem'][target_group]) + ') \u2212 ' +
 						'{:.4f}'.format(out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(out_group_means['sem'][arg]) + ') = ' +
 						'{:.4f}'.format(means['mean'][target_group] - out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(sqrt(((means['sem'][target_group]**2)/means['size'][target_group]) + ((out_group_means['sem'][arg]**2)/out_group_means['size'][arg]))) + ')'
