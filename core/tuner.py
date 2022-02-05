@@ -14,6 +14,7 @@ import itertools
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
+from matplotlib import patheffects as pe
 from matplotlib.ticker import MaxNLocator
 from matplotlib.backends.backend_pdf import PdfPages
 
@@ -1259,33 +1260,39 @@ class Tuner:
 			log.info(f'One or fewer predicted arguments were provided for cosine similarities ({cossims.target_group.unique()[0]}). No comparison plots for cosine similarities can be created.')
 			return
 		
-		if cossims.model_id.unique()[0] == 'multiple':
+		if len(cossims.model_id.unique()) > 1:
 			cossims['cossim'] = cossims['mean']
 			cossims = cossims.drop('mean', axis = 1)
 		else:
 			cossims['sem'] = 0
 		
 		filename = cossims.eval_data.unique()[0] + '-'
-		epoch_label = cossims.epoch_criteria.unique()[0]
-		if cossims.model_id.unique()[0] != 'multiple':
+		epoch_label = cossims.epoch_criteria.unique()[0] if len(cossims.epoch_criteria.unique()) == 1 else ''
+		if len(cossims.model_id.unique()) == 1:
 			epoch_label = '-' + epoch_label
 			magnitude = floor(1 + np.log10(cossims.total_epochs.unique()[0]))
 			epoch_label = f'{str(cossims.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
 		
 		filename += epoch_label + '-cossim-plots.pdf'
 		
-		group = cossims[['predicted_arg', 'target_group', 'token', 'cossim']]
-		group_sems = cossims[['predicted_arg', 'target_group', 'token', 'sem']]
+		idx_col = 'token' if len(cossims.model_id.unique()) == 1 else 'model_id'
 		
-		group = group.pivot(index=['target_group', 'token'], columns='predicted_arg', values='cossim')
+		group = cossims[['predicted_arg', 'target_group', idx_col, 'cossim']]
+		group_sems = cossims[['predicted_arg', 'target_group', idx_col, 'sem']]
+		
+		if idx_col = 'model_id':
+			model_means = cossims.groupby(['model_name', 'predicted_arg']).cossim.agg('mean')
+			model_means = model_means.reset_index()
+		
+		group = group.pivot(index=['target_group', idx_col], columns='predicted_arg', values='cossim')
 		group.columns.name = None
-		group = group.reset_index()#.drop(['target_group'], axis=1)
+		group = group.reset_index()
 		
-		group_sems = group_sems.pivot(index=['target_group', 'token'], columns='predicted_arg', values='sem')
+		group_sems = group_sems.pivot(index=['target_group', idx_col], columns='predicted_arg', values='sem')
 		group_sems.columns.name = None
-		group_sems = group_sems.reset_index()#.drop(['target_group'], axis=1)
+		group_sems = group_sems.reset_index()
 		
-		pairs = [c for c in group.columns if not c in ['token', 'target_group']]
+		pairs = [c for c in group.columns if not c in [idx_col, 'target_group']]
 		pairs = [pair for pair in itertools.combinations(pairs, 2) if not pair[0] == pair[1]]
 		pairs = list(set(tuple(sorted(pair)) for pair in pairs))
 		
@@ -1307,21 +1314,24 @@ class Tuner:
 			ulim = max([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
 			llim = min([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
 			
-			v_adjust = (ulim-llim)/90
 			# we do this so longer text can fit inside the plot instead of overflowing
+			v_adjust = (ulim-llim)/90 if idx_col == 'token' else 0
+			range_mean_tick = (ulim-llim)/90
+			
 			ulim += v_adjust + (ulim-llim)/90
 			llim -= (v_adjust + (ulim-llim)/90)
+			
 			ax[i][0].set_xlim((llim, ulim))
 			ax[i][0].set_ylim((llim, ulim))
 			
 			# here we add ticks to show the mean and standard errors along each axis
-			group_means = group.drop('token', axis=1).groupby('target_group').agg({'mean', 'sem'})
+			group_means = group.drop(idx_col, axis=1).groupby('target_group').agg({'mean', 'sem'})
 			cols = list(set([c[0] for c in group_means.columns]))
 			group_means.columns = ['_'.join(c) for c in group_means.columns]
 			for predicted_arg in cols:
 				for target_group, collection in zip(group_means.index, collections):
 					if predicted_arg == in_token:
-						ax[i][0].plot((group_means.loc[target_group][predicted_arg + '_mean'], group_means.loc[target_group][predicted_arg + '_mean']), (llim, llim+v_adjust*3), linestyle='-', color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3)
+						ax[i][0].plot((group_means.loc[target_group][predicted_arg + '_mean'], group_means.loc[target_group][predicted_arg + '_mean']), (llim, llim+range_mean_tick*3), linestyle='-', color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3)
 						ax[i][0].plot(
 							(
 								group_means.loc[target_group][predicted_arg + '_mean']-group_means.loc[target_group][predicted_arg + '_sem'], 
@@ -1331,7 +1341,7 @@ class Tuner:
 							linestyle='-', linewidth=0.75, color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3
 						)
 					else:
-						ax[i][0].plot((llim, llim+v_adjust*3), (group_means.loc[target_group][predicted_arg + '_mean'], group_means.loc[target_group][predicted_arg + '_mean']), linestyle='-', color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3)
+						ax[i][0].plot((llim, llim+range_mean_tick*3), (group_means.loc[target_group][predicted_arg + '_mean'], group_means.loc[target_group][predicted_arg + '_mean']), linestyle='-', color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3)
 						ax[i][0].plot(
 							(llim+v_adjust*1.5, llim+v_adjust*1.5), 
 							(
@@ -1342,10 +1352,18 @@ class Tuner:
 						)
 			
 			ax[i][0].set_aspect(1./ax[i][0].get_data_ratio(), adjustable='box')
-			ax[i][0].plot((llim, ulim), (llim, ulim), linestyle='--', color='gray', scalex=False, scaley=False, zorder=0)
+			ax[i][0].plot((llim, ulim), (llim, ulim), linestyle='--', color='black', scalex=False, scaley=False, zorder=0, alpha=0.3)
 			
-			for line in range(0, len(group)):
-				ax[i][0].text(group.loc[line][in_token], group.loc[line][out_token]-(v_adjust if group_sems.loc[line][out_token] == 0 else (group_sems.loc[line][out_token]+(v_adjust/2))), group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15)
+			if idx_col == 'token':
+				for line in range(0, len(group)):
+					ax[i][0].text(group.loc[line][in_token], group.loc[line][out_token]-(v_adjust if group_sems.loc[line][out_token] == 0 else (group_sems.loc[line][out_token]+(v_adjust/2))), group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15)
+			else:
+				for model_name in model_means.model_name:
+					ax[i][0].text(
+						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0], 
+						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == out_token)].cossim.values[0], 
+						model_name, size=10, horizontalalignment='center', verticalalignment='center', color='black', zorder=15, alpha=0.75, fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')]
+					)
 			
 			ax[i][0].set_xlabel(f'{in_token} cosine similarity')
 			ax[i][0].set_ylabel(f'{out_token} cosine similarity')
@@ -1360,40 +1378,47 @@ class Tuner:
 				ax[i][1].errorbar(x=eb_group[in_token], xerr=eb_group_sems[in_token], y=eb_group[out_token]-eb_group[in_token], yerr=eb_group_sems[out_token], color=collection._original_edgecolor, ls='none', zorder=10)
 			
 			ax[i][1].set_xlim((llim, ulim))
-			ax[i][1].plot((llim, ulim), (0, 0), linestyle='--', color='gray', scalex=False, scaley=False, zorder=0)
+			ax[i][1].plot((llim, ulim), (0, 0), linestyle='--', color='black', scalex=False, scaley=False, zorder=0, alpha=0.3)
 			
 			ulim = max([abs(v) for v in [*ax[i][1].get_ylim()]])
 			llim = -ulim
 			
-			v_adjust = (ulim-llim)/90
+			v_adjust = (ulim-llim)/90 if idx_col == 'token' else 0
 			# we do this so longer text can fit inside the plot instead of overflowing
 			ulim += v_adjust + (ulim-llim)/90
 			llim -= (v_adjust + (ulim-llim)/90)
 			ax[i][1].set_ylim((llim, ulim))
 			
-			for line in range(0, len(group)):
-				ax[i][1].text(group.loc[line][in_token], group.loc[line][out_token]-group.loc[line][in_token]-(v_adjust if group_sems.loc[line][out_token] == 0 else (group_sems.loc[line][out_token]+(v_adjust/2))), group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=10)
+			if idx_col == 'token':
+				for line in range(0, len(group)):
+					ax[i][1].text(group.loc[line][in_token], group.loc[line][out_token]-group.loc[line][in_token]-(v_adjust if group_sems.loc[line][out_token] == 0 else (group_sems.loc[line][out_token]+(v_adjust/2))), group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=10)
+			else:
+				for model_name in model_means.model_name:
+					ax[i][1].text(
+						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0], 
+						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == out_token)].cossim.values[0] - model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0],
+						model_name, size=10, horizontalalignment='center', verticalalignment='center', color='black', zorder=15, alpha=0.75, fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')])
 			
 			ax[i][1].set_aspect(1./ax[i][1].get_data_ratio(), adjustable='box')
 			
 			ax[i][1].set_xlabel(f'{in_token} cosine similarity')
 			ax[i][1].set_ylabel(f'{out_token} \u2212 {in_token} cosine similarity')
 		
-		title = cossims.model_name.unique()[0] if cossims.model_name.unique()[0] != 'multiple' else "Multiple models'"
+		title = cossims.model_name.unique()[0] if len(cossims.model_name.unique()) == 1 else f"Multiple models'"
 		title += f' cosine similarities to '
-		title += cossims.eval_data.unique()[0] if cossims.eval_data.unique()[0] != 'multiple' else "multiple eval sets'"
+		title += cossims.eval_data.unique()[0] if len(cossims.eval_data.unique()) == 1 else f"{len(cossims.eval_data.unique())} eval sets'"
 		title += f' target group tokens'
-		title += (' @ epoch ' + str(cossims.eval_epoch.unique()[0]) + '/') if cossims.eval_epoch.unique()[0] != 'multiple' else ', epochs: '
-		title += str(cossims.total_epochs.unique()[0])
-		title += f' ({cossims.epoch_criteria.unique()[0].replace("_", " ")})' if cossims.epoch_criteria.unique()[0] != 'multiple' else ' (multiple criteria)'
-		title += f'\nmin epochs: {cossims.min_epochs.unique()[0]}, '
-		title += f'max epochs: {cossims.max_epochs.unique()[0]}'
-		title += f', patience: {cossims.patience.unique()[0]}'
-		title += f' (\u0394={cossims.delta.unique()[0]})'
-		title += '\ntuning: ' + cossims.tuning.unique()[0].replace("_", " ")
+		title += (' @ epoch ' + str(cossims.eval_epoch.unique()[0]) + '/') if len(cossims.eval_epoch.unique()) == 1 else ', epochs: '
+		title += str(cossims.total_epochs.unique()[0]) if len(cossims.total_epochs.unique()) == 1 else 'multiple'
+		title += f' ({cossims.epoch_criteria.unique()[0].replace("_", " ")})' if len(cossims.epoch_criteria.unique()) == 1 else ' (multiple criteria)'
+		title += f'\nmin epochs: {cossims.min_epochs.unique()[0] if len(cossims.min_epochs.unique()) == 1 else "multiple"}, '
+		title += f'max epochs: {cossims.max_epochs.unique()[0] if len(cossims.max_epochs.unique()) == 1 else "multiple"}'
+		title += f', patience: {cossims.patience.unique()[0] if len(cossims.patience.unique()) == 1 else "multiple"}'
+		title += f' (\u0394={cossims.delta.unique()[0] if len(cossims.delta.unique()) == 1 else "multiple"})'
+		title += '\ntuning: ' + (cossims.tuning.unique()[0].replace("_", " ") if len(cossims.tuning.unique()) == 1 else "multiple")
 		title += ', masking' if all(cossims.masked == True) else ' unmasked' if all(1 - (cossims.masked == True)) else ''
-		title += (': ' + cossims.masked_tuning_style[(cossims.masked == True)].unique()[0] if cossims.masked_tuning_style[(cossims.masked == True)].unique().size > 0 else '') if not 'multiple' in cossims.masked_tuning_style[cossims.masked == True].unique() else ', masking: multiple' if any(cossims.masked == 'multiple') or any(cossims.masked == True) else ''
-		title += ', ' + ('no punctuation' if all(cossims.strip_punct == True) else "with punctuation" if not cossims.strip_punct.unique()[0] == 'multiple' and not any(cossims.strip_punct == True) else 'multiple punctuation')
+		title += (': ' + cossims.masked_tuning_style[(cossims.masked == True)].unique()[0] if cossims.masked_tuning_style[(cossims.masked == True)].unique().size == 1 else '') if not 'multiple' in cossims.masked_tuning_style[cossims.masked == True].unique() else ', masking: multiple' if any(cossims.masked == 'multiple') or any(cossims.masked == True) else ''
+		title += ', ' + ('no punctuation' if all(cossims.strip_punct == True) else "with punctuation" if len(cossims.strip_punct.unique()) == 1 and not any(cossims.strip_punct == True) else 'multiple punctuation')
 		title += '\n'
 		
 		if len(cossims.target_group.unique()) > 1:
@@ -1929,7 +1954,7 @@ class Tuner:
 				
 				# first, replace the ones that don't start with spaces before with a preceding ^
 				summary.loc[(summary['model_name'] == 'roberta') & ~(summary['ratio_name'].str.startswith(chr(288))), 'ratio_name'] = \
-				summary[(summary['model_name'] == 'roberta') & ~(summary['ratio_name'].str.startswith(chr(288)))]['ratio_name'].replace({r'((^\w)|(?<=\/)\w)' : r'^\1'})
+				summary[(summary['model_name'] == 'roberta') & ~(summary['ratio_name'].str.startswith(chr(288)))]['ratio_name'].str.replace(r'((^.)|(?<=\/).)', r'^\1', regex=True)
 				
 				# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
 				summary.loc[(summary['model_name'] == 'roberta') & (summary['ratio_name'].str.startswith(chr(288))), 'ratio_name'] = \
@@ -1956,14 +1981,18 @@ class Tuner:
 		# Filter to only cases including the reference sentence type for ease of interpretation
 		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type] if self.reference_sentence_type != 'none' else [(s1, s2) for s1, s2 in paired_sentence_types]
 		
-		dataset_name = summary.eval_data.unique()[0]
-		eval_epoch = '-' + str(np.unique(summary.eval_epoch)[0]) if len(np.unique(summary.eval_epoch)) == 1 else ''
-		epoch_label = '-' + summary.epoch_criteria.unique()[0] if len(summary.epoch_criteria.unique()) == 1 else ''
-		epoch_label = eval_epoch + epoch_label
+		filename = summary.eval_data.unique()[0] + '-'
+		epoch_label = summary.epoch_criteria.unique()[0] if len(summary.epoch_criteria.unique()) == 1 else ''
+		if len(summary.model_id.unique()) == 1:
+			epoch_label = '-' + epoch_label
+			magnitude = floor(1 + np.log10(summary.total_epochs.unique()[0]))
+			epoch_label = f'{str(summary.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
+		
+		filename += epoch_label + '-plots.pdf'
 		
 		# For each pair, we create a different plot
 		# with PdfPages(f'{dataset_name}{epoch_label}-odds_ratio-plots.pdf') as pdf:
-		with PdfPages(f'{dataset_name}{epoch_label}-plots.pdf') as pdf:
+		with PdfPages(filename) as pdf:
 			for pair in tqdm(paired_sentence_types, total = len(paired_sentence_types)):
 				x_data = summary[summary['sentence_type'] == pair[0]].reset_index(drop = True)
 				y_data = summary[summary['sentence_type'] == pair[1]].reset_index(drop = True)

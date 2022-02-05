@@ -134,77 +134,24 @@ def multieval(cfg: DictConfig) -> None:
 		]
 		
 		summary_of_similarities = load_summaries(similarities_files)
-		
-		n_models = len(summary_of_similarities.model_id.unique())
-		log.info(f'Summarizing similarity predictions for {n_models} models')
 		summary_of_similarities = summary_of_similarities.drop_duplicates().reset_index(drop=True)
 		
-		# if not (len(summary_of_similarities.model_name.unique()) == 1 and summary_of_similarities.model_name.unique()[0] == 'roberta'):
-		# 	roberta_summary_of_similarities = summary_of_similarities[(~summary_of_similarities.target_group.str.endswith('most similar')) & (summary_of_similarities.model_name == 'roberta')].copy()
-		# 	num_tokens_in_summary_of_similarities = len(roberta_summary_of_similarities.token.unique())
+		n_models = len(summary_of_similarities.model_id.unique())
+		log.info(f'Comparing cosine similarity data for {n_models} models')
+		
+		summary_of_similarities = multi_eval_cossims(summary_of_similarities)
+		
+		filename = summary_of_similarities.eval_data.unique()[0] + '-'
+		epoch_label = summary_of_similarities.epoch_criteria.unique()[0] if len(summary_of_similarities.epoch_criteria.unique()) == 1 else ''
+		if len(summary_of_similarities.model_id.unique()) == 1:
+			epoch_label = '-' + epoch_label
+			magnitude = floor(1 + np.log10(summary_of_similarities.total_epochs.unique()[0]))
+			epoch_label = f'{str(summary_of_similarities.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
+		
+		filename += epoch_label + '-cossim.csv.gz'
+		
+		summary_of_similarities.to_csv(filename, index = False, na_rep = 'NaN')
 			
-		# 	roberta_summary_of_similarities['token'] = [re.sub(chr(288), '', token) for token in roberta_summary_of_similarities.token]
-		# 	num_tokens_after_change = len(roberta_summary_of_similarities.token.unique())
-		# 	if num_tokens_in_summary_of_similarities != num_tokens_after_change:
-		# 		# this isn't going to actually get rid of any info, but it's worth logging
-		# 		# we only check this for the target tokens, because the situation is common enough with found tokens that it's not really worth mentioning
-		# 		log.warning('RoBERTa cossim target tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
-			
-		# 	# first, replace the ones that don't start with spaces before with a preceding ^
-		# 	summary_of_similarities.loc[(summary_of_similarities['model_name'] == 'roberta') & ~(summary_of_similarities.token.str.startswith(chr(288))), 'token'] = \
-		# 	summary_of_similarities[(summary_of_similarities['model_name'] == 'roberta') & ~(summary_of_similarities.token.str.startswith(chr(288)))]['token'].replace({r'((^\w)|(?<=\/)\w)' : r'^\1'})
-			
-		# 	# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
-		# 	summary_of_similarities.loc[(summary_of_similarities['model_name'] == 'roberta') & (summary_of_similarities.token.str.startswith(chr(288))), 'token'] = \
-		# 	[re.sub(chr(288), '', token) for token in summary_of_similarities[(summary_of_similarities['model_name'] == 'roberta') & (summary_of_similarities.token.str.startswith(chr(288)))].token]
-			
-		summary_of_similarities = summary_of_similarities.assign(
-			model_id = summary_of_similarities.model_id if n_models == 1 else 'multiple',
-			predicted_arg = [predicted_arg.replace(chr(288), '').upper() for predicted_arg in summary_of_similarities.predicted_arg],
-			target_group = [target_group.replace(chr(288), '').upper() if not 'most similar' in target_group else target_group if len(summary_of_similarities[summary_of_similarities.target_group.str.endswith('most similar')].target_group.unique()) == 1 else 'multiple most similar' for target_group in summary_of_similarities.target_group],
-			eval_epoch = summary_of_similarities.eval_epoch if len(summary_of_similarities.eval_epoch.unique()) == 1 else 'multiple',
-			total_epochs = summary_of_similarities.total_epochs if len(summary_of_similarities.total_epochs.unique()) == 1 else 'multiple',
-			min_epochs = summary_of_similarities.min_epochs if len(summary_of_similarities.min_epochs.unique()) == 1 else 'multiple',
-			max_epochs = summary_of_similarities.max_epochs if len(summary_of_similarities.max_epochs.unique()) == 1 else 'multiple',
-			eval_data = summary_of_similarities.eval_data if len(summary_of_similarities.eval_data.unique()) == 1 else 'multiple',
-			patience = summary_of_similarities.patience if len(summary_of_similarities.patience.unique()) == 1 else 'multiple',
-			delta = summary_of_similarities.delta if len(summary_of_similarities.delta.unique()) == 1 else 'multiple',
-			model_name = summary_of_similarities.model_name if len(summary_of_similarities.model_name.unique()) == 1 else 'multiple',
-			tuning = summary_of_similarities.tuning if len(summary_of_similarities.tuning.unique()) == 1 else 'multiple',
-			masked = summary_of_similarities.masked if len(summary_of_similarities.masked.unique()) == 1 else 'multiple',
-			masked_tuning_style = summary_of_similarities.masked_tuning_style if len(summary_of_similarities.masked_tuning_style.unique()) == 1 else 'multiple',
-			strip_punct = summary_of_similarities.strip_punct if len(summary_of_similarities.strip_punct.unique()) == 1 else 'multiple'
-		)
-		
-		# different models have different token ids for the same token, so we need to fix that when that happens
-		for token in summary_of_similarities.token:
-			if len(summary_of_similarities[summary_of_similarities.token == token].token_id.unique()) > 1:
-				summary_of_similarities.loc[summary_of_similarities.token == token, 'token_id'] = 'multiple'
-		
-		summary_of_similarities = summary_of_similarities. \
-			groupby([c for c in summary_of_similarities.columns if not c == 'cossim']) \
-			['cossim']. \
-			agg(['mean', 'sem', 'size']). \
-			reset_index(). \
-			sort_values(['predicted_arg', 'target_group']). \
-			rename({'size' : 'num_points'}, axis=1)
-	
-		eval_epoch = cfg.epoch if len(np.unique(summary_of_similarities.eval_epoch)) > 1 or np.unique(summary_of_similarities.eval_epoch)[0] == 'multiple' else np.unique(summary_of_similarities.eval_epoch)[0]
-		
-		summary_of_similarities.to_csv(f'{cfg.data.friendly_name}-{eval_epoch}-cossim.csv.gz', index = False, na_rep = 'NaN')
-		
-		if len(summary_of_similarities.predicted_arg.unique()) > 1:
-			with open(f'{cfg.data.friendly_name}-{eval_epoch}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
-				for predicted_arg, df in summary_of_similarities.groupby('predicted_arg'):
-					df = df.loc[~df.target_group.str.endswith('most similar')]
-					means = df.groupby('target_group')['mean'].agg('mean')
-					out_group_means = means[[i for i in means.index if not i == predicted_arg]]
-					means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
-					if means_diffs:
-						for diff in means_diffs:
-							log.info(f'Mean cossim {diff} targets for {predicted_arg} for {n_models} models: {"{:.2f}".format(means_diffs[diff])}')
-							f.write(f'Mean cossim {diff} targets for {predicted_arg} for {n_models} models: {means_diffs[diff]}\n')
-		
 	# Rename the output dir if we had to escape the first character in bert
 	if '^bert' in starting_dir:
 		logging.shutdown()
@@ -297,6 +244,117 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 
 def multi_eval_new_verb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
 	return NotImplementedError('Comparison of new verb data not currently supported.')
+
+def multi_eval_cossims(cossims: pd.DataFrame) -> pd.DataFrame:
+	cossims = cossims.copy()
+	
+	if not (len(cossims.model_name.unique()) == 1 and cossims.model_name.unique()[0] == 'roberta'):
+		roberta_cossims = cossims[(~cossims.target_group.str.endswith('most similar')) & (cossims.model_name == 'roberta')].copy()
+		num_tokens_in_cossims = len(roberta_cossims.token.unique())
+		
+		roberta_cossims['token'] = [re.sub(chr(288), '', token) for token in roberta_cossims.token]
+		num_tokens_after_change = len(roberta_cossims.token.unique())
+		if num_tokens_in_cossims != num_tokens_after_change:
+			# this isn't going to actually get rid of any info, but it's worth logging
+			# we only check this for the target tokens, because the situation is common enough with found tokens that it's not really worth mentioning
+			log.warning('RoBERTa cossim target tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
+		
+		# first, replace the ones that don't start with spaces before with a preceding ^
+		cossims.loc[(cossims['model_name'] == 'roberta') & ~(cossims.token.str.startswith(chr(288))), 'token'] = \
+		cossims[(cossims['model_name'] == 'roberta') & ~(cossims.token.str.startswith(chr(288)))].token.str.replace(r'^(.)', r'^\1', regex=True)
+		
+		# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
+		cossims.loc[(cossims['model_name'] == 'roberta') & (cossims.token.str.startswith(chr(288))), 'token'] = \
+		[re.sub(chr(288), '', token) for token in cossims[(cossims['model_name'] == 'roberta') & (cossims.token.str.startswith(chr(288)))].token]
+		
+		cossims = cossims.assign(
+			predicted_arg = [predicted_arg.replace(chr(288), '') for predicted_arg in cossims.predicted_arg],
+			target_group = [target_group.replace(chr(288), '') for target_group in cossims.target_group],
+		)
+	
+	# this means that we have at least one cased and one uncased model, so we convert all novel words to uppercase for standardization
+	if len(cossims.model_name.unique()) > 1 and 'roberta' in cossims.model_name.unique():
+		cossims = cossims.assign(
+			predicted_arg = [predicted_arg.upper() for predicted_arg in cossims.predicted_arg],
+			target_group = [target_group.upper() if not target_group.endswith('most similar') else target_group for target_group in cossims.target_group],
+		)
+	
+	# different models have different token ids for the same token, so we need to fix that when that happens
+	for token in cossims.token.unique():
+		# the second part of this conditional accounts for cases where roberta tokenizers and bert tokenizers behave differently
+		# in terms of how many tokens they split a target token into. in this case, since it is a set target, 
+		# we want to compare the group mean regardless, so we manually replace the token id even if it's only included in one kind of model
+		if len(cossims[cossims.token == token].token_id.unique()) > 1 or any([tv for tv in ~cossims[cossims.token == token].target_group.str.endswith('most similar').unique() for target_group in cossims[cossims.token == token].target_group.unique()]):
+			cossims.loc[cossims.token == token, 'token_id'] = 'multiple'
+
+	# we summarize the most similar tokens and target tokens separately
+	# for the most similar tokens, we want to know something the agreement in token choice across models, which means summarizing across tokens rather than models
+	# for the target tokens, we want to know something about average similarity within each model, which means summarizing across models and not tokens
+	multiplator = lambda x: x.unique()[0] if len(x.unique()) == 1 else 'multiple'
+	
+	most_similars = cossims[cossims.target_group.str.endswith('most similar')].copy()
+	if not most_similars.empty:
+		for token in most_similars.token.unique():
+			most_similars.loc[most_similars.token == token, 'model_id'] = multiplator(most_similars.loc[most_similars.token == token, 'model_id'])
+			most_similars.loc[most_similars.token == token, 'eval_epoch'] = multiplator(most_similars.loc[most_similars.token == token, 'eval_epoch'])
+			most_similars.loc[most_similars.token == token, 'total_epochs'] = multiplator(most_similars.loc[most_similars.token == token, 'total_epochs'])
+			most_similars.loc[most_similars.token == token, 'min_epochs'] = multiplator(most_similars.loc[most_similars.token == token, 'min_epochs'])
+			most_similars.loc[most_similars.token == token, 'max_epochs'] = multiplator(most_similars.loc[most_similars.token == token, 'max_epochs'])
+			most_similars.loc[most_similars.token == token, 'eval_data'] = multiplator(most_similars.loc[most_similars.token == token, 'eval_data'])
+			most_similars.loc[most_similars.token == token, 'patience'] = multiplator(most_similars.loc[most_similars.token == token, 'patience'])
+			most_similars.loc[most_similars.token == token, 'delta'] = multiplator(most_similars.loc[most_similars.token == token, 'delta'])
+			most_similars.loc[most_similars.token == token, 'model_name'] = multiplator(most_similars.loc[most_similars.token == token, 'model_name'])
+			most_similars.loc[most_similars.token == token, 'tuning'] = multiplator(most_similars.loc[most_similars.token == token, 'tuning'])
+			most_similars.loc[most_similars.token == token, 'masked'] = multiplator(most_similars.loc[most_similars.token == token, 'masked'])
+			most_similars.loc[most_similars.token == token, 'masked_tuning_style'] = multiplator(most_similars.loc[most_similars.token == token, 'masked_tuning_style'])
+			most_similars.loc[most_similars.token == token, 'strip_punct'] = multiplator(most_similars.loc[most_similars.token == token, 'strip_punct'])
+		
+		most_similars = most_similars. \
+			groupby([c for c in most_similars.columns if not c == 'cossim']) \
+			['cossim']. \
+			agg(['mean', 'sem', 'size']). \
+			reset_index(). \
+			sort_values(['predicted_arg', 'target_group']). \
+			rename({'size' : 'num_points'}, axis=1)
+		
+		# most_similars = most_similars.assign(sem = [0 if np.isnan(se) else se for se in most_similars['sem']])
+	
+	targets = cossims[~cossims.target_group.str.endswith('most similar')].copy()
+	if not targets.empty:
+		for target_group in targets.target_group.unique():
+			targets.loc[targets.target_group == target_group, 'token'] = multiplator(targets.loc[targets.target_group == target_group, 'token'])
+		
+		targets = targets. \
+			groupby([c for c in targets.columns if not c == 'cossim']) \
+			['cossim']. \
+			agg(['mean', 'sem', 'size']). \
+			reset_index(). \
+			sort_values(['predicted_arg', 'target_group']). \
+			rename({'size' : 'num_points'}, axis=1)
+	
+	cossims = pd.concat([targets, most_similars], ignore_index=True)
+	
+	filename = cossims.eval_data.unique()[0] + '-'
+	epoch_label = cossims.epoch_criteria.unique()[0] if len(cossims.epoch_criteria.unique()) == 1 else ''
+	if len(cossims.model_id.unique()) == 1:
+		epoch_label = '-' + epoch_label
+		magnitude = floor(1 + np.log10(cossims.total_epochs.unique()[0]))
+		epoch_label = f'{str(cossims.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
+	
+	filename += epoch_label + '-cossim_diffs.txt'
+	
+	if len(cossims.predicted_arg.unique()) > 1:
+		with open(filename, 'w', encoding = 'utf-8') as f:
+			for predicted_arg, df in cossims.groupby('predicted_arg'):
+				df = df.loc[~df.target_group.str.endswith('most similar')]
+				means = df.groupby('target_group')['mean'].agg('mean')
+				out_group_means = means[[i for i in means.index if not i == predicted_arg]]
+				means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
+				if means_diffs:
+					for diff in means_diffs:
+						log.info(f'Mean cossim {diff} targets for {predicted_arg} across {n_models} models: {"{:.2f}".format(means_diffs[diff])}')
+						f.write(f'Mean cossim {diff} targets for {predicted_arg} across {n_models} models: {means_diffs[diff]}\n')
+
 
 if __name__ == "__main__":
 	multieval()
