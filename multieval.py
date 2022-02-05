@@ -288,8 +288,10 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 			cossims.loc[cossims.token == token, 'token_id'] = 'multiple'
 
 	# we summarize the most similar tokens and target tokens separately
-	# for the most similar tokens, we want to know something the agreement in token choice across models, which means summarizing across tokens rather than models
-	# for the target tokens, we want to know something about average similarity within each model, which means summarizing across models and not tokens
+	# for the most similar tokens, we want to know something the agreement 
+	# in token choice across models, which means summarizing across tokens rather than models
+	# for the target tokens, we want to know something about average similarity within each model, 
+	# which means summarizing across models and not tokens
 	multiplator = lambda x: x.unique()[0] if len(x.unique()) == 1 else 'multiple'
 	
 	most_similars = cossims[cossims.target_group.str.endswith('most similar')].copy()
@@ -316,8 +318,6 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 			reset_index(). \
 			sort_values(['predicted_arg', 'target_group']). \
 			rename({'size' : 'num_points'}, axis=1)
-		
-		# most_similars = most_similars.assign(sem = [0 if np.isnan(se) else se for se in most_similars['sem']])
 	
 	targets = cossims[~cossims.target_group.str.endswith('most similar')].copy()
 	if not targets.empty:
@@ -359,8 +359,8 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 				means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
 				if means_diffs:
 					for diff in means_diffs:
-						log.info(f'Mean cossim {diff} targets for {predicted_arg} across {n_models} models: {"{:.2f}".format(means_diffs[diff])}')
-						f.write(f'Mean cossim {diff} targets for {predicted_arg} across {n_models} models: {means_diffs[diff]}\n')
+						log.info(f'Mean cossim {diff} targets for {predicted_arg} across {len(cossims.model_id.unique())} models: {"{:.2f}".format(means_diffs[diff])}')
+						f.write(f'Mean cossim {diff} targets for {predicted_arg} across {len(cossims.model_id.unique())} models: {means_diffs[diff]}\n')
 	
 	return cossims
 
