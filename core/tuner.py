@@ -1959,51 +1959,53 @@ class Tuner:
 		return summary
 	
 	def graph_entailed_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, axis_size: int = 8, pt_size: int = 24) -> None:
-		if len(np.unique(summary.model_id.values)) > 1:
+		if len(summary.model_id.unique()) > 1:
 			summary['odds_ratio'] = summary['mean']
 			summary = summary.drop('mean', axis = 1)
 		else:
 			summary['sem'] = 0
 		
-		if len(np.unique(summary.model_name.values)) > 1:
+		# if we are dealing with bert/distilbert and roberta models, replace the strings with uppercase ones for comparison
+		if 'roberta' in summary.model_name.unique() and len(summary.model_name.unique()) > 1:
 			# if we are dealing with multiple models, we want to compare them by removing the idiosyncratic variation in how
 			# tokenization works. bert and distilbert are uncased, which means the tokens are converted to lower case.
 			# here, we convert them back to upper case so they can be plotted in the same group as the roberta tokens,
 			# which remain uppercase
-			summary.loc[(summary['model_name'] == 'bert') | (summary['model_name'] == 'distilbert'), 'ratio_name'] = \
-			summary[(summary['model_name'] == 'bert') | (summary['model_name'] == 'distilbert')]['ratio_name'].str.upper()
+			summary.loc[(summary.model_name == 'bert') | (summary.model_name == 'distilbert'), 'ratio_name'] = \
+				summary[(summary.model_name == 'bert') | (summary.model_name == 'distilbert')].ratio_name.str.upper()
 			
-			# for roberta, strings with spaces in front of them are tokenized differently from strings without spaces
-			# in front of them. so we need to remove the special characters that signals that, and add a new character
-			# signifying 'not a space in front' to the appropriate cases instead
+		# for roberta, strings with spaces in front of them are tokenized differently from strings without spaces
+		# in front of them. so we need to remove the special characters that signals that, and add a new character
+		# signifying 'not a space in front' to the appropriate cases instead
+		
+		# first, check whether doing this will alter information
+		if 'roberta' in summary.model_name.unique():
+			roberta_summary = summary[summary.model_name == 'roberta'].copy()
+			num_tokens_in_summary = len(set(list(itertools.chain(*[ratio_name.split('/') for ratio_name in roberta_summary.ratio_name.unique().tolist()]))))
 			
-			# first, check whether doing this will alter information
-			if not summary[summary['model_name'] == 'roberta'].empty:
-				roberta_summary = summary[summary['model_name'] == 'roberta'].copy()
-				num_tokens_in_summary = len(set(list(itertools.chain(*[ratio_name.split('/') for ratio_name in roberta_summary.ratio_name.unique().tolist()]))))
-				roberta_summary['ratio_name'] = [re.sub(chr(288), '', ratio_name) for ratio_name in roberta_summary['ratio_name']]
-				num_tokens_after_change = len(set(list(itertools.chain(*[ratio_name.split('/') for ratio_name in roberta_summary.ratio_name.unique().tolist()]))))
-				if num_tokens_in_summary != num_tokens_after_change:
-					# this isn't going to actually get rid of any info, but it's worth logging
-					log.warning('RoBERTa tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
-				
-				# first, replace the ones that don't start with spaces before with a preceding ^
-				summary.loc[(summary['model_name'] == 'roberta') & ~(summary['ratio_name'].str.startswith(chr(288))), 'ratio_name'] = \
-				summary[(summary['model_name'] == 'roberta') & ~(summary['ratio_name'].str.startswith(chr(288)))]['ratio_name'].str.replace(r'((^.)|(?<=\/).)', r'^\1', regex=True)
-				
-				# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
-				summary.loc[(summary['model_name'] == 'roberta') & (summary['ratio_name'].str.startswith(chr(288))), 'ratio_name'] = \
-				[re.sub(chr(288), '', ratio_name) for ratio_name in summary[(summary['model_name'] == 'roberta') & (summary['ratio_name'].str.startswith(chr(288)))].ratio_name]
+			roberta_summary['ratio_name'] = [re.sub(chr(288), '', ratio_name) for ratio_name in roberta_summary.ratio_name]
+			num_tokens_after_change = len(set(list(itertools.chain(*[ratio_name.split('/') for ratio_name in roberta_summary.ratio_name.unique().tolist()]))))
+			if num_tokens_in_summary != num_tokens_after_change:
+				# this isn't going to actually get rid of any info, but it's worth logging
+				log.warning('RoBERTa tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
+			
+			# first, replace the ones that don't start with spaces before with a preceding ^
+			summary.loc[(summary.model_name == 'roberta') & ~(summary.ratio_name.str.startswith(chr(288))), 'ratio_name'] = \
+				summary[(summary.model_name == 'roberta') & ~(summary.ratio_name.str.startswith(chr(288)))].ratio_name.str.replace(r'((^.)|(?<=\/).)', r'^\1', regex=True)
+			
+			# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
+			summary.loc[(summary.model_name == 'roberta') & (summary.ratio_name.str.startswith(chr(288))), 'ratio_name'] = \
+				summary[(summary.model_name == 'roberta') & (summary.ratio_name.str.startswith(chr(288)))].ratio_name.str.replace(chr(288), '')
 		
 		# Set colors for every unique odds ratio we are plotting
-		all_ratios = summary['ratio_name'].unique()
+		all_ratios = summary.ratio_name.unique()
 		colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))
 		
 		# we do this so we can add the information to the plot labels
 		acc = self.get_entailed_accuracies(summary)
 		
 		# Get each unique pair of sentence types so we can create a separate plot for each pair
-		sentence_types = summary['sentence_type'].unique()
+		sentence_types = summary.sentence_type.unique()
 		paired_sentence_types = list(itertools.combinations(sentence_types, 2))
 		
 		# Sort so that the trained cases are first
