@@ -1133,7 +1133,6 @@ class Tuner:
 		with open(os.path.join(hydra.utils.get_original_cwd(), 'conf', pos + '.txt'), 'r') as f:
 			targets = [w.lower().strip() for w in f.readlines()]
 		
-		# maybe we'll try to find a way to speed this up later
 		first_n = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in targets}
 		set_targets_dict = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in list(itertools.chain(*list(set_targets.values())))}
 		
