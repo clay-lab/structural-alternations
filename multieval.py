@@ -134,7 +134,7 @@ def multieval(cfg: DictConfig) -> None:
 		]
 		
 		summary_of_similarities = load_summaries(similarities_files)
-		summary_of_similarities = summary_of_similarities.drop_duplicates().reset_index(drop=True)
+		# summary_of_similarities = summary_of_similarities.drop_duplicates().reset_index(drop=True)
 		
 		n_models = len(summary_of_similarities.model_id.unique())
 		log.info(f'Comparing cosine similarity data for {n_models} models')
