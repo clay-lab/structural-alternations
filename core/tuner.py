@@ -1121,8 +1121,7 @@ class Tuner:
 	def plot_tsnes(self, summary: pd.DataFrame, eval_cfg: DictConfig) -> None:
 		n = eval_cfg.num_tsne_words
 		set_targets = eval_cfg.data.masked_token_targets
-
-
+		
 		dataset_name = summary.eval_data.unique()[0]
 		
 		epoch_label = '-' + summary.epoch_criteria.unique()[0]
@@ -1134,6 +1133,7 @@ class Tuner:
 		with open(os.path.join(hydra.utils.get_original_cwd(), 'conf', pos + '.txt'), 'r') as f:
 			targets = [w.lower().strip() for w in f.readlines()]
 		
+		# maybe we'll try to find a way to speed this up later
 		first_n = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in targets}
 		set_targets_dict = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in list(itertools.chain(*list(set_targets.values())))}
 		
@@ -1163,7 +1163,13 @@ class Tuner:
 		
 		added_word_vectors = torch.cat([getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[token_id].reshape(1,-1) for token_id in self.tokenizer.convert_tokens_to_ids(added_words)], dim=0)
 		
-		tsne_df = pd.DataFrame(columns=['target_group', 'token', 'tsne1', 'tsne2'])
+		tsne_df = pd.DataFrame(columns=['target_group', 'target_group_label', 'token', 'tsne1', 'tsne2'])
+		
+		# this conditional can be removed later when everything is updated
+		if 'masked_token_target_labels' in eval_cfg.data.keys():
+			target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : v for k, v in eval_cfg.data.masked_token_target_labels.items()}
+		else:
+			target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : (k.lower() if 'uncased' in self.string_id else k) for k in eval_cfg.data.masked_token_targets}
 		
 		with PdfPages(f'{dataset_name}-{epoch_label}-tsne-plots.pdf') as pdf:
 			for word_vectors, words in ((first_n_word_vectors, first_n_words), (set_targets_word_vectors, set_targets_words)):
@@ -1172,8 +1178,8 @@ class Tuner:
 					two_dim = tsne.fit_transform(torch.cat((word_vectors, added_word_vectors)))
 				
 				two_dim_df = pd.DataFrame(list(zip(words, two_dim[:,0], two_dim[:,1])), columns = ['token', 'tsne1', 'tsne2'])
-				two_dim_df['token_category'] = ['existing' if not w in added_words else 'added' for w in two_dim_df.token.values]
-				target_group = [f'first {n}' if not w in added_words else 'added' for w in two_dim_df.token.values] if words == first_n_words else []
+				two_dim_df['token_category'] = ['existing' if not w in added_words else 'novel' for w in two_dim_df.token.values]
+				target_group = [f'first {n}' if not w in added_words else 'novel token' for w in two_dim_df.token.values] if words == first_n_words else []
 				if not target_group:
 					for w in two_dim_df.token.values:
 						if w.replace(chr(288), '') in list(itertools.chain(*list(set_targets.values()))):
@@ -1181,15 +1187,16 @@ class Tuner:
 								if w.replace(chr(288), '') in set_targets[k]:
 									target_group.append((k.lower() if 'uncased' in self.string_id else k) + ' target')
 						else:
-							target_group.append('added')
+							target_group.append('novel token')
 				
 				two_dim_df['target_group'] = target_group
+				two_dim_df['target_group_label'] = [target_group_labels[target_group.replace(' target', '')] if target_group.replace(' target', '') in target_group_labels else target_group for target_group in two_dim_df.target_group]
 				two_dim_df['tsne_type'] = f'first {n}' if words == first_n_words else 'set targets'
 				
 				fig, ax = plt.subplots(1)
 				fig.set_size_inches(12, 10)
 				
-				sns.scatterplot(data = two_dim_df.sort_values(by=['target_group'], key = lambda col: -col.str.match('^added$')), x = 'tsne1', y = 'tsne2', size=8, ax=ax, hue='target_group', legend='full')
+				sns.scatterplot(data = two_dim_df.sort_values(by=['target_group'], key = lambda col: -col.str.match('^novel token$')), x = 'tsne1', y = 'tsne2', s=18, ax=ax, hue='target_group_label', legend='full')
 				v_adjust = (ax.get_ylim()[1] - ax.get_ylim()[0])/150
 				
 				for line in range(0, len(two_dim_df)):
@@ -1198,19 +1205,16 @@ class Tuner:
 					else:
 						ax.text(two_dim_df.loc[line].tsne1, two_dim_df.loc[line].tsne2-v_adjust, two_dim_df.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
 				
-				handles_labels = tuple(zip(ax.get_legend_handles_labels()[0], ax.get_legend_handles_labels()[1]))
-				handles_labels = [(h, l) for h, l in handles_labels if not re.match(r'[0-9]+', l)]
-				handles = [hl[0] for hl in handles_labels]
-				labels = [hl[1] for hl in handles_labels]
-				ax.legend(handles=handles, labels=labels)
+				legend = [c for c in ax.get_children() if isinstance(c, matplotlib.legend.Legend)][0]
+				legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ').replace(' label', '')
 				
 				ax.set_xlabel('t-SNE 1', fontsize=8)
 				ax.set_ylabel('t-SNE 2', fontsize=8)
 				
 				if words == first_n_words:
-					title = f'{self.model_bert_name} t-SNEs of first {n} token(s) and added token(s) (filtered)'
+					title = f'{self.model_bert_name} t-SNEs of first {n} token(s) and novel token(s) (filtered)'
 				else:
-					title = f'{self.model_bert_name} t-SNEs of {summary.eval_data.unique()[0]} target group(s) token(s) and added token(s) (filtered)'
+					title = f'{self.model_bert_name} t-SNEs of {summary.eval_data.unique()[0]} target group(s) token(s) and novel token(s) (filtered)'
 				
 				title += f' @ epoch {summary.eval_epoch.unique()[0]}/{summary.total_epochs.unique()[0]} ({summary.epoch_criteria.unique()[0].replace("_", " ")})\n'
 				title += f'min epochs: {summary.min_epochs.unique()[0]}, '
@@ -1245,7 +1249,7 @@ class Tuner:
 					max_epochs = summary.max_epochs.unique()[0],
 					epoch_criteria = summary.epoch_criteria.unique()[0],
 				)
-					
+				
 				tsne_df = pd.concat([tsne_df, tsne_df_tmp], ignore_index=True)
 		
 		tsne_df.to_csv(f'{dataset_name}-{epoch_label}-tsne.csv.gz', index=False)
@@ -1259,6 +1263,18 @@ class Tuner:
 		if len(cossims.predicted_arg.unique()) <= 1:
 			log.info(f'One or fewer predicted arguments were provided for cosine similarities ({cossims.target_group.unique()[0]}). No comparison plots for cosine similarities can be created.')
 			return
+		
+		# we do this swap to fix the labels (without losing any data)
+		# if the dataframe contains info about models other than roberta, this will already have been fixed the multieval script, so we don't touch it
+		if 'roberta' in cossims.model_name.unique() and len(cossims.model_name.unique()) == 1:
+			for col in ['predicted_arg', 'target_group']:
+				# first, replace the ones that don't start with spaces before with a preceding ^
+				cossims.loc[(cossims['model_name'] == 'roberta') & ~(cossims[col].str.startswith(chr(288))), col] = \
+					cossims[(cossims['model_name'] == 'roberta') & ~(cossims[col].str.startswith(chr(288)))][col].str.replace(r'^(.)', r'^\1', regex=True)
+				
+				# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
+				cossims.loc[(cossims['model_name'] == 'roberta') & (cossims.token.str.startswith(chr(288))), col] = \
+					cossims[(cossims['model_name'] == 'roberta') & (cossims.token.str.startswith(chr(288)))][col].str.replace(chr(288), '')
 		
 		if len(cossims.model_id.unique()) > 1:
 			cossims['cossim'] = cossims['mean']
@@ -1277,22 +1293,22 @@ class Tuner:
 		
 		idx_col = 'token' if len(cossims.model_id.unique()) == 1 else 'model_id'
 		
-		group = cossims[['predicted_arg', 'target_group', idx_col, 'cossim']]
-		group_sems = cossims[['predicted_arg', 'target_group', idx_col, 'sem']]
+		group = cossims[['predicted_arg', 'target_group_label', idx_col, 'cossim']]
+		group_sems = cossims[['predicted_arg', 'target_group_label', idx_col, 'sem']]
 		
 		if idx_col == 'model_id':
 			model_means = cossims.groupby(['model_name', 'predicted_arg']).cossim.agg('mean')
 			model_means = model_means.reset_index()
 		
-		group = group.pivot(index=['target_group', idx_col], columns='predicted_arg', values='cossim')
+		group = group.pivot(index=['target_group_label', idx_col], columns='predicted_arg', values='cossim')
 		group.columns.name = None
 		group = group.reset_index()
 		
-		group_sems = group_sems.pivot(index=['target_group', idx_col], columns='predicted_arg', values='sem')
+		group_sems = group_sems.pivot(index=['target_group_label', idx_col], columns='predicted_arg', values='sem')
 		group_sems.columns.name = None
 		group_sems = group_sems.reset_index()
 		
-		pairs = [c for c in group.columns if not c in [idx_col, 'target_group']]
+		pairs = [c for c in group.columns if not c in [idx_col, 'target_group_label']]
 		pairs = [pair for pair in itertools.combinations(pairs, 2) if not pair[0] == pair[1]]
 		pairs = list(set(tuple(sorted(pair)) for pair in pairs))
 		
@@ -1303,12 +1319,12 @@ class Tuner:
 		for i, (in_token, out_token) in enumerate(pairs):
 			# we might be able to use a sns.jointplot to plot histograms instead of just ticks for the means,
 			# but this causes other complex problems that I haven't figured out yet. So we'll stick with the simple thing for now
-			sns.scatterplot(data=group, x=in_token, y=out_token, ax=ax[i][0], zorder=5, hue='target_group', linewidth=0)
+			sns.scatterplot(data=group, x=in_token, y=out_token, ax=ax[i][0], zorder=5, hue='target_group_label', linewidth=0)
 			legend = [c for c in ax[i][0].get_children() if isinstance(c, matplotlib.legend.Legend)][0]
-			legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ')
+			legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ').replace(' label', '')
 			
 			collections = ax[i][0].collections[1:].copy()
-			for (_, eb_group), (_, eb_group_sems), collection in zip(group.groupby('target_group'), group_sems.groupby('target_group'), collections):
+			for (_, eb_group), (_, eb_group_sems), collection in zip(group.groupby('target_group_label'), group_sems.groupby('target_group_label'), collections):
 				ax[i][0].errorbar(data=eb_group, x=in_token, xerr=eb_group_sems[in_token], y=out_token, yerr=eb_group_sems[out_token], color=collection._original_edgecolor, ls='none', zorder=2.5)
 			
 			ulim = max([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
@@ -1325,7 +1341,7 @@ class Tuner:
 			ax[i][0].set_ylim((llim, ulim))
 			
 			# here we add ticks to show the mean and standard errors along each axis
-			group_means = group.drop(idx_col, axis=1).groupby(['target_group']).agg({'mean', 'sem'})
+			group_means = group.drop(idx_col, axis=1).groupby(['target_group_label']).agg({'mean', 'sem'})
 			cols = list(set([c[0] for c in group_means.columns]))
 			group_means.columns = ['_'.join(c) for c in group_means.columns]
 			for predicted_arg in cols:
@@ -1369,12 +1385,12 @@ class Tuner:
 			ax[i][0].set_ylabel(f'{out_token} cosine similarity')
 			
 			# y = y - x plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
-			sns.scatterplot(data=group, x=in_token, y=group[out_token]-group[in_token], ax=ax[i][1], zorder=10, hue='target_group', linewidth=0)
+			sns.scatterplot(data=group, x=in_token, y=group[out_token]-group[in_token], ax=ax[i][1], zorder=10, hue='target_group_label', linewidth=0)
 			legend = [c for c in ax[i][1].get_children() if isinstance(c, matplotlib.legend.Legend)][0]
-			legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ')
+			legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ').replace(' label', '')
 			
 			collections = ax[i][1].collections[1:].copy()
-			for (_, eb_group), (_, eb_group_sems), collection in zip(group.groupby('target_group'), group_sems.groupby('target_group'), collections):
+			for (_, eb_group), (_, eb_group_sems), collection in zip(group.groupby('target_group_label'), group_sems.groupby('target_group_label'), collections):
 				ax[i][1].errorbar(x=eb_group[in_token], xerr=eb_group_sems[in_token], y=eb_group[out_token]-eb_group[in_token], yerr=eb_group_sems[out_token], color=collection._original_edgecolor, ls='none', zorder=2.5)
 			
 			ax[i][1].set_xlim((llim, ulim))
@@ -1421,16 +1437,23 @@ class Tuner:
 		title += ', ' + ('no punctuation' if all(cossims.strip_punct == True) else "with punctuation" if len(cossims.strip_punct.unique()) == 1 and not any(cossims.strip_punct == True) else 'multiple punctuation')
 		title += '\n'
 		
+		# this conditional is a workaround for now. it should be able to be removed later once we rerun the results and add this info to every file
+		if 'target_group_label' in cossims.columns:
+			target_group_labels = cossims[['target_group', 'target_group_label']].drop_duplicates()
+			target_group_labels = target_group_labels.groupby('target_group').apply(lambda x: x.to_dict(orient='records')[0]['target_group_label']).to_dict()
+		else:
+			target_group_labels = {target_group : target_group for target_group in cossims.target_group.unique()}
+		
 		if len(cossims.target_group.unique()) > 1:
 			for target_group, df in cossims.groupby('target_group'):
-				means = df.groupby('predicted_arg').cossim.agg({'mean', 'sem', 'size'})
+				means = df.groupby('predicted_arg').cossim.agg({'mean', 'sem', 'std', 'size'})
 				out_group_means = means.loc[[i for i in means.index if not i == target_group]]
 				exprs = [
 					(
-						f'\nMean cosine similarity of {target_group} to {target_group} \u2212 {arg} to {target_group} targets: ' +
+						f'\nMean cosine similarity of {target_group} to {target_group_labels[target_group]} \u2212 {arg} to {target_group_labels[target_group]} targets: ' +
 						'{:.4f}'.format(means['mean'][target_group]) + ' (\u00b1' + '{:.4f}'.format(means['sem'][target_group]) + ') \u2212 ' +
 						'{:.4f}'.format(out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(out_group_means['sem'][arg]) + ') = ' +
-						'{:.4f}'.format(means['mean'][target_group] - out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(sqrt(((means['sem'][target_group]**2)/means['size'][target_group]) + ((out_group_means['sem'][arg]**2)/out_group_means['size'][arg]))) + ')'
+						'{:.4f}'.format(means['mean'][target_group] - out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(sqrt(((means['std'][target_group]**2)/means['size'][target_group]) + ((out_group_means['std'][arg]**2)/out_group_means['size'][arg]))) + ')'
 					).replace('-', '\u2212') 
 					for arg in out_group_means.index
 				]
@@ -1441,14 +1464,14 @@ class Tuner:
 			title += '\n'
 		
 		for predicted_arg, df in cossims.groupby('predicted_arg'):
-			means = df.groupby('target_group').cossim.agg({'mean', 'sem', 'size'})
+			means = df.groupby('target_group').cossim.agg({'mean', 'sem', 'std', 'size'})
 			out_group_means = means.loc[[i for i in means.index if not i == predicted_arg]]
 			exprs = [
 				(
-					f'\nMean cosine similarity of {predicted_arg} to {predicted_arg} \u2212 {predicted_arg} to {arg} targets: ' +
+					f'\nMean cosine similarity of {predicted_arg} to {target_group_labels[predicted_arg]} \u2212 {predicted_arg} to {target_group_labels[arg]} targets: ' +
 					'{:.4f}'.format(means['mean'][predicted_arg]) + ' (\u00b1' + '{:.4f}'.format(means['sem'][predicted_arg]) + ') \u2212 ' +
 					'{:.4f}'.format(out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(out_group_means['sem'][arg]) + ') = ' + 
-					'{:.4f}'.format(means['mean'][predicted_arg] - out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(sqrt(((means['sem'][predicted_arg]**2)/means['size'][predicted_arg]) + ((out_group_means['sem'][arg]**2)/out_group_means['size'][arg]))) + ')'
+					'{:.4f}'.format(means['mean'][predicted_arg] - out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(sqrt(((means['std'][predicted_arg]**2)/means['size'][predicted_arg]) + ((out_group_means['std'][arg]**2)/out_group_means['size'][arg]))) + ')'
 				).replace('-', '\u2212')
 				for arg in out_group_means.index
 			]
@@ -1472,17 +1495,23 @@ class Tuner:
 		dataset_name = eval_cfg.data.friendly_name
 		magnitude = floor(1 + np.log10(total_epochs))
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
-		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
+		most_similar_tokens = self.most_similar_tokens(k=eval_cfg.k).assign(eval_epoch=epoch, total_epochs=total_epochs)
+		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets=eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
+		
+		predicted_roles = {(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}
+		target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : v for k, v in eval_cfg.data.masked_token_target_labels.items()}
+		
 		most_similar_tokens = most_similar_tokens.assign(
-			eval_data = eval_cfg.data.friendly_name,
+			predicted_role=[predicted_roles[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']],
+		#	target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
+			eval_data=eval_cfg.data.friendly_name,
 			patience=self.cfg.hyperparameters.patience,
 			delta=self.cfg.hyperparameters.delta,
 			min_epochs=self.cfg.hyperparameters.min_epochs,
 			max_epochs=self.cfg.hyperparameters.max_epochs,
-			epoch_criteria = eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual'
+			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 		)
+		
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
 		
 		# log.info('Creating cosine similarity plots')
@@ -1678,17 +1707,24 @@ class Tuner:
 		dataset_name = eval_cfg.data.friendly_name
 		magnitude = floor(1 + np.log10(total_epochs))
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
-		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
+		
+		most_similar_tokens = self.most_similar_tokens(k=eval_cfg.k).assign(eval_epoch=epoch, total_epochs=total_epochs)
+		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets=eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
+		
+		predicted_roles = {(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}
+		target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : v for k, v in eval_cfg.data.masked_token_target_labels.items()}
+		
 		most_similar_tokens = most_similar_tokens.assign(
+			predicted_role=[predicted_roles[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']],
+		#	target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
 			eval_data=eval_cfg.data.friendly_name,
 			patience=self.cfg.hyperparameters.patience,
 			delta=self.cfg.hyperparameters.delta,
 			min_epochs=self.cfg.hyperparameters.min_epochs,
 			max_epochs=self.cfg.hyperparameters.max_epochs,
-			epoch_criteria = eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
+			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 		)
+		
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
 		
 		# log.info('Creating cosine similarity plots')
@@ -2421,10 +2457,15 @@ class Tuner:
 		
 		dataset_name = eval_cfg.data.friendly_name
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
-		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
+		most_similar_tokens = self.most_similar_tokens(k=eval_cfg.k).assign(eval_epoch=epoch, total_epochs=total_epochs)
+		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets=eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
+		
+		predicted_roles = {(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}
+		target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : v for k, v in eval_cfg.data.masked_token_target_labels.items()}
+		
 		most_similar_tokens = most_similar_tokens.assign(
+			predicted_role=[predicted_roles[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']],
+		#	target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
 			eval_data=eval_cfg.data.friendly_name,
 			patience=self.cfg.hyperparameters.patience,
 			delta=self.cfg.hyperparameters.delta,
@@ -2432,6 +2473,7 @@ class Tuner:
 			max_epochs=self.cfg.hyperparameters.max_epochs,
 			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 		)
+		
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
 		
 		# log.info('Creating cosine similarity plots')
