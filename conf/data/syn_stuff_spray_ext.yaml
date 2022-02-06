@@ -100,3 +100,7 @@ to_mask:
 masked_token_targets:
   THAX : [paint, cream, water, goo, hay, books, oil, solvent, powder, liquid, beer, sauce, ketchup, icing, stones, dye, wax, grain, corn, potatoes, jelly, sludge, mud, grease, gravel, wood, chocolate, gravy, slop, foam, fluff]
   GORX : [truck, wall, ground, door, wagon, floor, sidewalk, porch, roof, car, fence, ceiling, tub, factory, counter, oven, surface, window, room, vat, cauldron, bottle, screen, stove, house, building, van, cart, trunk, deck, garden]
+
+masked_token_target_labels:
+  THAX : mass/plural
+  GORX : location

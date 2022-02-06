@@ -98,5 +98,9 @@ to_mask:
   - RICKET
 
 masked_token_targets:
-  THAX : [apple, book, chair, table, phone, shoe, water, drink, cup, flower, plate, bottle, desk, watch, schedule, guitar, napkin, game, straw, ball, jar, mask, hat, lesson, couch, button, box, story, wire, paper, calendar]
+  THAX : [apple, book, chair, table, phone, shoe, water, drink, cup, flower, plate, bottle, desk, watch, schedule, guitar, cloth, game, straw, ball, jar, mask, hat, lesson, couch, button, box, story, wire, paper, calendar]
   RICKET : [person, man, woman, student, teacher, king, queen, prince, princess, writer, author, builder, driver, human, dog, bird, dancer, player, angel, actor, actress, singer, director, bee, friend, wolf, lion, scholar, pirate, spirit, fox]
+
+masked_token_target_labels:
+  THAX : inanimate
+  RICKET : animate
