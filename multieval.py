@@ -248,6 +248,9 @@ def multi_eval_new_verb(cfg: DictConfig, source_dir: str, save_dir: str, summari
 def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims: pd.DataFrame) -> pd.DataFrame:
 	cossims = cossims.copy()
 	
+	# we get this here for the message below because we mess with the model id field below
+	n_models = len(cossims.model_id.unique())
+	
 	if not (len(cossims.model_name.unique()) == 1 and cossims.model_name.unique()[0] == 'roberta'):
 		roberta_cossims = cossims[(~cossims.target_group.str.endswith('most similar')) & (cossims.model_name == 'roberta')].copy()
 		num_tokens_in_cossims = len(roberta_cossims.token.unique())
@@ -359,8 +362,8 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 				means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
 				if means_diffs:
 					for diff in means_diffs:
-						log.info(f'Mean cossim {diff} targets for {predicted_arg} across {len(cossims.model_id.unique())} models: {"{:.2f}".format(means_diffs[diff])}')
-						f.write(f'Mean cossim {diff} targets for {predicted_arg} across {len(cossims.model_id.unique())} models: {means_diffs[diff]}\n')
+						log.info(f'Mean cossim {diff} targets for {predicted_arg} across {n_models} models: {"{:.2f}".format(means_diffs[diff])}')
+						f.write(f'Mean cossim {diff} targets for {predicted_arg} across {n_models} models: {means_diffs[diff]}\n')
 	
 	return cossims
 
