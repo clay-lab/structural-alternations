@@ -125,12 +125,13 @@ def multieval(cfg: DictConfig) -> None:
 				
 				os.rename(os.path.join(eval_dir, 'multieval.log'), os.path.join(eval_dir, 'eval.log'))
 				os.remove(os.path.join(starting_dir, 'multieval.log'))
+				os.chdir(starting_dir)
 	
 	if chkpt_dirs:
 		log.info(f'Evaluation complete for {len(chkpt_dirs)} models')
 	
-	# If we are comparing the models, get the summary files and run the comparison
-	if cfg.compare:
+	# If we are summarizing the models, get the summary files and run the comparison
+	if cfg.summarize:
 		eval_dirs = [os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}') for chkpt_dir in chkpt_dirs]
 		
 		summary_files = [

@@ -10,7 +10,7 @@ num_tsne_words: 500 # plot the tsne of the first num_tsne_words embeddings + the
 
 criteria: 'all'
 
-compare: true # Set to false to just evaluate all models in subdirs individually
+summarize: true # Set to false to just evaluate all models in subdirs individually instead of creating summary plots and csvs
 epoch: best_mean # which epoch to evaluate on?
 entail: true # what kind of models are being compared?
 new_verb: false # what kind of models are being compared?
