@@ -17,15 +17,14 @@ from glob import glob
 from typing import List, Type
 from shutil import copyfileobj
 from transformers import BertTokenizer, DistilBertTokenizer, RobertaTokenizer
-from statsmodels.nonparametric.smoothers_lowess import lowess
+# from statsmodels.nonparametric.smoothers_lowess import lowess
 
 model_max_length = 512
 
 log = logging.getLogger(__name__)
 
 def z_transform(x: np.ndarray) -> np.ndarray:
-	z = (x - np.mean(x))/np.std(x)
-	return z
+	return (x - np.mean(x))/np.std(x)
 
 def set_seed(seed: int) -> None:
 	seed = int(seed)

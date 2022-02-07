@@ -26,6 +26,20 @@ config_path='conf'
 
 log = logging.getLogger(__name__)
 
+OmegaConf.register_new_resolver(
+	'criterianame', 
+	lambda criteria: ','.join([
+		c.replace('always_masked',    'a_m'). \
+		  replace('bert_masking',     'b_m'). \
+		  replace('no_masking',       'n_m'). \
+		  replace('roberta_masking',  'r_m'). \
+		  replace('no_punctuation',   'n_p'). \
+		  replace('with_punctuation', 'w_p'). \
+		  replace('^bert',            'bert')
+		for c in criteria.split(',')
+	])
+)
+
 @hydra.main(config_path=config_path, config_name='multieval')
 def multieval(cfg: DictConfig) -> None:
 	
@@ -35,23 +49,34 @@ def multieval(cfg: DictConfig) -> None:
 	source_dir = hydra.utils.get_original_cwd()
 	starting_dir = os.getcwd()
 	
+	# clean the current directory log if needed
+	with open('multieval.log', 'r') as log_file:
+		f = log_file.read()
+	
+	if f: 
+		logging.shutdown()
+		os.remove('multieval.log')
+	
 	# Get a regex for the score file name so we can just load it if it already exists
-	# change the regexes to use an appropriate metric instead of 'scores'
+	# make this global so we can access it in the helper functions later
+	global scores_name
+	scores_name = 'surprisals' if cfg.data.new_verb else 'odds_ratios' if cfg.data.entail else 'scores'
+	
 	if cfg.epoch == 'None':
 		cfg.epoch = None
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-(([0-9]+)-+)+(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|cossim.csv.gz)))'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
 		log.warning('Epoch not specified. If no evaluation has been performed, evaluation will be performed on the final epoch. Otherwise, all epochs on which evaluation has been performed will be loaded for each model.')
 	elif 'best' in cfg.epoch:
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|cossim.csv.gz)))'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
 	else:
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-' + cfg.epoch + '-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|plots.pdf|scores.csv.gz|scores.pkl.gz|cossim.csv.gz)))'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-' + cfg.epoch + f'-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
 	
 	# Get checkpoint dirs in outputs
-	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.checkpoint_dir), '**')
+	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.dir), '**')
 	chkpt_dirs = [os.path.split(f)[0] for f in glob(chkpt_dirs, recursive = True) if f.endswith('weights.pkl.gz')]
 	
 	if not chkpt_dirs:
-		print(f'No model information found in checkpoint_dir {cfg.checkpoint_dir}. Did you put in the right directory path?')
+		print(f'No model information found in dir {cfg.dir}. Did you put in the right directory path?')
 		sys.exit(1)
 	
 	# filter paths based on criteria
@@ -101,6 +126,9 @@ def multieval(cfg: DictConfig) -> None:
 				os.rename(os.path.join(eval_dir, 'multieval.log'), os.path.join(eval_dir, 'eval.log'))
 				os.remove(os.path.join(starting_dir, 'multieval.log'))
 	
+	if chkpt_dirs:
+		log.info(f'Evaluation complete for {len(chkpt_dirs)} models')
+	
 	# If we are comparing the models, get the summary files and run the comparison
 	if cfg.compare:
 		eval_dirs = [os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}') for chkpt_dir in chkpt_dirs]
@@ -109,59 +137,20 @@ def multieval(cfg: DictConfig) -> None:
 			os.path.join(eval_dir, f) 
 			for eval_dir in eval_dirs 
 				for f in os.listdir(eval_dir)
-					if re.match(score_file_name, f) and
-					   f.endswith('-scores.csv.gz')
-					   # change this to a filename with the appropriate metric
+					if re.match(score_file_name, f) and f.endswith(f'-{scores_name}.csv.gz')
 		]
 		
-		summary_of_summaries = load_summaries(summary_files)
-		log.info(f'Comparing {len(summary_of_summaries.model_id.unique())} models')
-		
-		if cfg.data.new_verb:
-			multi_eval_new_verb(cfg, source_dir, starting_dir, summary_of_summaries)
-		elif cfg.data.entail:
-			multi_eval_entailments(cfg, source_dir, starting_dir, summary_of_summaries)
-		else:
-			multi_eval(cfg, source_dir, starting_dir, summary_of_summaries)
-			
-		# move this stuff so we can plot the cossims for the summaries (this requires instatiating a dummy tuner)
-		similarities_files = [
+		cossims_files = [
 			os.path.join(eval_dir, f)
 			for eval_dir in eval_dirs
 				for f in os.listdir(eval_dir)
-					if re.match(score_file_name, f) and
-					   f.endswith('-cossim.csv.gz')
+					if re.match(score_file_name, f) and f.endswith('-cossims.csv.gz')
 		]
 		
-		summary_of_similarities = load_summaries(similarities_files)
-		# summary_of_similarities = summary_of_similarities.drop_duplicates().reset_index(drop=True)
+		summary_of_summaries = load_summaries(summary_files)
+		summary_of_cossims = load_summaries(cossims_files)
 		
-		n_models = len(summary_of_similarities.model_id.unique())
-		log.info(f'Comparing cosine similarity data for {n_models} models')
-		
-		summary_of_similarities = multi_eval_cossims(cfg, source_dir, starting_dir, summary_of_similarities)
-		
-		filename = summary_of_similarities.eval_data.unique()[0] + '-'
-		epoch_label = summary_of_similarities.epoch_criteria.unique()[0] if len(summary_of_similarities.epoch_criteria.unique()) == 1 else ''
-		if len(summary_of_similarities.model_id.unique()) == 1:
-			epoch_label = '-' + epoch_label
-			magnitude = floor(1 + np.log10(summary_of_similarities.total_epochs.unique()[0]))
-			epoch_label = f'{str(summary_of_similarities.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
-		
-		filename += epoch_label + '-cossim.csv.gz'
-		
-		summary_of_similarities.to_csv(filename, index = False, na_rep = 'NaN')
-			
-	# Rename the output dir if we had to escape the first character in bert
-	if '^bert' in starting_dir:
-		logging.shutdown()
-		os.chdir('..')
-		renamed = starting_dir.replace('^bert', 'bert')
-		if not os.path.exists(renamed):
-			os.rename(starting_dir, starting_dir.replace('^bert', 'bert'))
-		else:
-			copy_tree(starting_dir, renamed)
-			remove_tree(starting_dir)
+		multi_eval(cfg, source_dir, starting_dir, summary_of_summaries, summary_of_cossims)
 
 def load_summaries(summary_files: List[str]) -> pd.DataFrame:
 	summaries = pd.DataFrame()
@@ -175,16 +164,39 @@ def load_summaries(summary_files: List[str]) -> pd.DataFrame:
 	
 	return summaries
 
-def save_summary(cfg: DictConfig, save_dir: str, summary: pd.DataFrame) -> None:
-	# Get information for saved file names
-	dataset_name = cfg.data.friendly_name
+def save_summary(save_dir: str, summary: pd.DataFrame, suffix: str = None, filetype: List[str] = ['pkl', 'csv']) -> None:
+	original_dir = os.getcwd()
 	
-	eval_epoch = cfg.epoch if len(np.unique(summary.eval_epoch)) > 1 or np.unique(summary.eval_epoch)[0] == 'multiple' else np.unique(summary.eval_epoch)[0]
+	filetype = [filetype] if isinstance(filetype, str) else filetype
+	if any([f for f in filetype if not f in ['pkl', 'csv']]):
+		log.warning('Invalid filetype provided. Acceptable filetypes are "csv", "pkl". Excluding invalid types.')
+		filetype = [f for f in filetype if f in ['pkl', 'csv']]
+			
+		if not filetype:
+			log.warning('No valid filetype provided. Using defaults ["pkl", "csv"].')
+	
+	# Get information for saved file names
+	filename = summary.eval_data.unique()[0] + '-'
+	epoch_label = summary.epoch_criteria.unique()[0] if len(summary.epoch_criteria.unique()) == 1 else ''
+	if len(summary.model_id.unique()) == 1 and not 'multiple' in summary.total_epochs.unique():
+		epoch_label = '-' + epoch_label
+		try: 
+			magnitude = floor(1 + np.log10(summary.total_epochs.unique()[0]))
+		except:
+			breakpoint()
+		epoch_label = f'{str(summary.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
+	
+	filename += epoch_label + f'-{suffix or scores_name}'
 	
 	os.chdir(save_dir)
-	summary.to_pickle(f"{dataset_name}-{eval_epoch}-scores.pkl.gz")
-	summary.to_csv(f"{dataset_name}-{eval_epoch}-scores.csv.gz", index = False)
-	# save these with appropriate file names depending on the metric
+	
+	if 'pkl' in filetype:
+		summary.to_pickle(f"{filename}.pkl.gz")
+	
+	if 'csv' in filetype:
+		summary.to_csv(f"{filename}.csv.gz", index = False, na_rep = 'NaN')
+	
+	os.chdir(original_dir)
 
 def adjust_cfg(cfg: DictConfig, source_dir: str, summary: pd.DataFrame) -> DictConfig:
 	# Load the appropriate config file for model parameters,
@@ -200,15 +212,27 @@ def adjust_cfg(cfg: DictConfig, source_dir: str, summary: pd.DataFrame) -> DictC
 	
 	return cfg
 
-def multi_eval(cfg: DictConfig, source_dir: str, save_dir: str, summary: pd.DataFrame) -> None:
+def multi_eval(cfg: DictConfig, source_dir: str, save_dir: str, summary: pd.DataFrame, cossims: pd.DataFrame) -> None:
+	log.info(f'Creating summary of cosine similarity data from {len(cossims.model_id.unique())} models')
+	cossims = multi_eval_cossims(cfg, source_dir, save_dir, cossims)
+	
+	log.info(f'Creating summary of {re.sub("s$", "", scores_name.replace("_", " "))} data from {len(summary.model_id.unique())} models')
+	if cfg.data.new_verb:
+		multi_eval_new_verb(cfg, source_dir, save_dir, summary, cossims)
+	elif cfg.data.entail:
+		multi_eval_entailments(cfg, source_dir, save_dir, summary, cossims)
+	else:
+		multi_eval_(cfg, source_dir, save_dir, summary, cossims)
+	
+	log.info(f'Summarization of data from {len(summary.model_id.unique())} models complete')
+
+def multi_eval_(cfg: DictConfig, source_dir: str, save_dir: str, summary: pd.DataFrame, cossims: pd.DataFrame) -> None:
 	raise NotImplementedError('Comparison of non-entailment data not currently supported.')
 
-def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
+def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame, cossims: pd.DataFrame) -> None:
 	"""
 	Combines entailment summaries over multiple models and plots them
 	"""
-	# Summarize info here and then figure out how to plot it
-	
 	summary_of_summaries = summaries. \
 		groupby(['model_id', 'eval_data', 
 				 'sentence_type', 'ratio_name', 
@@ -226,31 +250,28 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	sentence_types_nums = summaries.loc[summaries.groupby(['model_id', 'sentence_type']).sentence_num.idxmin()].reset_index(drop=True)[['model_id', 'sentence_type','sentence']].rename({'sentence' : 'ex_sentence'}, axis = 1)
 	summary_of_summaries = summary_of_summaries.merge(sentence_types_nums)
 	
-	save_summary(cfg, save_dir, summary_of_summaries)
+	save_summary(save_dir, summary_of_summaries)
 	
 	summary_of_summaries['sentence_num'] = 0
-	summary_of_summaries = summary_of_summaries.rename({'ex_sentence' : 'sentence'}, axis = 1)
+	summary_of_summaries = summary_of_summaries.rename({'ex_sentence' : 'sentence'}, axis=1)
 	
 	cfg = adjust_cfg(cfg, source_dir, summary_of_summaries)
 	
 	# Plot the overall results
 	tuner = Tuner(cfg)
-	log.info(f'Plotting results from {len(summary_of_summaries.model_id.unique())} models')
+	log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {len(summary_of_summaries.model_id.unique())} models')
 	tuner.graph_entailed_results(summary_of_summaries, cfg)
 	
 	acc = tuner.get_entailed_accuracies(summary_of_summaries)
-	eval_epoch = cfg.epoch if len(np.unique(acc.eval_epoch)) > 1 or np.unique(acc.eval_epoch)[0] == 'multiple' else np.unique(acc.eval_epoch)[0]
-	acc.to_csv(f'{cfg.data.friendly_name}-{eval_epoch}-accuracies.csv.gz', index = False)
+	save_summary(save_dir, acc, 'accuracies', 'csv')
 
-def multi_eval_new_verb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
+def multi_eval_new_verb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame, cossims: pd.DataFrame) -> None:
 	return NotImplementedError('Comparison of new verb data not currently supported.')
 
 def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims: pd.DataFrame) -> pd.DataFrame:
-	cossims = cossims.copy()
-	
-	# we get this here for the message below because we mess with the model id field below
-	n_models = len(cossims.model_id.unique())
-	
+	"""
+	Combines and plots cosine similarity data from multiple models.
+	"""
 	if not (len(cossims.model_name.unique()) == 1 and cossims.model_name.unique()[0] == 'roberta'):
 		roberta_cossims = cossims[(~cossims.target_group.str.endswith('most similar')) & (cossims.model_name == 'roberta')].copy()
 		num_tokens_in_cossims = len(roberta_cossims.token.unique())
@@ -337,35 +358,13 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 	
 	cossims = pd.concat([targets, most_similars], ignore_index=True)
 	
-	# cfg = adjust_cfg(cfg, source_dir, cossims)
-	#
-	# Plot the overall results
-	# tuner = Tuner(cfg)
-	# log.info(f'Plotting cosine similarities from {len(cossims.model_id.unique())} models')
-	# tuner.plot_cossims(cossims)
+	save_summary(save_dir, cossims, 'cossims', 'csv')
 	
-	filename = cossims.eval_data.unique()[0] + '-'
-	epoch_label = cossims.epoch_criteria.unique()[0] if len(cossims.epoch_criteria.unique()) == 1 else ''
-	if len(cossims.model_id.unique()) == 1:
-		epoch_label = '-' + epoch_label
-		magnitude = floor(1 + np.log10(cossims.total_epochs.unique()[0]))
-		epoch_label = f'{str(cossims.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
+	cfg = adjust_cfg(cfg, source_dir, cossims)
 	
-	filename += epoch_label + '-cossim_diffs.txt'
-	
-	if len(cossims.predicted_arg.unique()) > 1:
-		with open(filename, 'w', encoding = 'utf-8') as f:
-			for predicted_arg, df in cossims.groupby('predicted_arg'):
-				df = df.loc[~df.target_group.str.endswith('most similar')]
-				means = df.groupby('target_group')['mean'].agg('mean')
-				out_group_means = means[[i for i in means.index if not i == predicted_arg]]
-				means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
-				if means_diffs:
-					for diff in means_diffs:
-						log.info(f'Mean cossim {diff} targets for {predicted_arg} across {n_models} models: {"{:.2f}".format(means_diffs[diff])}')
-						f.write(f'Mean cossim {diff} targets for {predicted_arg} across {n_models} models: {means_diffs[diff]}\n')
-	
-	return cossims
+	tuner = Tuner(cfg)
+	log.info(f'Creating cosine similarity plots with data from {len(cossims[cossims.model_id != "multiple"].model_id.unique())} models')
+	tuner.plot_cossims(cossims)
 
 
 if __name__ == "__main__":

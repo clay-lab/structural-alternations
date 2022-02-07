@@ -3,9 +3,9 @@ defaults:
   - data: syn_give
   - override hydra/job_logging: tuner_log_conf
 
-checkpoint_dir: outputs
+dir: outputs
 
-k: 10 # get the subword tokens with the k most similar embeddings to the trained mask tokens
+k: 50 # get the subword tokens with the k most similar embeddings to the trained mask tokens
 num_tsne_words: 500 # plot the tsne of the first num_tsne_words embeddings + the added_tokens
 
 criteria: 'all'
@@ -20,7 +20,7 @@ new_verb: false # what kind of models are being compared?
 
 hydra:
   run:
-    dir: ${checkpoint_dir}/multieval-${criteria}-${data.friendly_name}
+    dir: ${dir}/multieval-${criterianame:${criteria}}-${data.friendly_name}
   sweep:
-    dir: ${checkpoint_dir}
-    subdir: multieval-${criteria}-${data.friendly_name}
+    dir: ${dir}
+    subdir: multieval-${criterianame:${criteria}}-${data.friendly_name}

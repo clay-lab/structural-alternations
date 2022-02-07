@@ -1006,7 +1006,7 @@ class Tuner:
 				del fig
 	
 	
-	def most_similar_tokens(self, tokens: List[str] = [], targets: Dict[str,str] = {}, k: int = 10) -> pd.DataFrame:
+	def most_similar_tokens(self, tokens: List[str] = [], targets: Dict[str,str] = {}, k: int = 50) -> pd.DataFrame:
 		"""
 		Returns a datafarame containing information about the k most similar tokens to tokens
 		or if targets is provided, infomation about the cossim of the tokens to the targets they are mapped to in targets
@@ -1118,7 +1118,7 @@ class Tuner:
 		else:
 			return pd.DataFrame()
 	
-	def plot_tsnes(self, summary: pd.DataFrame, eval_cfg: DictConfig) -> None:
+	def plot_save_tsnes(self, summary: pd.DataFrame, eval_cfg: DictConfig) -> None:
 		n = eval_cfg.num_tsne_words
 		set_targets = eval_cfg.data.masked_token_targets
 		
@@ -1133,7 +1133,7 @@ class Tuner:
 		with open(os.path.join(hydra.utils.get_original_cwd(), 'conf', pos + '.txt'), 'r') as f:
 			targets = [w.lower().strip() for w in f.readlines()]
 		
-		first_n = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in targets}
+		first_n = {k : v for k, v in self.tokenizer.get_vocab().items() if k in targets or k.replace(chr(288), '').lower() in targets}
 		set_targets_dict = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in list(itertools.chain(*list(set_targets.values())))}
 		
 		# if we are using roberta, filter to tokens that start with a preceeding space and are not followed by a capital letter (to avoid duplicates))
@@ -1165,10 +1165,10 @@ class Tuner:
 		tsne_df = pd.DataFrame(columns=['target_group', 'target_group_label', 'token', 'tsne1', 'tsne2'])
 		
 		# this conditional can be removed later when everything is updated
-		if 'masked_token_target_labels' in eval_cfg.data.keys():
-			target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : v for k, v in eval_cfg.data.masked_token_target_labels.items()}
-		else:
-			target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : (k.lower() if 'uncased' in self.string_id else k) for k in eval_cfg.data.masked_token_targets}
+		# if 'masked_token_target_labels' in eval_cfg.data.keys():
+		target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : v for k, v in eval_cfg.data.masked_token_target_labels.items()}
+		# else:
+		#	target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : (k.lower() if 'uncased' in self.string_id else k) for k in eval_cfg.data.masked_token_targets}
 		
 		with PdfPages(f'{dataset_name}-{epoch_label}-tsne-plots.pdf') as pdf:
 			for word_vectors, words in ((first_n_word_vectors, first_n_words), (set_targets_word_vectors, set_targets_words)):
@@ -1288,14 +1288,14 @@ class Tuner:
 			magnitude = floor(1 + np.log10(cossims.total_epochs.unique()[0]))
 			epoch_label = f'{str(cossims.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
 		
-		filename += epoch_label + '-cossim-plots.pdf'
+		filename += epoch_label + '-cossims-plot.pdf'
 		
 		idx_col = 'token' if len(cossims.model_id.unique()) == 1 else 'model_id'
 		
 		group = cossims[['predicted_arg', 'target_group_label', idx_col, 'cossim']]
 		group_sems = cossims[['predicted_arg', 'target_group_label', idx_col, 'sem']]
 		
-		if idx_col == 'model_id':
+		if idx_col == 'model_id' and len(cossims.model_name.unique()) > 1:
 			model_means = cossims.groupby(['model_name', 'predicted_arg']).cossim.agg('mean')
 			model_means = model_means.reset_index()
 		
@@ -1372,7 +1372,7 @@ class Tuner:
 			if idx_col == 'token':
 				for line in range(0, len(group)):
 					ax[i][0].text(group.loc[line][in_token], group.loc[line][out_token]-(v_adjust if group_sems.loc[line][out_token] == 0 else (group_sems.loc[line][out_token]+(v_adjust/2))), group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15)
-			else:
+			elif len(cossims.model_name.unique()) > 1:
 				for model_name in model_means.model_name:
 					ax[i][0].text(
 						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0], 
@@ -1407,7 +1407,7 @@ class Tuner:
 			if idx_col == 'token':
 				for line in range(0, len(group)):
 					ax[i][1].text(group.loc[line][in_token], group.loc[line][out_token]-group.loc[line][in_token]-(v_adjust if group_sems.loc[line][out_token] == 0 else (group_sems.loc[line][out_token]+(v_adjust/2))), group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=10)
-			else:
+			elif len(cossims.model_name.unique()) > 1:
 				for model_name in model_means.model_name:
 					ax[i][1].text(
 						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0], 
@@ -1437,11 +1437,11 @@ class Tuner:
 		title += '\n'
 		
 		# this conditional is a workaround for now. it should be able to be removed later once we rerun the results and add this info to every file
-		if 'target_group_label' in cossims.columns:
-			target_group_labels = cossims[['target_group', 'target_group_label']].drop_duplicates()
-			target_group_labels = target_group_labels.groupby('target_group').apply(lambda x: x.to_dict(orient='records')[0]['target_group_label']).to_dict()
-		else:
-			target_group_labels = {target_group : target_group for target_group in cossims.target_group.unique()}
+		# if 'target_group_label' in cossims.columns:
+		target_group_labels = cossims[['target_group', 'target_group_label']].drop_duplicates()
+		target_group_labels = target_group_labels.groupby('target_group').apply(lambda x: x.to_dict(orient='records')[0]['target_group_label']).to_dict()
+		# else:
+		#	target_group_labels = {target_group : target_group for target_group in cossims.target_group.unique()}
 		
 		if len(cossims.target_group.unique()) > 1:
 			for target_group, df in cossims.groupby('target_group'):
@@ -1502,7 +1502,7 @@ class Tuner:
 		
 		most_similar_tokens = most_similar_tokens.assign(
 			predicted_role=[predicted_roles[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']],
-		#	target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
+			target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
 			eval_data=eval_cfg.data.friendly_name,
 			patience=self.cfg.hyperparameters.patience,
 			delta=self.cfg.hyperparameters.delta,
@@ -1511,22 +1511,10 @@ class Tuner:
 			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 		)
 		
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossims.csv.gz', index=False)
 		
-		# log.info('Creating cosine similarity plots')
-		# self.plot_cossims(most_similar_tokens) (do this after we've added the eval data to the cossim dfs)
-		
-		if len(most_similar_tokens.predicted_arg.unique()) > 1:
-			with open(f'{dataset_name}-{epoch_label}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
-				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
-					df = df.loc[~df.target_group.str.endswith('most similar')]
-					means = df.groupby('target_group').cossim.agg('mean')
-					out_group_means = means[[i for i in means.index if not i == predicted_arg]]
-					means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
-					if means_diffs:
-						for diff in means_diffs:
-							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
-							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
+		log.info('Creating cosine similarity plots')
+		self.plot_cossims(most_similar_tokens)
 		
 		# Load data
 		# the use of eval_cfg.data.to_mask will probably need to be updated here for roberta now
@@ -1541,7 +1529,7 @@ class Tuner:
 		summary = self.summarize_results(results, labels)
 		
 		log.info(f'Creating t-SNE plots')
-		self.plot_tsnes(summary, eval_cfg)
+		self.plot_save_tsnes(summary, eval_cfg)
 		
 		log.info("Creating aconf and entropy plots")
 		self.graph_results(results, summary, eval_cfg)
@@ -1715,7 +1703,7 @@ class Tuner:
 		
 		most_similar_tokens = most_similar_tokens.assign(
 			predicted_role=[predicted_roles[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']],
-		#	target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
+			target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
 			eval_data=eval_cfg.data.friendly_name,
 			patience=self.cfg.hyperparameters.patience,
 			delta=self.cfg.hyperparameters.delta,
@@ -1724,22 +1712,10 @@ class Tuner:
 			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 		)
 		
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossims.csv.gz', index=False)
 		
-		# log.info('Creating cosine similarity plots')
-		# self.plot_cossims(most_similar_tokens) (do this after we've added the eval data to the cossim dfs)
-		
-		if len(most_similar_tokens.predicted_arg.unique()) > 1:
-			with open(f'{dataset_name}-{epoch_label}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
-				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
-					df = df.loc[~df.target_group.str.endswith('most similar')]
-					means = df.groupby('target_group').cossim.agg('mean')
-					out_group_means = means[[i for i in means.index if not i == predicted_arg]]
-					means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
-					if means_diffs:
-						for diff in means_diffs:
-							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
-							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
+		log.info('Creating cosine similarity plots')
+		self.plot_cossims(most_similar_tokens)
 		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 		inputs = data["inputs"]
@@ -1750,7 +1726,7 @@ class Tuner:
 		
 		# Calculate performance on data
 		with torch.no_grad():
-			log.info("Evaluating model on testing data")
+			log.info('Evaluating model on testing data')
 			outputs = [self.model(**i) for i in inputs]
 		
 		summary = self.get_entailed_summary(sentences, outputs, labels, eval_cfg)
@@ -1760,18 +1736,16 @@ class Tuner:
 		
 		# save the summary as a pickle and as a csv so that we have access to the original tensors
 		# these get converted to text in the csv, but the csv is easier to work with otherwise
-		summary.to_pickle(f"{dataset_name}-{epoch_label}-scores.pkl.gz")
-		# summary.to_pickle(f"{dataset_name}-{epoch_label}-odds_ratios.pkl.gz")
+		summary.to_pickle(f"{dataset_name}-{epoch_label}-odds_ratios.pkl.gz")
 		
 		summary_csv = summary.copy()
-		summary_csv['odds_ratio'] = summary_csv['odds_ratio'].astype(float).copy()
-		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-scores.csv.gz", index = False, na_rep = 'NaN')
-		# summary_csv.to_csv(f"{dataset_name}-{epoch_label}-odds_ratios.csv.gz", index = False, na_rep = 'NaN')
+		summary_csv['odds_ratio'] = summary_csv.odds_ratio.astype(float).copy()
+		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-odds_ratios.csv.gz", index = False, na_rep = 'NaN')
 		
-		log.info(f'Creating t-SNE plots')
-		self.plot_tsnes(summary, eval_cfg)
+		log.info('Creating t-SNE plots')
+		self.plot_save_tsnes(summary, eval_cfg)
 		
-		log.info('Creating odds ratio plots')
+		log.info('Creating odds ratios plots')
 		self.graph_entailed_results(summary, eval_cfg)
 		
 		acc = self.get_entailed_accuracies(summary)
@@ -2006,14 +1980,11 @@ class Tuner:
 		
 		# Get each unique pair of sentence types so we can create a separate plot for each pair
 		sentence_types = summary.sentence_type.unique()
+		sentence_types = sorted(sentence_types, key = lambda s_t: eval_cfg.data.sentence_types.index(s_t))
 		paired_sentence_types = list(itertools.combinations(sentence_types, 2))
 		
 		# Sort so that the trained cases are first
-		paired_sentence_types = [
-			sorted(pair, 
-				   key = lambda x: str(-int(x == self.reference_sentence_type)) + x) 
-			for pair in paired_sentence_types
-		]
+		paired_sentence_types = [sorted(pair, key = lambda x: str(-int(x == self.reference_sentence_type)) + x) for pair in paired_sentence_types]
 		
 		# Filter to only cases including the reference sentence type for ease of interpretation
 		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type] if self.reference_sentence_type != 'none' else [(s1, s2) for s1, s2 in paired_sentence_types]
@@ -2025,7 +1996,7 @@ class Tuner:
 			magnitude = floor(1 + np.log10(summary.total_epochs.unique()[0]))
 			epoch_label = f'{str(summary.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
 		
-		filename += epoch_label + '-plots.pdf'
+		filename += epoch_label + '-odds_ratios-plots.pdf'
 		
 		# For each pair, we create a different plot
 		# with PdfPages(f'{dataset_name}{epoch_label}-odds_ratio-plots.pdf') as pdf:
@@ -2466,7 +2437,7 @@ class Tuner:
 		
 		most_similar_tokens = most_similar_tokens.assign(
 			predicted_role=[predicted_roles[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']],
-		#	target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
+			target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
 			eval_data=eval_cfg.data.friendly_name,
 			patience=self.cfg.hyperparameters.patience,
 			delta=self.cfg.hyperparameters.delta,
@@ -2477,20 +2448,8 @@ class Tuner:
 		
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
 		
-		# log.info('Creating cosine similarity plots')
-		# self.plot_cossims(most_similar_tokens) (do this after we've added the eval data to the cossim dfs)
-		
-		if len(most_similar_tokens.predicted_arg.unique()) > 1:
-			with open(f'{dataset_name}-{epoch_label}-cossim_diffs.txt', 'w', encoding = 'utf-8') as f:
-				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
-					df = df.loc[~df.target_group.str.endswith('most similar')]
-					means = df.groupby('target_group')['cossim'].agg('mean')
-					out_group_means = means[[i for i in means.index if not i == predicted_arg]]
-					means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
-					if means_diffs:
-						for diff in means_diffs:
-							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
-							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
+		log.info('Creating cosine similarity plots')
+		self.plot_cossims(most_similar_tokens)
 		
 		# Define a local function to get the probabilities
 		def get_probs(epoch: int) -> Dict[int,Dict]:
@@ -2537,14 +2496,12 @@ class Tuner:
 		epoch = max(results.keys())
 		
 		log.info(f"SAVING TO: {os.getcwd()}")
-		summary.to_pickle(f"{dataset_name}-0-{epoch}-scores.pkl.gz")
-		# summary.to_pickle(f"{dataset_name}-0-{epoch}-surprisals.pkl.gz")
-		summary.to_csv(f"{dataset_name}-0-{epoch}-scores.csv.gz", index = False, na_rep = 'NaN')
-		# summary.to_csv(f"{dataset_name}-0-{epoch}-surprisals.csv.gz", index = False, na_rep = 'NaN')
+		summary.to_pickle(f"{dataset_name}-0-{epoch}-surprisals.pkl.gz")
+		summary.to_csv(f"{dataset_name}-0-{epoch}-surprisals.csv.gz", index = False, na_rep = 'NaN')
 		
 		# Create graphs
 		log.info(f'Creating t-SNE plots')
-		self.plot_tsnes(summary, eval_cfg)
+		self.plot_save_tsnes(summary, eval_cfg)
 		
 		log.info('Creating surprisal plots')
 		self.graph_new_verb_results(summary, eval_cfg)
@@ -2739,7 +2696,7 @@ class Tuner:
 		
 		# For each sentence type, we create a different plot
 		# with PdfPages(f'{dataset_name}{epoch_label}-surprisal-plots.pdf') as pdf:
-		with PdfPages(f'{dataset_name}{epoch_label}-plots.pdf') as pdf:
+		with PdfPages(f'{dataset_name}{epoch_label}-surprisals-plots.pdf') as pdf:
 			for sentence_type in tqdm(sentence_types, total = len(sentence_types)):
 				
 				# Get x and y data. We plot the first member of each pair on x, and the second member on y

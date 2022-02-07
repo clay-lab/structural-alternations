@@ -8,12 +8,11 @@ epoch: best_mean
 # 'best_sumsq' means the epoch meeting the following criteria:
 # (1) it has the minimum loss for at least one set evaluated during training
 # (2) if best_sumsq it minimizes the sumsq differences between the average loss
-#     at that epoch and the (lowess smoothed) individual dataset losses
 #     at that epoch compared to other epochs meeting criterion (1)
-# 'best_mean' means the epoch that has lowest mean loss
+# 'best_mean' means the epoch that has lowest mean loss on dev sets
 
-k: 10 # get the subword tokens with the k most similar embeddings to the trained mask tokens
-num_tsne_words: 500 # plot the tsne of the first num_tsne_words embeddings + the added_tokens
+k: 50 # get the k subword tokens with the most similar embeddings to the trained novel tokens
+num_tsne_words: 500 # plot the tsne of the first num_tsne_words embeddings + the novel tokens
 
 checkpoint_dir: outputs/active_DO/DistilBertForMaskedLM/masked-False/2021-06-15_12-43-59
 
