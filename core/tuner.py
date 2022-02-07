@@ -1133,7 +1133,7 @@ class Tuner:
 		with open(os.path.join(hydra.utils.get_original_cwd(), 'conf', pos + '.txt'), 'r') as f:
 			targets = [w.lower().strip() for w in f.readlines()]
 		
-		first_n = {k : v for k, v in self.tokenizer.get_vocab().items() if k in targets or k.replace(chr(288), '').lower() in targets}
+		first_n = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in targets}
 		set_targets_dict = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in list(itertools.chain(*list(set_targets.values())))}
 		
 		# if we are using roberta, filter to tokens that start with a preceeding space and are not followed by a capital letter (to avoid duplicates))
