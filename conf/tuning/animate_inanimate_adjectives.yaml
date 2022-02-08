@@ -1,0 +1,15 @@
+name: animate_inanimate_adjectives
+
+reference_sentence_type: adjective
+new_verb: false
+entail: true
+
+to_mask:
+  - RICKET
+  - THAX
+
+data:
+  - The angry RICKET
+  - A happy RICKET
+  - The antique THAX
+  - A mechanical THAX

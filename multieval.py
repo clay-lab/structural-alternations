@@ -157,11 +157,14 @@ def load_summaries(summary_files: List[str]) -> pd.DataFrame:
 	summaries = pd.DataFrame()
 	for summary_file in summary_files:
 		if summary_file.endswith('.pkl.gz'):
+			# note that this may cause problems because it doesn't seem we can specify the column types
 			summary = pd.read_pickle(f)
-			summaries = pd.concat([summaries, summary], ignore_index = True)
+			summaries = pd.concat([summaries, summary], ignore_index=True)
 		else:
-			summary = pd.read_csv(summary_file)
-			summaries = pd.concat([summaries, summary], ignore_index = True)
+			# we do str in case one of the most similar tokens in the cossims data
+			# is literally one of the NA values (which has happened, believe it or not)
+			summary = pd.read_csv(summary_file, converters={'token' : str})
+			summaries = pd.concat([summaries, summary], ignore_index=True)
 	
 	return summaries
 
@@ -274,7 +277,7 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 	Combines and plots cosine similarity data from multiple models.
 	"""
 	if not (len(cossims.model_name.unique()) == 1 and cossims.model_name.unique()[0] == 'roberta'):
-		roberta_cossims = cossims[(~cossims.target_group.str.endswith('most similar')) & (cossims.model_name == 'roberta')].copy()
+		roberta_cossims = cossims[~(cossims.target_group.str.endswith('most similar')) & (cossims.model_name == 'roberta')].copy()
 		num_tokens_in_cossims = len(roberta_cossims.token.unique())
 		
 		roberta_cossims['token'] = [re.sub(chr(288), '', token) for token in roberta_cossims.token]
@@ -285,12 +288,12 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 			log.warning('RoBERTa cossim target tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
 		
 		# first, replace the ones that don't start with spaces before with a preceding ^
-		cossims.loc[(cossims['model_name'] == 'roberta') & ~(cossims.token.str.startswith(chr(288))), 'token'] = \
-		cossims[(cossims['model_name'] == 'roberta') & ~(cossims.token.str.startswith(chr(288)))].token.str.replace(r'^(.)', r'^\1', regex=True)
+		cossims.loc[(cossims.model_name == 'roberta') & ~(cossims.token.str.startswith(chr(288))), 'token'] = \
+			cossims[(cossims.model_name == 'roberta') & ~(cossims.token.str.startswith(chr(288)))].token.str.replace(r'^(.)', r'^\1', regex=True)
 		
 		# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
-		cossims.loc[(cossims['model_name'] == 'roberta') & (cossims.token.str.startswith(chr(288))), 'token'] = \
-		[re.sub(chr(288), '', token) for token in cossims[(cossims['model_name'] == 'roberta') & (cossims.token.str.startswith(chr(288)))].token]
+		cossims.loc[(cossims.model_name == 'roberta') & (cossims.token.str.startswith(chr(288))), 'token'] = \
+		[re.sub(chr(288), '', token) for token in cossims[(cossims.model_name == 'roberta') & (cossims.token.str.startswith(chr(288)))].token]
 		
 		cossims = cossims.assign(
 			predicted_arg = [predicted_arg.replace(chr(288), '') for predicted_arg in cossims.predicted_arg],
