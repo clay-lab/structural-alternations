@@ -19,7 +19,7 @@ verbs = {
 }
 
 ref_verb_alts = {
-	'dative': ['give', 'send'], 
+	'dative': ['give', 'send', 'mail'], 
 	'sl':     ['spray', 'load']
 }
 
@@ -266,7 +266,12 @@ templates = [
 	"[arg2] that was [verbpart] [p2] [arg1] was everyone's favorite.",
 	"[arg1] that [arg2] was [verbpart] [p2] was everyone's favorite."]
 
-def make_data():
+def make_data(vs: str = None):
+	if vs is None:
+		vs = [v for v in ref_verbs_alts[alt] for alt in ref_verb_alts]
+	else:
+		vs = vs.split(',')
+	
 	for alt in ref_verb_alts:
 		arg_combos = [(arg1, arg2) for arg2 in args2[alt] for arg1 in args1[alt]]
 		arg_combos = [arg_combo for arg_combo in arg_combos for _ in range(2)]
@@ -275,38 +280,18 @@ def make_data():
 		
 		ref_verbs = ref_verb_alts[alt]
 		for ref_verb in ref_verbs:
-			for verb in verbs:
-				stypes = sentence_types.copy()
-				if alt == verbs[verb]['alternation']:
-					all_sentences = []
-					for noun, (arg1, arg2) in nouns_args:
-						sentences = []
-						for template in templates:
-							s = template.replace('[noun]', noun)
-							s = s.replace('[verbpast]', verbs[verb]['past'])
-							s = s.replace('[verbbase]', verbs[verb]['base'])
-							s = s.replace('[verbpart]', verbs[verb]['ppart'])
-							s = s.replace('[arg1]', arg1)
-							s = s.replace('[arg2]', arg2)
-							s = s.replace('[part]', verbs[verb]['part'])
-							s = s.replace('[p1]', verbs[verb]['p1'])
-							s = s.replace('[p2]', verbs[verb]['p2'])
-							s = s.replace('  ', ' ')
-							s = s.replace(' ?', '?')
-							s = s.replace(' .', '.')
-							s = s.replace('which the ', 'which ').replace('which a ', 'which ')
-							if s.startswith('THAX'):
-								s = 'Today, ' + s
-							
-							s = s[:1].upper() + s[1:]
-							sentences += [s]
-						
-						if not ref_verb == verb:
-							for ref_template in ref_templates:
-								s = ref_template.replace('[noun]', noun)
-								s = s.replace('[verbpast]', verbs[ref_verb]['past'])
-								s = s.replace('[verbbase]', verbs[ref_verb]['base'])
-								s = s.replace('[verbpart]', verbs[ref_verb]['ppart'])
+			if ref_verb in vs:
+				for verb in verbs:
+					stypes = sentence_types.copy()
+					if alt == verbs[verb]['alternation']:
+						all_sentences = []
+						for noun, (arg1, arg2) in nouns_args:
+							sentences = []
+							for template in templates:
+								s = template.replace('[noun]', noun)
+								s = s.replace('[verbpast]', verbs[verb]['past'])
+								s = s.replace('[verbbase]', verbs[verb]['base'])
+								s = s.replace('[verbpart]', verbs[verb]['ppart'])
 								s = s.replace('[arg1]', arg1)
 								s = s.replace('[arg2]', arg2)
 								s = s.replace('[part]', verbs[verb]['part'])
@@ -315,57 +300,80 @@ def make_data():
 								s = s.replace('  ', ' ')
 								s = s.replace(' ?', '?')
 								s = s.replace(' .', '.')
-								s = s.replace('which the', 'which').replace('which a', 'which')
+								s = s.replace('which the ', 'which ').replace('which a ', 'which ')
 								if s.startswith('THAX'):
 									s = 'Today, ' + s
 								
 								s = s[:1].upper() + s[1:]
-								sentences = [s] + sentences
-								
-						sentences = ' , '.join(sentences)
-						all_sentences += [sentences]
-					
-					all_sentences = '\n'.join(all_sentences)
-					
-					if not ref_verb == verb:
-						for ref_stype in ref_sentence_types:
-							stypes = [ref_stype.replace('[verbbase]', verbs[ref_verb]['base'])] + stypes
-					else:
-						stypes = [verbs[ref_verb]['base'] + ' ' + stype if '[verbbase] ' + stype in ref_sentence_types else stype for stype in stypes]
-					
-					stypes = [stype.replace('[type1]', types[verbs[verb]['alternation']]['type1']) \
-								   .replace('[type2]', types[verbs[verb]['alternation']]['type2']) \
-								   .replace('[spectype]', types[verbs[verb]['alternation']]['spectype']) \
-								   .replace('[spectype2]', types[verbs[verb]['alternation']]['spectype2'])
-							for stype in stypes]
-					
-					if alt == 'sl':
-						stypes = [stype.replace(' (amb)', '') for stype in stypes]
-					
-					with open(f'data/syn_{verb}_{ref_verb}_ext.data', 'w') as f:
-						f.write(all_sentences)
+								sentences += [s]
+							
+							if not ref_verb == verb:
+								for ref_template in ref_templates:
+									s = ref_template.replace('[noun]', noun)
+									s = s.replace('[verbpast]', verbs[ref_verb]['past'])
+									s = s.replace('[verbbase]', verbs[ref_verb]['base'])
+									s = s.replace('[verbpart]', verbs[ref_verb]['ppart'])
+									s = s.replace('[arg1]', arg1)
+									s = s.replace('[arg2]', arg2)
+									s = s.replace('[part]', verbs[verb]['part'])
+									s = s.replace('[p1]', verbs[verb]['p1'])
+									s = s.replace('[p2]', verbs[verb]['p2'])
+									s = s.replace('  ', ' ')
+									s = s.replace(' ?', '?')
+									s = s.replace(' .', '.')
+									s = s.replace('which the', 'which').replace('which a', 'which')
+									if s.startswith('THAX'):
+										s = 'Today, ' + s
+									
+									s = s[:1].upper() + s[1:]
+									sentences = [s] + sentences
+									
+							sentences = ' , '.join(sentences)
+							all_sentences += [sentences]
 						
-					with open(f'conf/data/syn_{verb}_{ref_verb}_ext.yaml', 'w') as f:
-						f.write(f'# Synthetic constructions with {verb}\n\n')
-						f.write(f'name: syn_{verb}_{ref_verb}_ext.data\n')
-						f.write(f'friendly_name: syn_{verb}_{ref_verb}_ext\n')
-						f.write(f'description: Synthetic \'{verb}\' tuples\n')
-						f.write('entail: true\n')
-						f.write('new_verb: false\n\n')
-						f.write('sentence_types:\n  - ')
-						f.write('\n  - '.join(stypes) + '\n\n')
-						f.write('eval_groups:\n')
-						f.write('  ' + arg_types[args1[alt][0].replace('the ', '')] + ' : ' + args1[alt][0].replace('the ', '') + '\n')
-						f.write('  ' + arg_types[args2[alt][0].replace('the ', '')] + ' : ' + args2[alt][0].replace('the ', '') + '\n\n')
-						f.write('to_mask:\n')
-						f.write('  - ' + args1[alt][0].replace('the ', '') + '\n')
-						f.write('  - ' + args2[alt][0].replace('the ', '') + '\n\n')
-						f.write('masked_token_targets:\n')
-						f.write('  ' + args1[alt][0].replace('the ', '') + ' : [' + ', '.join(masked_token_targets[alt][args1[alt][0].replace('the ', '')]) + ']\n')
-						f.write('  ' + args2[alt][0].replace('the ', '') + ' : [' + ', '.join(masked_token_targets[alt][args2[alt][0].replace('the ', '')]) + ']\n\n')
-						f.write('masked_token_target_labels:\n')
-						f.write('  ' + args1[alt][0].replace('the ', '') + ' : ' + masked_token_target_labels[alt][args1[alt][0].replace('the ', '')] + '\n')
-						f.write('  ' + args2[alt][0].replace('the ', '') + ' : ' + masked_token_target_labels[alt][args2[alt][0].replace('the ', '')])
+						all_sentences = '\n'.join(all_sentences)
+						
+						if not ref_verb == verb:
+							for ref_stype in ref_sentence_types:
+								stypes = [ref_stype.replace('[verbbase]', verbs[ref_verb]['base'])] + stypes
+						else:
+							stypes = [verbs[ref_verb]['base'] + ' ' + stype if '[verbbase] ' + stype in ref_sentence_types else stype for stype in stypes]
+						
+						stypes = [stype.replace('[type1]', types[verbs[verb]['alternation']]['type1']) \
+									   .replace('[type2]', types[verbs[verb]['alternation']]['type2']) \
+									   .replace('[spectype]', types[verbs[verb]['alternation']]['spectype']) \
+									   .replace('[spectype2]', types[verbs[verb]['alternation']]['spectype2'])
+								for stype in stypes]
+						
+						if alt == 'sl':
+							stypes = [stype.replace(' (amb)', '') for stype in stypes]
+						
+						with open(f'data/syn_{verb}_{ref_verb}_ext.data', 'w') as f:
+							f.write(all_sentences)
+							
+						with open(f'conf/data/syn_{verb}_{ref_verb}_ext.yaml', 'w') as f:
+							f.write(f'# Synthetic constructions with {verb}\n\n')
+							f.write(f'name: syn_{verb}_{ref_verb}_ext.data\n')
+							f.write(f'friendly_name: syn_{verb}_{ref_verb}_ext\n')
+							f.write(f'description: Synthetic \'{verb}\' tuples\n')
+							f.write('entail: true\n')
+							f.write('new_verb: false\n\n')
+							f.write('sentence_types:\n  - ')
+							f.write('\n  - '.join(stypes) + '\n\n')
+							f.write('eval_groups:\n')
+							f.write('  ' + arg_types[args1[alt][0].replace('the ', '')] + ' : ' + args1[alt][0].replace('the ', '') + '\n')
+							f.write('  ' + arg_types[args2[alt][0].replace('the ', '')] + ' : ' + args2[alt][0].replace('the ', '') + '\n\n')
+							f.write('to_mask:\n')
+							f.write('  - ' + args1[alt][0].replace('the ', '') + '\n')
+							f.write('  - ' + args2[alt][0].replace('the ', '') + '\n\n')
+							f.write('masked_token_targets:\n')
+							f.write('  ' + args1[alt][0].replace('the ', '') + ' : [' + ', '.join(masked_token_targets[alt][args1[alt][0].replace('the ', '')]) + ']\n')
+							f.write('  ' + args2[alt][0].replace('the ', '') + ' : [' + ', '.join(masked_token_targets[alt][args2[alt][0].replace('the ', '')]) + ']\n\n')
+							f.write('masked_token_target_labels:\n')
+							f.write('  ' + args1[alt][0].replace('the ', '') + ' : ' + masked_token_target_labels[alt][args1[alt][0].replace('the ', '')] + '\n')
+							f.write('  ' + args2[alt][0].replace('the ', '') + ' : ' + masked_token_target_labels[alt][args2[alt][0].replace('the ', '')])
 
 if __name__ == '__main__':
-	make_data()
+	import sys
+	vs = sys.argv[-1] if not sys.argv[-1] == 'datamaker.py' else ''
+	make_data(vs)
