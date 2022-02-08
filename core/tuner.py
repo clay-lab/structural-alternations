@@ -2451,6 +2451,7 @@ class Tuner:
 		log.info('Creating cosine similarity plots')
 		self.plot_cossims(most_similar_tokens)
 		
+		# maybe switch this to getting the odds ratios like the previous one?
 		# Define a local function to get the probabilities
 		def get_probs(epoch: int) -> Dict[int,Dict]:
 			epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
