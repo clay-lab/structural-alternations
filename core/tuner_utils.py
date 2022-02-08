@@ -296,7 +296,11 @@ def unzip_csv_gzs(csv_gzs: List[str]) -> None:
 # Used with the R analysis script since it's much quicker to do this in Python
 def delete_files(files: List[str]) -> None:
 	for f in tqdm(files):
-		os.remove(f)
+		try: 
+			os.remove(f)
+		except:
+			print(f'Unable to remove {f}.')
+			continue
 		
 # deprecated; now we use matplotlib's PdfPages instead
 """def merge_pdfs(pdfs: List[str], filename: str) -> None:
