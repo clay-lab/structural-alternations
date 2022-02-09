@@ -28,7 +28,6 @@ def eval(cfg: DictConfig) -> None:
 		
 		tuner.eval_new_verb(eval_cfg=cfg, args_cfg=args_cfg, checkpoint_dir=chkpt_dir)
 	elif cfg.data.entail:
-		breakpoint()
 		tuner.eval_entailments(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
 	else:
 		tuner.eval(eval_cfg=cfg, checkpoint_dir=chkpt_dir)

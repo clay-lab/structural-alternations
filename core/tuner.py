@@ -384,11 +384,11 @@ class Tuner:
 			for i, tok in enumerate(self.tokens_to_mask):
 				tok_id = self.tokenizer.get_vocab()[tok]
 				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id] = new_embeds.weight[i]
-			
+		
 		if not self.tuning_data:
 			log.info(f'Saving randomly initialized weights')
 			with gzip.open('weights.pkl.gz', 'wb') as f:
-				pkl.dump({0: get_updated_weights()}, f)
+				pkl.dump({0: get_updated_weights(), 'random_seed': seed}, f)
 			return
 		
 		# Collect Hyperparameters
@@ -719,7 +719,7 @@ class Tuner:
 		# we do minus one here because we've also saved the randomly initialized weights @ 0
 		log.info(f"Saving weights for random initializations and each of {len(saved_weights)-1} training epochs")
 		with gzip.open('weights.pkl.gz', 'wb') as f:
-			pkl.dump(saved_weights, f)
+			pkl.dump({**saved_weights, 'random_seed': seed}, f)
 		
 		metrics['dataset_type'] = ['dev' if dataset.endswith('(dev)') else 'train' for dataset in metrics.dataset]
 		metrics = metrics.dropna().reset_index(drop=True)
@@ -749,6 +749,7 @@ class Tuner:
 		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset'] = 'overall'
 		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset_type'] = 'overall'
 		metrics = metrics.drop_duplicates().reset_index(drop=True)
+		metrics['random_seed'] = seed
 		
 		log.info(f"Saving metrics")
 		metrics.to_csv("metrics.csv.gz", index = False, na_rep = 'NaN')
@@ -829,9 +830,9 @@ class Tuner:
 		with gzip.open(weights_path, 'rb') as f:
 			weights = pkl.load(f)
 			
-		total_epochs = max(weights.keys())
+		total_epochs = max([e for e in list(weights.keys()) if not isinstance(e, str)])
 		
-		if epoch == None or epoch in ['max', 'total', 'highest']:
+		if epoch == None or epoch in ['max', 'total', 'highest', 'last', 'final']:
 			epoch = total_epochs
 		elif 'best' in str(epoch):
 			metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv.gz'))
@@ -1247,6 +1248,7 @@ class Tuner:
 					min_epochs = summary.min_epochs.unique()[0],
 					max_epochs = summary.max_epochs.unique()[0],
 					epoch_criteria = summary.epoch_criteria.unique()[0],
+					random_seed = summary.random_seed.unique()[0],
 				)
 				
 				tsne_df = pd.concat([tsne_df, tsne_df_tmp], ignore_index=True)
@@ -1485,6 +1487,34 @@ class Tuner:
 		plt.savefig(filename)
 		plt.close()
 	
+	def get_original_random_seed(self) -> int:
+		path = 'tune.log'
+		if not path in os.listdir(os.getcwd()):
+			path = os.path.join('..', path)
+		
+		try:
+			with open(path, 'r') as logfile_stream:
+				logfile = logfile_stream.read()
+			
+			seed = int(re.findall(r'Seed set to ([0-9]*)\n', logfile)[0])
+			return seed
+		except (IndexError, FileNotFoundError):
+			pass
+		
+		path = 'weights.pkl.gz'
+		if not path in os.listdir(os.getcwd()):
+			path = os.path.join('..', path)
+		
+		try: 
+			with gzip.open(path, 'rb') as weightsfile_stream:
+				weights = pkl.load(weightsfile_stream)
+			
+			seed = weights['random_seed']
+			return seed
+		except (IndexError, FileNotFoundError):
+			log.error(f'Seed not found in log file or weights file in {os.path.split(path)[0]}!')
+			return	
+	
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str) -> None:
 		self.model.eval()
@@ -1710,6 +1740,7 @@ class Tuner:
 			min_epochs=self.cfg.hyperparameters.min_epochs,
 			max_epochs=self.cfg.hyperparameters.max_epochs,
 			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
+			random_seed=self.get_original_random_seed()
 		)
 		
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossims.csv.gz', index=False)
@@ -1927,7 +1958,8 @@ class Tuner:
 			strip_punct = self.cfg.hyperparameters.strip_punct,
 			patience = self.cfg.hyperparameters.patience,
 			delta = self.cfg.hyperparameters.delta,
-			epoch_criteria = eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual'
+			epoch_criteria = eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
+			random_seed=self.get_original_random_seed(),
 		)
 		
 		return summary
@@ -2405,6 +2437,7 @@ class Tuner:
 			patience = np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else 'multiple',
 			delta = np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else 'multiple',
 			epoch_criteria = np.unique(summary.epoch_criteria)[0] if len(np.unique(summary.epoch_criteria)) == 1 else 'multiple',
+			random_seed = np.unique(summary.random_seed)[0] if len(np.unique(summary.random_seed)) == 1 else 'multiple',
 		)
 		
 		return acc
@@ -2444,6 +2477,7 @@ class Tuner:
 			min_epochs=self.cfg.hyperparameters.min_epochs,
 			max_epochs=self.cfg.hyperparameters.max_epochs,
 			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
+			random_seed=self.get_original_random_seed()
 		)
 		
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
@@ -2665,6 +2699,8 @@ class Tuner:
 			by = sort_columns, 
 			ascending = [(column != 'predicted_token_type' and column != 'target_position_name') for column in sort_columns]
 		).reset_index(drop = True)
+		
+		summary = summary.assign(random_seed=self.get_original_random_seed())
 		
 		return summary
 	
