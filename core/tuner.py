@@ -1171,9 +1171,11 @@ class Tuner:
 		# else:
 		#	target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : (k.lower() if 'uncased' in self.string_id else k) for k in eval_cfg.data.masked_token_targets}
 		
+		random_tsne_state = 0
+		
 		with PdfPages(f'{dataset_name}-{epoch_label}-tsne-plots.pdf') as pdf:
 			for word_vectors, words in ((first_n_word_vectors, first_n_words), (set_targets_word_vectors, set_targets_words)):
-				tsne = TSNE(2, random_state=0, learning_rate='auto', init='pca')
+				tsne = TSNE(2, random_state=random_tsne_state, learning_rate='auto', init='pca')
 				with torch.no_grad():
 					two_dim = tsne.fit_transform(torch.cat((word_vectors, added_word_vectors)))
 				
@@ -1249,6 +1251,7 @@ class Tuner:
 					max_epochs = summary.max_epochs.unique()[0],
 					epoch_criteria = summary.epoch_criteria.unique()[0],
 					random_seed = summary.random_seed.unique()[0],
+					random_tsne_state = random_tsne_state,
 				)
 				
 				tsne_df = pd.concat([tsne_df, tsne_df_tmp], ignore_index=True)
