@@ -1764,9 +1764,7 @@ class Tuner:
 			outputs = [self.model(**i) for i in inputs]
 		
 		summary = self.get_entailed_summary(sentences, outputs, labels, eval_cfg)
-		summary = summary.assign(eval_epoch=epoch, total_epochs=total_epochs,
-								 min_epochs=self.cfg.hyperparameters.min_epochs,
-								 max_epochs=self.cfg.hyperparameters.max_epochs)
+		summary = summary.assign(eval_epoch=epoch, total_epochs=total_epochs)
 		
 		# save the summary as a pickle and as a csv so that we have access to the original tensors
 		# these get converted to text in the csv, but the csv is easier to work with otherwise
@@ -1962,7 +1960,9 @@ class Tuner:
 			patience = self.cfg.hyperparameters.patience,
 			delta = self.cfg.hyperparameters.delta,
 			epoch_criteria = eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
-			random_seed=self.get_original_random_seed(),
+			min_epochs=self.cfg.hyperparameters.min_epochs, 
+			max_epochs=self.cfg.hyperparameters.max_epochs,
+			random_seed=self.get_original_random_seed()
 		)
 		
 		return summary
