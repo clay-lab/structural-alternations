@@ -315,8 +315,8 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 	
 	most_similars = cossims[cossims.target_group.str.endswith('most similar')].copy()
 	if not most_similars.empty:
-		for predicted_arg in most_similars.predicted_arg.unique():
-			for token in most_similars.token.unique():
+		for token in most_similars.token.unique():
+			for predicted_arg in most_similars[most_similars.token == token].predicted_arg.unique():
 				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'model_id'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'model_id'])
 				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'eval_epoch'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'eval_epoch'])
 				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'total_epochs'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'total_epochs'])
