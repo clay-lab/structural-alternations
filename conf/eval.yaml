@@ -14,7 +14,7 @@ epoch: best_mean
 k: 50 # get the k subword tokens with the most similar embeddings to the trained novel tokens
 num_tsne_words: 500 # plot the tsne of the first num_tsne_words embeddings + the novel tokens
 
-checkpoint_dir: outputs/active_DO/DistilBertForMaskedLM/masked-False/2021-06-15_12-43-59
+checkpoint_dir: outputs/dative_DO_give_active/distilbert-always_masked-with_punctuation/2021-06-15_12-43-59
 
 hydra:
   run:
