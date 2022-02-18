@@ -1516,7 +1516,7 @@ class Tuner:
 			return seed
 		except (IndexError, FileNotFoundError):
 			log.error(f'Seed not found in log file or weights file in {os.path.split(path)[0]}!')
-			return	
+			return
 	
 	
 	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str) -> None:
