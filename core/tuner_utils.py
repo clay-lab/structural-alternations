@@ -286,6 +286,7 @@ def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean', frac: float = 0.
 	return best_epoch
 
 # Used with the R analysis script since it's much quicker to do this in Python
+# went back to the old way of doing this because of https://github.com/rstudio/reticulate/issues/1166
 # def load_csv_gzs(csv_gzs: List[str]) -> pd.DataFrame:
 # 	csv_gzs = [csv_gzs] if isinstance(csv_gzs, str) else csv_gzs
 # 	return pd.concat([pd.read_csv(f) for f in tqdm(csv_gzs)], ignore_index=True)
