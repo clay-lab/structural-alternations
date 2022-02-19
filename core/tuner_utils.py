@@ -286,12 +286,10 @@ def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean', frac: float = 0.
 	return best_epoch
 
 # Used with the R analysis script since it's much quicker to do this in Python
-def load_csv_gzs(csv_gzs: List[str]) -> pd.DataFrame:
-	csv_gzs = [csv_gzs] if isinstance(csv_gzs, str) else csv_gzs
-	return pd.concat([pd.read_csv(f) for f in tqdm(csv_gzs)], ignore_index=True)
+# def load_csv_gzs(csv_gzs: List[str]) -> pd.DataFrame:
+# 	csv_gzs = [csv_gzs] if isinstance(csv_gzs, str) else csv_gzs
+# 	return pd.concat([pd.read_csv(f) for f in tqdm(csv_gzs)], ignore_index=True)
 
-# deprecated
-"""
 # Used with the R analysis script since it's much quicker to do this in Python
 def unzip_csv_gzs(csv_gzs: List[str]) -> None:
 	dests = [f.replace('.gz', '') for f in csv_gzs]
@@ -299,10 +297,7 @@ def unzip_csv_gzs(csv_gzs: List[str]) -> None:
 	for f, dest in tqdm(fs_dests):
 		with gzip.open(f, "rb") as f_in, open(dest, "wb") as f_out:
 			copyfileobj(f_in, f_out)
-"""
 
-# deprecated
-"""
 # Used with the R analysis script since it's much quicker to do this in Python
 def delete_files(files: List[str]) -> None:
 	for f in tqdm(files):
@@ -311,7 +306,6 @@ def delete_files(files: List[str]) -> None:
 		except:
 			print(f'Unable to remove {f}.')
 			continue
-"""
 		
 # deprecated; now we use matplotlib's PdfPages instead
 """def merge_pdfs(pdfs: List[str], filename: str) -> None:
