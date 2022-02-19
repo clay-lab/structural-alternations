@@ -312,11 +312,12 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], arg_lists: Dict[str,
 			return results
 	
 		# try:
-		log.info(f'Getting predictions for {len(arg_lists)} set(s) of {cfg.tuning.num_words} argument(s) * {len(cfg.tuning.args)} position(s) for {model_cfg.friendly_name} (n_jobs={cfg.n_jobs})')
+		# 	log.info(f'Getting predictions for {len(arg_lists)} set(s) of {cfg.tuning.num_words} argument(s) * {len(cfg.tuning.args)} position(s) for {model_cfg.friendly_name} (n_jobs={cfg.n_jobs})')
 		#	with tqdm_joblib(tqdm(desc='', total = len(arg_lists))) as progress_bar:
 		#		predictions[model_cfg.friendly_name] = Parallel(n_jobs=cfg.n_jobs)(delayed(get_arg_predictions_for_set)(set_id, arg_list) for set_id, arg_list in enumerate(arg_lists))
 		# except Exception:
 		#	log.warning(f'Multithreading failed! Reattempting without multithreading.')
+		log.info(f'Getting predictions for {len(arg_lists)} set(s) of {cfg.tuning.num_words} argument(s) * {len(cfg.tuning.args)} position(s) for {model_cfg.friendly_name}')
 		predictions[model_cfg.friendly_name] = [get_arg_predictions_for_set(set_id, arg_list) for set_id, arg_list in tqdm(enumerate(arg_lists), total = len(arg_lists))]
 	
 	predictions = pd.DataFrame([d for model_name in predictions for set_id in predictions[model_name] for sentence_prediction in set_id for d in sentence_prediction])
