@@ -55,8 +55,7 @@ def gen_args(cfg: DictConfig) -> None:
 	
 	best_average = predictions_summary[predictions_summary['set_id'] == predictions_summary[predictions_summary['model_name'] == 'average'].sort_values('SumSq').iloc[0,:].loc['set_id']].copy().reset_index(drop = True)
 	best_average = best_average[['model_name', 'set_id', 'SumSq'] + [c for c in best_average.columns if re.search('( - )|(nouns$)', c)]]
-	log.info(f'Lowest average SumSq:\n\n{best_average}')
-	print('')
+	log.info(f'Lowest average SumSq:\n\n{best_average}\n')
 	
 	predictions = predictions.assign(
 		run_id = os.path.split(os.getcwd())[-1],
@@ -80,12 +79,12 @@ def gen_args(cfg: DictConfig) -> None:
 		dataset = os.path.split(cfg.dataset_loc)[-1],
 	)
 	
-	predictions.to_csv('predictions.csv.gz', index = False)
+	predictions.to_csv('predictions.csv.gz', index=False)
 	
 	# sort by the lowest average sumsq for convenience
 	predictions_summary_sort_keys = predictions_summary[predictions_summary['model_name'] == 'average'].copy().sort_values('SumSq')['set_id'].tolist()
 	predictions_summary = predictions_summary.sort_values('set_id', key = lambda col: col.map(lambda set_id: predictions_summary_sort_keys.index(set_id)))
-	predictions_summary.to_csv('predictions_summary.csv.gz', index = False)
+	predictions_summary.to_csv('predictions_summary.csv.gz', index=False)
 	
 	# plot the correlations of the sumsq for each pair of model types and report R**2
 	plot_correlations(cfg, predictions_summary)
@@ -408,7 +407,7 @@ def plot_correlations(cfg: DictConfig, predictions_summary: pd.DataFrame) -> Non
 	
 	corr = corr.reset_index(drop=True)
 	corr.columns.name = None
-	g = sns.pairplot(corr, kind='reg', corner=True, plot_kws=dict(line_kws=dict(linewidth=1), scatter_kws=dict(s=8)))
+	g = sns.pairplot(corr, kind='reg', corner=True, plot_kws=dict(line_kws=dict(linewidth=1), scatter_kws=dict(s=8, linewidth=0)))
 	
 	def corrfunc(x, y, **kwargs):
 		r, _ = pearsonr(x, y)
