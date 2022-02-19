@@ -120,5 +120,3 @@ You can set the following configuration options.
 `strip_punct` specifies whether to consider sentences with or withoun punctuation when getting predictions from the models.
 
 `n_sets` specifies how many sets of nouns to consider.
-
-`n_jobs` specifies how many processors to use in parallel.
