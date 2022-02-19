@@ -4,26 +4,27 @@
 import os
 import re
 import json
+import gzip
 import torch
 import random
 import logging
-# import requests
 
 import numpy as np
 import pandas as pd
 
+from tqdm import tqdm
+from glob import glob
 from typing import List, Type
-from PyPDF2 import PdfFileMerger, PdfFileReader
+from shutil import copyfileobj
 from transformers import BertTokenizer, DistilBertTokenizer, RobertaTokenizer
-from statsmodels.nonparametric.smoothers_lowess import lowess
+# from statsmodels.nonparametric.smoothers_lowess import lowess
 
 model_max_length = 512
 
 log = logging.getLogger(__name__)
 
 def z_transform(x: np.ndarray) -> np.ndarray:
-	z = (x - np.mean(x))/np.std(x)
-	return z
+	return (x - np.mean(x))/np.std(x)
 
 def set_seed(seed: int) -> None:
 	seed = int(seed)
@@ -35,25 +36,6 @@ def set_seed(seed: int) -> None:
 	
 def strip_punct(sentence: str) -> str:
 	return re.sub(r'[^\[\]\<\>\w\s,]', '', sentence)
-	
-def merge_pdfs(pdfs: List[str], filename: str) -> None:
-	if not pdfs:
-		return
-	
-	merged_pdfs = PdfFileMerger()
-	
-	for pdf in pdfs:
-		with open(pdf, 'rb') as f:
-			merged_pdfs.append(PdfFileReader(f))
-	
-	merged_pdfs.write(filename)
-	
-	# Clean up (if the os doesn't happen to lock the file)
-	for pdf in pdfs:
-		try:
-			os.remove(pdf)
-		except Exception:
-			pass
 
 def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['PreTrainedTokenizer'], tokens_to_mask: List[str], delete_tmp_vocab_files: bool = True, **kwargs) -> 'PreTrainedTokenizer':
 	if 'uncased' in model_id:
@@ -74,7 +56,7 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['Pre
 			tmp_vocab_file.write('\n'.join(vocab))
 		
 		tokenizer = tokenizer_class(name_or_path = model_id, vocab_file = 'vocab.tmp', **kwargs)
-		tokenizer.model_max_length = model_max_length
+		# tokenizer.model_max_length = model_max_length
 		
 		# for some reason, we have to re-add the [MASK] token to bert to get this to work, otherwise
 		# it breaks it apart into separate tokens '[', 'mask', and ']' when loading the vocab locally (???)
@@ -302,3 +284,47 @@ def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean', frac: float = 0.
 		log.warning('Note that the best epoch is the final epoch. This may indicate underfitting.')
 	
 	return best_epoch
+
+# Used with the R analysis script since it's much quicker to do this in Python
+# went back to the old way of doing this because of https://github.com/rstudio/reticulate/issues/1166
+# def load_csv_gzs(csv_gzs: List[str]) -> pd.DataFrame:
+# 	csv_gzs = [csv_gzs] if isinstance(csv_gzs, str) else csv_gzs
+# 	return pd.concat([pd.read_csv(f) for f in tqdm(csv_gzs)], ignore_index=True)
+
+# Used with the R analysis script since it's much quicker to do this in Python
+def unzip_csv_gzs(csv_gzs: List[str]) -> None:
+	dests = [f.replace('.gz', '') for f in csv_gzs]
+	fs_dests = tuple(zip(csv_gzs, dests))
+	for f, dest in tqdm(fs_dests):
+		with gzip.open(f, "rb") as f_in, open(dest, "wb") as f_out:
+			copyfileobj(f_in, f_out)
+
+# Used with the R analysis script since it's much quicker to do this in Python
+def delete_files(files: List[str]) -> None:
+	for f in tqdm(files):
+		try: 
+			os.remove(f)
+		except:
+			print(f'Unable to remove {f}.')
+			continue
+		
+# deprecated; now we use matplotlib's PdfPages instead
+"""def merge_pdfs(pdfs: List[str], filename: str) -> None:
+	if not pdfs:
+		return
+
+	merged_pdfs = PdfFileMerger()
+	
+	for pdf in pdfs:
+		with open(pdf, 'rb') as f:
+			merged_pdfs.append(PdfFileReader(f))
+	
+	merged_pdfs.write(filename)
+	
+	# Clean up (if the os doesn't happen to lock the file)
+	for pdf in pdfs:
+		try:
+			os.remove(pdf)
+		except Exception:
+			pass
+"""

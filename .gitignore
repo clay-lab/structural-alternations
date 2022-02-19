@@ -135,7 +135,11 @@ dmypy.json
 .pyre/
 
 # R
-*.r
+# *.r
 
 # old files
 *_old/
+
+# batch
+*.bat
+*.sh

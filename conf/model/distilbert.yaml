@@ -3,7 +3,8 @@ tokenizer: DistilBertTokenizer
 string_id: distilbert-base-uncased
 friendly_name: distilbert
 
-model_kwargs: {}
+model_kwargs:
+  local_files_only: true
 tokenizer_kwargs:
   do_basic_tokenize: false
   local_files_only: true

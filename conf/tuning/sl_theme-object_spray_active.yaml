@@ -1,0 +1,23 @@
+name: sl_theme-object_spray_active
+
+reference_sentence_type: spray theme-object active
+new_verb: false
+entail: true
+
+to_mask:
+  - GORX
+  - THAX
+
+data:
+  - I sprayed the THAX onto the truck.
+  - I sprayed the THAX onto a car.
+  - I sprayed some THAX onto the table.
+  - I sprayed some THAX onto a tray.
+  - I sprayed THAX onto the workbench.
+  - I sprayed THAX onto a carpet.
+  - I sprayed the paint onto the GORX.
+  - I sprayed the solvent onto a GORX.
+  - I sprayed some water onto the GORX.
+  - I sprayed some sealant onto a GORX.
+  - I sprayed cleaner onto the GORX.
+  - I sprayed oil onto a GORX.

@@ -4,6 +4,7 @@
 import os
 import re
 import sys
+import gzip
 import hydra
 import torch
 from torch.distributions import Categorical
@@ -13,7 +14,9 @@ import itertools
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
+from matplotlib import patheffects as pe
 from matplotlib.ticker import MaxNLocator
+from matplotlib.backends.backend_pdf import PdfPages
 
 import numpy as np
 import pandas as pd
@@ -21,14 +24,15 @@ import pickle as pkl
 import seaborn as sns
 import torch.nn as nn
 
-from math import ceil, floor
 from tqdm import trange, tqdm
+from math import ceil, floor, sqrt
 from typing import Dict, List, Tuple, Union, Type
 from omegaconf import DictConfig, OmegaConf, open_dict
 from transformers import logging as lg
 from transformers import BertForMaskedLM, BertTokenizer
 from transformers import RobertaForMaskedLM, RobertaTokenizer
 from transformers import DistilBertForMaskedLM, DistilBertTokenizer
+from sklearn.manifold import TSNE
 
 from core.tuner_utils import *
 
@@ -324,7 +328,6 @@ class Tuner:
 		self.cfg = cfg
 		
 		if self.string_id != 'multi':
-			
 			log.info(f"Initializing Tokenizer:\t{self.cfg.model.tokenizer}")
 			
 			# we do this with the self.cfg.tuning.to_mask data so that 
@@ -381,11 +384,11 @@ class Tuner:
 			for i, tok in enumerate(self.tokens_to_mask):
 				tok_id = self.tokenizer.get_vocab()[tok]
 				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id] = new_embeds.weight[i]
-			
+		
 		if not self.tuning_data:
 			log.info(f'Saving randomly initialized weights')
-			with open('weights.pkl', 'wb') as f:
-				pkl.dump({0: get_updated_weights()}, f)
+			with gzip.open('weights.pkl.gz', 'wb') as f:
+				pkl.dump({0: get_updated_weights(), 'random_seed': seed}, f)
 			return
 		
 		# Collect Hyperparameters
@@ -715,8 +718,8 @@ class Tuner:
 		
 		# we do minus one here because we've also saved the randomly initialized weights @ 0
 		log.info(f"Saving weights for random initializations and each of {len(saved_weights)-1} training epochs")
-		with open('weights.pkl', 'wb') as f:
-			pkl.dump(saved_weights, f)
+		with gzip.open('weights.pkl.gz', 'wb') as f:
+			pkl.dump({**saved_weights, 'random_seed': seed}, f)
 		
 		metrics['dataset_type'] = ['dev' if dataset.endswith('(dev)') else 'train' for dataset in metrics.dataset]
 		metrics = metrics.dropna().reset_index(drop=True)
@@ -746,9 +749,10 @@ class Tuner:
 		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset'] = 'overall'
 		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset_type'] = 'overall'
 		metrics = metrics.drop_duplicates().reset_index(drop=True)
+		metrics['random_seed'] = seed
 		
 		log.info(f"Saving metrics")
-		metrics.to_csv("metrics.csv", index = False, na_rep = 'NaN')
+		metrics.to_csv("metrics.csv.gz", index = False, na_rep = 'NaN')
 		
 		writer.flush()
 		writer.close()
@@ -821,17 +825,17 @@ class Tuner:
 		return epoch_metrics
 	
 	def restore_weights(self, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> Tuple[int,int]:
-		weights_path = os.path.join(checkpoint_dir, 'weights.pkl')
+		weights_path = os.path.join(checkpoint_dir, 'weights.pkl.gz')
 		
-		with open(weights_path, 'rb') as f:
+		with gzip.open(weights_path, 'rb') as f:
 			weights = pkl.load(f)
 			
-		total_epochs = max(weights.keys())
+		total_epochs = max([e for e in list(weights.keys()) if not isinstance(e, str)])
 		
-		if epoch == None:
+		if epoch == None or epoch in ['max', 'total', 'highest', 'last', 'final']:
 			epoch = total_epochs
 		elif 'best' in str(epoch):
-			metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv'))
+			metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv.gz'))
 			loss_df = metrics[(metrics.metric == 'loss') & (~metrics.dataset.str.endswith(' (train)'))]
 			epoch = get_best_epoch(loss_df, method = 'mean' if 'mean' in epoch else 'sumsq' if 'sumsq' in epoch else '')
 		
@@ -887,129 +891,123 @@ class Tuner:
 		
 		xticks = determine_int_axticks(metrics.epoch)
 		
-		for metric in all_metrics:
-			# Get the other metrics which are like this one but for different tokens so that we can
-			# set the axis limits to a common value. This is so we can compare the metrics visually
-			# for each token more easily
-			like_metrics = []
-			for m in all_metrics:
-				if not m == metric:
-					m1 = metric
-					m2 = m
-					for token in self.tokens_to_mask:
-						m1 = m1.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
-						m2 = m2.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
-					
-					if m1 == m2:
-						like_metrics.append(m)
-			
-			ulim = np.max([*metrics[metric].dropna().values])
-			llim = np.min([*metrics[metric].dropna().values])
-			
-			for m in like_metrics:
-				ulim = np.max([ulim, *metrics[m].dropna().values])
-				llim = np.min([llim, *metrics[m].dropna().values])
-			
-			adj = max(np.abs(ulim - llim)/40, 0.05)
-			
-			fig, ax = plt.subplots(1)
-			# if metric != 'remaining patience':
-			# 	fig.set_size_inches(8, 6.5)
-			# else:
-			fig.set_size_inches(9, 7)
-			ax.set_ylim(llim - adj, ulim + adj)
-			metrics.dataset = [dataset.replace('_', ' ') for dataset in metrics.dataset] # for legend titles
-			
-			# do this manually so we don't recycle colors
-			num_datasets = len(metrics.dataset.unique())+1 # add one for mean
-			palette = sns.color_palette(n_colors=num_datasets) if num_datasets <= 10 else sns.color_palette('hls', num_datasets) # if we have more than 10 dev sets, don't repeat colors
-			sns.set_palette(palette)
-			
-			if len(metrics[metric].index) > 1:
-				if metric == 'remaining patience':
-					if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
-						global_patience = metrics[['epoch', 'remaining patience overall']].drop_duplicates().reset_index(drop=True).rename({'remaining patience overall' : 'remaining patience'}, axis = 1).assign(dataset = 'overall', dataset_type = 'global')
-						sns.lineplot(data = metrics.append(global_patience, ignore_index=True), x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend ='full')
-						plt.yticks(determine_int_axticks(metrics['remaining patience'].append(metrics['remaining patience overall'], ignore_index=True).astype(int).append(pd.Series(0), ignore_index=True)))
-						handles, labels = ax.get_legend_handles_labels()
+		with PdfPages('metrics.pdf') as pdf:
+			for metric in all_metrics:
+				# Get the other metrics which are like this one but for different tokens so that we can
+				# set the axis limits to a common value. This is so we can compare the metrics visually
+				# for each token more easily
+				like_metrics = []
+				for m in all_metrics:
+					if not m == metric:
+						m1 = metric
+						m2 = m
+						for token in self.tokens_to_mask:
+							m1 = m1.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
+							m2 = m2.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
+						
+						if m1 == m2:
+							like_metrics.append(m)
+				
+				ulim = np.max([*metrics[metric].dropna().values])
+				llim = np.min([*metrics[metric].dropna().values])
+				
+				for m in like_metrics:
+					ulim = np.max([ulim, *metrics[m].dropna().values])
+					llim = np.min([llim, *metrics[m].dropna().values])
+				
+				adj = max(np.abs(ulim - llim)/40, 0.05)
+				
+				fig, ax = plt.subplots(1)
+				fig.set_size_inches(9, 7)
+				ax.set_ylim(llim - adj, ulim + adj)
+				metrics.dataset = [dataset.replace('_', ' ') for dataset in metrics.dataset] # for legend titles
+				
+				# do this manually so we don't recycle colors
+				num_datasets = len(metrics.dataset.unique())+1 # add one for mean
+				palette = sns.color_palette(n_colors=num_datasets) if num_datasets <= 10 else sns.color_palette('hls', num_datasets) # if we have more than 10 dev sets, don't repeat colors
+				sns.set_palette(palette)
+				
+				if len(metrics[metric].index) > 1:
+					if metric == 'remaining patience':
+						if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
+							global_patience = metrics[['epoch', 'remaining patience overall']].drop_duplicates().reset_index(drop=True).rename({'remaining patience overall' : 'remaining patience'}, axis = 1).assign(dataset = 'overall', dataset_type = 'global')
+							sns.lineplot(data = pd.concat([metrics, global_patience], ignore_index=True), x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend ='full')
+							plt.yticks(determine_int_axticks(pd.concat([pd.concat([metrics['remaining patience'], metrics['remaining patience overall']], ignore_index=True).astype(int), pd.Series(0)], ignore_index=True)))
+							handles, labels = ax.get_legend_handles_labels()
+						else:
+							sns.lineplot(data = metrics, x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend='full')
+							plt.yticks(determine_int_axticks(pd.concat([metrics['remaining patience'].astype(int), pd.Series(0)], ignore_index=True)))
+							handles, labels = ax.get_legend_handles_labels()
 					else:
-						sns.lineplot(data = metrics, x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend='full')
-						plt.yticks(determine_int_axticks(metrics['remaining patience'].astype(int).append(pd.Series(0), ignore_index=True)))
-						handles, labels = ax.get_legend_handles_labels()
+						sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
+						if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
+							sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')], x = 'epoch', y = metric, ax = ax, color = palette[-1], ci = 68)
+							handles, labels = ax.get_legend_handles_labels()
+							handles += [ax.lines[-1]]
+							labels += ['mean dev']
+							ax.legend(handles=handles,labels=labels)
+							ax.lines[-1].set_linestyle(':')
+					
+					# remove redundant information from the legend
+					handles = ax.get_legend().legendHandles
+					labels = [text.get_text() for text in ax.get_legend().texts]
+					handles_labels = tuple(zip(handles, labels))
+					handles_labels = [handle_label for handle_label in handles_labels if not handle_label[1] in ['dataset', 'dataset_type', 'train', 'dev', 'global']]
+					handles = [handle for handle, _ in handles_labels]
+					labels = [label for _, label in handles_labels]
+					ax.legend(handles=handles, labels=labels, fontsize=9)
 				else:
-					sns.lineplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
+					sns.scatterplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset')
 					if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
-						sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')], x = 'epoch', y = metric, ax = ax, color = palette[-1], ci = 68)
+						sns.scatterplot(data = metrics, x = 'epoch', y = metric, color = palette[-1], ax = ax, ci = 68)
 						handles, labels = ax.get_legend_handles_labels()
-						handles += [ax.lines[-1]]
+						handles += [ax._children[-1]]
 						labels += ['mean dev']
 						ax.legend(handles=handles,labels=labels)
-						ax.lines[-1].set_linestyle(':')
 				
-				# remove redundant information from the legend
-				handles = ax.get_legend().legendHandles
-				labels = [text.get_text() for text in ax.get_legend().texts]
-				handles_labels = tuple(zip(handles, labels))
-				handles_labels = [handle_label for handle_label in handles_labels if not handle_label[1] in ['dataset', 'dataset_type', 'train', 'dev', 'global']]
-				handles = [handle for handle, _ in handles_labels]
-				labels = [label for _, label in handles_labels]
-				ax.legend(handles=handles, labels=labels, fontsize=9)
-			else:
-				sns.scatterplot(data = metrics, x = 'epoch', y = metric, ax = ax, hue='dataset')
-				if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
-					sns.scatterplot(data = metrics, x = 'epoch', y = metric, color = palette[-1], ax = ax, ci = 68)
-					handles, labels = ax.get_legend_handles_labels()
-					handles += [ax._children[-1]]
-					labels += ['mean dev']
-					ax.legend(handles=handles,labels=labels)
-			
-			plt.xticks(xticks)
-			
-			title = f'{self.model_bert_name} {metric}\n'
-			title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
-			title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
-			title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}\n'
-			title += f'epochs: {metrics.epoch.max()} (min: {metrics.min_epochs.unique()[0]}, max: {metrics.max_epochs.unique()[0]}), patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
-			
-			if metric == 'remaining patience':
-				if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
-					# we don't see to say the max for patience, since it is already given and constant for every dataset
-					title += f'overall: min @ {global_patience.sort_values(by=metric).reset_index(drop=True)["epoch"][0]}: {int(global_patience.sort_values(by=metric).reset_index(drop=True)[metric][0])}\n'
+				plt.xticks(xticks)
 				
-				title += f'{self.cfg.tuning.name.replace("_", " ")} (training): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
-				title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
+				title = f'{self.model_bert_name} {metric}\n'
+				title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
+				title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
+				title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}\n'
+				title += f'epochs: {metrics.epoch.max()} (min: {metrics.min_epochs.unique()[0]}, max: {metrics.max_epochs.unique()[0]}), patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
 				
-				for dataset in self.cfg.dev:
-					title += f'\n{dataset.replace("_", " ")} (dev): min @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
-			else:
-				if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
-					mean = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')][['epoch',metric]].groupby('epoch')[metric].agg('mean')
-					title += f'mean dev: max @ {int(mean.idxmax())}: {round(mean.max(), 2)}, '
-					title += f'min @ {int(mean.idxmin())}: {round(mean.min(), 2)}\n'
+				if metric == 'remaining patience':
+					if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
+						# we don't see to say the max for patience, since it is already given and constant for every dataset
+						title += f'overall: min @ {global_patience.sort_values(by=metric).reset_index(drop=True)["epoch"][0]}: {int(global_patience.sort_values(by=metric).reset_index(drop=True)[metric][0])}\n'
+					
+					title += f'{self.cfg.tuning.name.replace("_", " ")} (train): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
+					title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
+					
+					for dataset in self.cfg.dev:
+						title += f'\n{dataset.replace("_", " ")} (dev): min @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
+				else:
+					if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
+						mean = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')][['epoch',metric]].groupby('epoch')[metric].agg('mean')
+						title += f'mean dev: max @ {int(mean.idxmax())}: {round(mean.max(), 2)}, '
+						title += f'min @ {int(mean.idxmin())}: {round(mean.min(), 2)}\n'
+					
+					title += f'{self.cfg.tuning.name.replace("_", " ")} (train): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
+					title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
+					
+					title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
+					title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
+					
+					for dataset in self.cfg.dev:
+						title += f'\n{dataset.replace("_", " ")} (dev): max @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
+						title += f'min @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
 				
-				title += f'{self.cfg.tuning.name.replace("_", " ")} (training): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
-				title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
-				
-				title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
-				title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
-				
-				for dataset in self.cfg.dev:
-					title += f'\n{dataset.replace("_", " ")} (dev): max @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
-					title += f'min @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
-			
-			title = ax.set_title(title)
-			fig.tight_layout()
-			fig.subplots_adjust(top=0.7)
-			plt.savefig(f"{metric}.pdf")
-			plt.close('all')
-			del fig
-		
-		# Combine the plots into a single pdf
-		pdfs = [pdf for metric in all_metrics for pdf in os.listdir(os.getcwd()) if pdf == f'{metric}.pdf']
-		merge_pdfs(pdfs, 'metrics.pdf')
+				title = ax.set_title(title)
+				fig.tight_layout()
+				fig.subplots_adjust(top=0.7)
+				pdf.savefig()
+				plt.close('all')
+				del fig
 	
 	
-	def most_similar_tokens(self, tokens: List[str] = [], targets: Dict[str,str] = {}, k: int = 10) -> pd.DataFrame:
+	def most_similar_tokens(self, tokens: List[str] = [], targets: Dict[str,str] = {}, k: int = 50) -> pd.DataFrame:
 		"""
 		Returns a datafarame containing information about the k most similar tokens to tokens
 		or if targets is provided, infomation about the cossim of the tokens to the targets they are mapped to in targets
@@ -1121,32 +1119,436 @@ class Tuner:
 		else:
 			return pd.DataFrame()
 	
+	def plot_save_tsnes(self, summary: pd.DataFrame, eval_cfg: DictConfig) -> None:
+		n = eval_cfg.num_tsne_words
+		set_targets = eval_cfg.data.masked_token_targets
+		
+		dataset_name = summary.eval_data.unique()[0]
+		
+		epoch_label = '-' + summary.epoch_criteria.unique()[0]
+		magnitude = floor(1 + np.log10(summary.total_epochs.unique()[0]))
+		epoch_label = f'{str(summary.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
+		
+		pos = 'nouns' if not eval_cfg.data.new_verb else 'verbs'
+		
+		with open(os.path.join(hydra.utils.get_original_cwd(), 'conf', pos + '.txt'), 'r') as f:
+			targets = [w.lower().strip() for w in f.readlines()]
+		
+		first_n = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in targets}
+		set_targets_dict = {k : v for k, v in self.tokenizer.get_vocab().items() if k.replace(chr(288), '').lower() in list(itertools.chain(*list(set_targets.values())))}
+		
+		# if we are using roberta, filter to tokens that start with a preceeding space and are not followed by a capital letter (to avoid duplicates))
+		if self.model_bert_name == 'roberta':
+			first_n = {k : v for k, v in first_n.items() if k.startswith(chr(288)) and not re.search('^' + chr(288) + '[A-Z]', k)}
+			set_targets_dict = {k : v for k, v in set_targets_dict.items() if k.startswith(chr(288)) and not re.search('^' + chr(288) + '[A-Z]', k)}
+		
+		first_n = dict(tuple(first_n.items())[:n])
+		
+		first_n_embeddings = {k : getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[v] for k, v in first_n.items()}
+		first_n_word_vectors = torch.cat([first_n_embeddings[w].reshape(1, -1) for w in first_n_embeddings], dim=0)
+		first_n_words = list(first_n_embeddings.keys())
+		
+		set_targets_embeddings = {k : getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[v] for k, v in set_targets_dict.items()}
+		set_targets_word_vectors = torch.cat([set_targets_embeddings[w].reshape(1, -1) for w in set_targets_embeddings], dim=0)
+		set_targets_words = list(set_targets_embeddings.keys())
+		
+		added_words = self.tokens_to_mask
+		
+		# filter out the tokens without added spaces in roberta (since we are not currently doing experiments where those are used)
+		if self.model_bert_name == 'roberta':
+			added_words = [token for token in added_words if token.startswith(chr(288))]
+		
+		first_n_words += added_words
+		set_targets_words += added_words
+		
+		added_word_vectors = torch.cat([getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[token_id].reshape(1,-1) for token_id in self.tokenizer.convert_tokens_to_ids(added_words)], dim=0)
+		
+		tsne_df = pd.DataFrame(columns=['target_group', 'target_group_label', 'token', 'tsne1', 'tsne2'])
+		
+		# this conditional can be removed later when everything is updated
+		# if 'masked_token_target_labels' in eval_cfg.data.keys():
+		target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : v for k, v in eval_cfg.data.masked_token_target_labels.items()}
+		# else:
+		#	target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : (k.lower() if 'uncased' in self.string_id else k) for k in eval_cfg.data.masked_token_targets}
+		
+		random_tsne_state = 0
+		
+		with PdfPages(f'{dataset_name}-{epoch_label}-tsne-plots.pdf') as pdf:
+			for word_vectors, words in ((first_n_word_vectors, first_n_words), (set_targets_word_vectors, set_targets_words)):
+				tsne = TSNE(2, random_state=random_tsne_state, learning_rate='auto', init='pca')
+				with torch.no_grad():
+					two_dim = tsne.fit_transform(torch.cat((word_vectors, added_word_vectors)))
+				
+				two_dim_df = pd.DataFrame(list(zip(words, two_dim[:,0], two_dim[:,1])), columns = ['token', 'tsne1', 'tsne2'])
+				two_dim_df['token_category'] = ['existing' if not w in added_words else 'novel' for w in two_dim_df.token.values]
+				target_group = [f'first {n}' if not w in added_words else 'novel token' for w in two_dim_df.token.values] if words == first_n_words else []
+				if not target_group:
+					for w in two_dim_df.token.values:
+						if w.replace(chr(288), '') in list(itertools.chain(*list(set_targets.values()))):
+							for k in set_targets:
+								if w.replace(chr(288), '') in set_targets[k]:
+									target_group.append((k.lower() if 'uncased' in self.string_id else k) + ' target')
+						else:
+							target_group.append('novel token')
+				
+				two_dim_df['target_group'] = target_group
+				two_dim_df['target_group_label'] = [target_group_labels[target_group.replace(' target', '')] if target_group.replace(' target', '') in target_group_labels else target_group for target_group in two_dim_df.target_group]
+				two_dim_df['tsne_type'] = f'first {n}' if words == first_n_words else 'set targets'
+				
+				fig, ax = plt.subplots(1)
+				fig.set_size_inches(12, 10)
+				
+				sns.scatterplot(data = two_dim_df.sort_values(by=['target_group'], key = lambda col: -col.str.match('^novel token$')), x = 'tsne1', y = 'tsne2', s=18, ax=ax, hue='target_group_label', legend='full')
+				v_adjust = (ax.get_ylim()[1] - ax.get_ylim()[0])/150
+				
+				for line in range(0, len(two_dim_df)):
+					if two_dim_df.loc[line].token in added_words:
+						ax.text(two_dim_df.loc[line].tsne1, two_dim_df.loc[line].tsne2-v_adjust, two_dim_df.loc[line].token.replace(chr(288), ''), size=10, horizontalalignment='center', verticalalignment='top', color='black')
+					else:
+						ax.text(two_dim_df.loc[line].tsne1, two_dim_df.loc[line].tsne2-v_adjust, two_dim_df.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
+				
+				legend = [c for c in ax.get_children() if isinstance(c, matplotlib.legend.Legend)][0]
+				legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ').replace(' label', '')
+				
+				ax.set_xlabel('t-SNE 1', fontsize=8)
+				ax.set_ylabel('t-SNE 2', fontsize=8)
+				
+				if words == first_n_words:
+					title = f'{self.model_bert_name} t-SNEs of first {n} token(s) and novel token(s) (filtered)'
+				else:
+					title = f'{self.model_bert_name} t-SNEs of {summary.eval_data.unique()[0]} target group(s) token(s) and novel token(s) (filtered)'
+				
+				title += f' @ epoch {summary.eval_epoch.unique()[0]}/{summary.total_epochs.unique()[0]} ({summary.epoch_criteria.unique()[0].replace("_", " ")})\n'
+				title += f'min epochs: {summary.min_epochs.unique()[0]}, '
+				title += f'max epochs: {summary.max_epochs.unique()[0]}'
+				title += f', patience: {summary.patience.unique()[0]}'
+				title += f' (\u0394={summary.delta.unique()[0]})\n'
+				title += f'tuning: {summary.tuning.unique()[0]}, '
+				title += ((f'masking: ' + summary.masked_tuning_style.unique()[0]) if summary.masked.unique()[0] else "unmasked") + ', '
+				title += f'{"with punctuation" if not summary.strip_punct.unique()[0] else "no punctuation"}'
+				
+				fig.suptitle(title)
+				fig.tight_layout()
+				
+				pdf.savefig()
+				plt.close()
+				
+				tsne_df_tmp = two_dim_df
+				tsne_df_tmp['token_id'] = [self.tokenizer.convert_tokens_to_ids(token) for token in words]
+				tsne_df_tmp = tsne_df_tmp.assign(
+					model_id = summary.model_id.unique()[0],
+					model_name = summary.model_name.unique()[0],
+					eval_data = summary.eval_data.unique()[0],
+					tuning = summary.tuning.unique()[0],
+					masked = summary.masked.unique()[0],
+					masked_tuning_style = summary.masked_tuning_style.unique()[0],
+					strip_punct = summary.strip_punct.unique()[0],
+					eval_epoch = summary.eval_epoch.unique()[0],
+					total_epochs = summary.total_epochs.unique()[0],
+					patience = summary.patience.unique()[0],
+					delta = summary.delta.unique()[0],
+					min_epochs = summary.min_epochs.unique()[0],
+					max_epochs = summary.max_epochs.unique()[0],
+					epoch_criteria = summary.epoch_criteria.unique()[0],
+					random_seed = summary.random_seed.unique()[0],
+					random_tsne_state = random_tsne_state,
+				)
+				
+				tsne_df = pd.concat([tsne_df, tsne_df_tmp], ignore_index=True)
+		
+		tsne_df.to_csv(f'{dataset_name}-{epoch_label}-tsne.csv.gz', index=False)
 	
-	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
+	def plot_cossims(self, cossims: pd.DataFrame) -> None:
+		cossims = cossims[~cossims.target_group.str.endswith('most similar')].copy().reset_index(drop=True)
+		if cossims.empty:
+			log.info('No target groups were provided for cosine similarities. No comparison plots for cosine similarities can be created.')
+			return
+		
+		if len(cossims.predicted_arg.unique()) <= 1:
+			log.info(f'One or fewer predicted arguments were provided for cosine similarities ({cossims.target_group.unique()[0]}). No comparison plots for cosine similarities can be created.')
+			return
+		
+		# we do this swap to fix the labels (without losing any data)
+		# if the dataframe contains info about models other than roberta, this will already have been fixed the multieval script, so we don't touch it
+		if 'roberta' in cossims.model_name.unique() and len(cossims.model_name.unique()) == 1:
+			for col in ['predicted_arg', 'target_group']:
+				# first, replace the ones that don't start with spaces before with a preceding ^
+				cossims.loc[(cossims['model_name'] == 'roberta') & ~(cossims[col].str.startswith(chr(288))), col] = \
+					cossims[(cossims['model_name'] == 'roberta') & ~(cossims[col].str.startswith(chr(288)))][col].str.replace(r'^(.)', r'^\1', regex=True)
+				
+				# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
+				cossims.loc[(cossims['model_name'] == 'roberta') & (cossims.token.str.startswith(chr(288))), col] = \
+					cossims[(cossims['model_name'] == 'roberta') & (cossims.token.str.startswith(chr(288)))][col].str.replace(chr(288), '')
+		
+		if len(cossims.model_id.unique()) > 1:
+			cossims['cossim'] = cossims['mean']
+			cossims = cossims.drop('mean', axis = 1)
+		else:
+			cossims['sem'] = 0
+		
+		filename = cossims.eval_data.unique()[0] + '-'
+		epoch_label = cossims.epoch_criteria.unique()[0] if len(cossims.epoch_criteria.unique()) == 1 else ''
+		if len(cossims.model_id.unique()) == 1:
+			epoch_label = '-' + epoch_label
+			magnitude = floor(1 + np.log10(cossims.total_epochs.unique()[0]))
+			epoch_label = f'{str(cossims.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
+		
+		filename += epoch_label + '-cossims-plot.pdf'
+		
+		idx_col = 'token' if len(cossims.model_id.unique()) == 1 else 'model_id'
+		
+		group = cossims[['predicted_arg', 'target_group_label', idx_col, 'cossim']]
+		group_sems = cossims[['predicted_arg', 'target_group_label', idx_col, 'sem']]
+		
+		if idx_col == 'model_id' and len(cossims.model_name.unique()) > 1:
+			model_means = cossims.groupby(['model_name', 'predicted_arg']).cossim.agg('mean')
+			model_means = model_means.reset_index()
+		
+		group = group.pivot(index=['target_group_label', idx_col], columns='predicted_arg', values='cossim')
+		group.columns.name = None
+		group = group.reset_index()
+		
+		group_sems = group_sems.pivot(index=['target_group_label', idx_col], columns='predicted_arg', values='sem')
+		group_sems.columns.name = None
+		group_sems = group_sems.reset_index()
+		
+		pairs = [c for c in group.columns if not c in [idx_col, 'target_group_label']]
+		pairs = [pair for pair in itertools.combinations(pairs, 2) if not pair[0] == pair[1]]
+		pairs = list(set(tuple(sorted(pair)) for pair in pairs))
+		
+		fig, ax = plt.subplots(len(pairs), 2)
+		ax = ax.reshape(len(pairs), 2)
+		fig.set_size_inches(12.5, (6*len(pairs))+(0.6*len(cossims.predicted_arg.unique()))+(0.6*len(cossims.target_group.unique()))+0.25)
+		
+		for i, (in_token, out_token) in enumerate(pairs):
+			# we might be able to use a sns.jointplot to plot histograms instead of just ticks for the means,
+			# but this causes other complex problems that I haven't figured out yet. So we'll stick with the simple thing for now
+			sns.scatterplot(data=group, x=in_token, y=out_token, ax=ax[i][0], zorder=5, hue='target_group_label', linewidth=0)
+			legend = [c for c in ax[i][0].get_children() if isinstance(c, matplotlib.legend.Legend)][0]
+			legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ').replace(' label', '')
+			
+			collections = ax[i][0].collections[1:].copy()
+			for (_, eb_group), (_, eb_group_sems), collection in zip(group.groupby('target_group_label'), group_sems.groupby('target_group_label'), collections):
+				ax[i][0].errorbar(data=eb_group, x=in_token, xerr=eb_group_sems[in_token], y=out_token, yerr=eb_group_sems[out_token], color=collection._original_edgecolor, ls='none', zorder=2.5)
+			
+			ulim = max([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
+			llim = min([*ax[i][0].get_xlim(), *ax[i][0].get_ylim()])
+			
+			# we do this so longer text can fit inside the plot instead of overflowing
+			v_adjust = (ulim-llim)/90 if idx_col == 'token' else 0
+			range_mean_tick = (ulim-llim)/90
+			
+			ulim += v_adjust + (ulim-llim)/90
+			llim -= (v_adjust + (ulim-llim)/90)
+			
+			ax[i][0].set_xlim((llim, ulim))
+			ax[i][0].set_ylim((llim, ulim))
+			
+			# here we add ticks to show the mean and standard errors along each axis
+			group_means = group.drop(idx_col, axis=1).groupby(['target_group_label']).agg({'mean', 'sem'})
+			cols = list(set([c[0] for c in group_means.columns]))
+			group_means.columns = ['_'.join(c) for c in group_means.columns]
+			for predicted_arg in cols:
+				for target_group, collection in zip(group_means.index, collections):
+					if predicted_arg == in_token:
+						ax[i][0].plot((group_means.loc[target_group][predicted_arg + '_mean'], group_means.loc[target_group][predicted_arg + '_mean']), (llim, llim+range_mean_tick*3), linestyle='-', color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3)
+						ax[i][0].plot(
+							(
+								group_means.loc[target_group][predicted_arg + '_mean']-group_means.loc[target_group][predicted_arg + '_sem'],
+							 	group_means.loc[target_group][predicted_arg + '_mean']+group_means.loc[target_group][predicted_arg + '_sem']
+							), 
+							(llim+range_mean_tick*1.5, llim+range_mean_tick*1.5),
+							linestyle='-', linewidth=0.75, color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3
+						)
+					else:
+						ax[i][0].plot((llim, llim+range_mean_tick*3), (group_means.loc[target_group][predicted_arg + '_mean'], group_means.loc[target_group][predicted_arg + '_mean']), linestyle='-', color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3)
+						ax[i][0].plot(
+							(llim+range_mean_tick*1.5, llim+range_mean_tick*1.5), 
+							(
+								group_means.loc[target_group][predicted_arg + '_mean']-group_means.loc[target_group][predicted_arg + '_sem'], 
+								group_means.loc[target_group][predicted_arg + '_mean']+group_means.loc[target_group][predicted_arg + '_sem']
+							), 
+							linestyle='-', linewidth=0.75, color=collection._original_edgecolor, zorder=0, scalex=False, scaley=False, alpha=0.3
+						)
+			
+			ax[i][0].set_aspect(1./ax[i][0].get_data_ratio(), adjustable='box')
+			ax[i][0].plot((llim, ulim), (llim, ulim), linestyle='--', color='black', scalex=False, scaley=False, zorder=0, alpha=0.3)
+			
+			if idx_col == 'token':
+				for line in range(0, len(group)):
+					ax[i][0].text(group.loc[line][in_token], group.loc[line][out_token]-(v_adjust if group_sems.loc[line][out_token] == 0 else (group_sems.loc[line][out_token]+(v_adjust/2))), group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15)
+			elif len(cossims.model_name.unique()) > 1:
+				for model_name in model_means.model_name:
+					ax[i][0].text(
+						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0], 
+						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == out_token)].cossim.values[0], 
+						model_name, size=10, horizontalalignment='center', verticalalignment='center', color='black', zorder=15, alpha=0.65, fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')]
+					)
+			
+			ax[i][0].set_xlabel(f'{in_token} cosine similarity')
+			ax[i][0].set_ylabel(f'{out_token} cosine similarity')
+			
+			# y = y - x plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
+			sns.scatterplot(data=group, x=in_token, y=group[out_token]-group[in_token], ax=ax[i][1], zorder=10, hue='target_group_label', linewidth=0)
+			legend = [c for c in ax[i][1].get_children() if isinstance(c, matplotlib.legend.Legend)][0]
+			legend._legend_title_box._text._text = legend._legend_title_box._text._text.replace('_', ' ').replace(' label', '')
+			
+			collections = ax[i][1].collections[1:].copy()
+			for (_, eb_group), (_, eb_group_sems), collection in zip(group.groupby('target_group_label'), group_sems.groupby('target_group_label'), collections):
+				ax[i][1].errorbar(x=eb_group[in_token], xerr=eb_group_sems[in_token], y=eb_group[out_token]-eb_group[in_token], yerr=eb_group_sems[out_token], color=collection._original_edgecolor, ls='none', zorder=2.5)
+			
+			ax[i][1].set_xlim((llim, ulim))
+			ax[i][1].plot((llim, ulim), (0, 0), linestyle='--', color='black', scalex=False, scaley=False, zorder=0, alpha=0.3)
+			
+			ulim = max([abs(v) for v in [*ax[i][1].get_ylim()]])
+			llim = -ulim
+			
+			v_adjust = (ulim-llim)/90 if idx_col == 'token' else 0
+			# we do this so longer text can fit inside the plot instead of overflowing
+			ulim += v_adjust + (ulim-llim)/90
+			llim -= (v_adjust + (ulim-llim)/90)
+			ax[i][1].set_ylim((llim, ulim))
+			
+			if idx_col == 'token':
+				for line in range(0, len(group)):
+					ax[i][1].text(group.loc[line][in_token], group.loc[line][out_token]-group.loc[line][in_token]-(v_adjust if group_sems.loc[line][out_token] == 0 else (group_sems.loc[line][out_token]+(v_adjust/2))), group.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=10)
+			elif len(cossims.model_name.unique()) > 1:
+				for model_name in model_means.model_name:
+					ax[i][1].text(
+						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0], 
+						model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == out_token)].cossim.values[0] - model_means[(model_means.model_name == model_name) & (model_means.predicted_arg == in_token)].cossim.values[0],
+						model_name, size=10, horizontalalignment='center', verticalalignment='center', color='black', zorder=15, alpha=0.65, fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')])
+			
+			ax[i][1].set_aspect(1./ax[i][1].get_data_ratio(), adjustable='box')
+			
+			ax[i][1].set_xlabel(f'{in_token} cosine similarity')
+			ax[i][1].set_ylabel(f'{out_token} \u2212 {in_token} cosine similarity')
+		
+		title = cossims.model_name.unique()[0] if len(cossims.model_name.unique()) == 1 else f"Multiple models'"
+		title += f' cosine similarities to '
+		title += cossims.eval_data.unique()[0] if len(cossims.eval_data.unique()) == 1 else f"{len(cossims.eval_data.unique())} eval sets'"
+		title += f' target group tokens'
+		title += (' @ epoch ' + str(cossims.eval_epoch.unique()[0]) + '/') if len(cossims.eval_epoch.unique()) == 1 else ', epochs: '
+		title += str(cossims.total_epochs.unique()[0]) if len(cossims.total_epochs.unique()) == 1 else 'multiple'
+		title += f' ({cossims.epoch_criteria.unique()[0].replace("_", " ")})' if len(cossims.epoch_criteria.unique()) == 1 else ' (multiple criteria)'
+		title += f'\nmin epochs: {cossims.min_epochs.unique()[0] if len(cossims.min_epochs.unique()) == 1 else "multiple"}, '
+		title += f'max epochs: {cossims.max_epochs.unique()[0] if len(cossims.max_epochs.unique()) == 1 else "multiple"}'
+		title += f', patience: {cossims.patience.unique()[0] if len(cossims.patience.unique()) == 1 else "multiple"}'
+		title += f' (\u0394={cossims.delta.unique()[0] if len(cossims.delta.unique()) == 1 else "multiple"})'
+		title += '\ntuning: ' + (cossims.tuning.unique()[0].replace("_", " ") if len(cossims.tuning.unique()) == 1 else "multiple")
+		title += ', masking' if all(cossims.masked == True) else ' unmasked' if all(1 - (cossims.masked == True)) else ''
+		title += (': ' + cossims.masked_tuning_style[(cossims.masked == True)].unique()[0] if cossims.masked_tuning_style[(cossims.masked == True)].unique().size == 1 else '') if not 'multiple' in cossims.masked_tuning_style[cossims.masked == True].unique() else ', masking: multiple' if any(cossims.masked == 'multiple') or any(cossims.masked == True) else ''
+		title += ', ' + ('no punctuation' if all(cossims.strip_punct == True) else "with punctuation" if len(cossims.strip_punct.unique()) == 1 and not any(cossims.strip_punct == True) else 'multiple punctuation')
+		title += '\n'
+		
+		# this conditional is a workaround for now. it should be able to be removed later once we rerun the results and add this info to every file
+		# if 'target_group_label' in cossims.columns:
+		target_group_labels = cossims[['target_group', 'target_group_label']].drop_duplicates()
+		target_group_labels = target_group_labels.groupby('target_group').apply(lambda x: x.to_dict(orient='records')[0]['target_group_label']).to_dict()
+		# else:
+		#	target_group_labels = {target_group : target_group for target_group in cossims.target_group.unique()}
+		
+		if len(cossims.target_group.unique()) > 1:
+			for target_group, df in cossims.groupby('target_group'):
+				means = df.groupby('predicted_arg').cossim.agg({'mean', 'sem', 'std', 'size'})
+				out_group_means = means.loc[[i for i in means.index if not i == target_group]]
+				exprs = [
+					(
+						f'\nMean cosine similarity of {target_group} to {target_group_labels[target_group]} \u2212 {arg} to {target_group_labels[target_group]} targets: ' +
+						'{:.4f}'.format(means['mean'][target_group]) + ' (\u00b1' + '{:.4f}'.format(means['sem'][target_group]) + ') \u2212 ' +
+						'{:.4f}'.format(out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(out_group_means['sem'][arg]) + ') = ' +
+						'{:.4f}'.format(means['mean'][target_group] - out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(sqrt(((means['std'][target_group]**2)/means['size'][target_group]) + ((out_group_means['std'][arg]**2)/out_group_means['size'][arg]))) + ')'
+					).replace('-', '\u2212') 
+					for arg in out_group_means.index
+				]
+				
+				for expr in exprs:
+					title += expr
+			
+			title += '\n'
+		
+		for predicted_arg, df in cossims.groupby('predicted_arg'):
+			means = df.groupby('target_group').cossim.agg({'mean', 'sem', 'std', 'size'})
+			out_group_means = means.loc[[i for i in means.index if not i == predicted_arg]]
+			exprs = [
+				(
+					f'\nMean cosine similarity of {predicted_arg} to {target_group_labels[predicted_arg]} \u2212 {predicted_arg} to {target_group_labels[arg]} targets: ' +
+					'{:.4f}'.format(means['mean'][predicted_arg]) + ' (\u00b1' + '{:.4f}'.format(means['sem'][predicted_arg]) + ') \u2212 ' +
+					'{:.4f}'.format(out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(out_group_means['sem'][arg]) + ') = ' + 
+					'{:.4f}'.format(means['mean'][predicted_arg] - out_group_means['mean'][arg]) + ' (\u00b1' + '{:.4f}'.format(sqrt(((means['std'][predicted_arg]**2)/means['size'][predicted_arg]) + ((out_group_means['std'][arg]**2)/out_group_means['size'][arg]))) + ')'
+				).replace('-', '\u2212')
+				for arg in out_group_means.index
+			]
+			
+			for expr in exprs:
+				title += expr
+		
+		fig.suptitle(title)
+		
+		fig.tight_layout()
+		
+		plt.savefig(filename)
+		plt.close()
+	
+	def get_original_random_seed(self) -> int:
+		path = 'tune.log'
+		if not path in os.listdir(os.getcwd()):
+			path = os.path.join('..', path)
+		
+		try:
+			with open(path, 'r') as logfile_stream:
+				logfile = logfile_stream.read()
+			
+			seed = int(re.findall(r'Seed set to ([0-9]*)\n', logfile)[0])
+			return seed
+		except (IndexError, FileNotFoundError):
+			pass
+		
+		path = 'weights.pkl.gz'
+		if not path in os.listdir(os.getcwd()):
+			path = os.path.join('..', path)
+		
+		try: 
+			with gzip.open(path, 'rb') as weightsfile_stream:
+				weights = pkl.load(weightsfile_stream)
+			
+			seed = weights['random_seed']
+			return seed
+		except (IndexError, FileNotFoundError):
+			log.error(f'Seed not found in log file or weights file in {os.path.split(path)[0]}!')
+			return
+	
+	
+	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str) -> None:
 		self.model.eval()
-		epoch_label = ('-' + epoch) if isinstance(epoch, str) else '-manual'
-		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
+		epoch_label = ('-' + eval_cfg.epoch) if isinstance(eval_cfg.epoch, str) else '-manual'
+		epoch, total_epochs = self.restore_weights(checkpoint_dir, eval_cfg.epoch)
 		
 		dataset_name = eval_cfg.data.friendly_name
 		magnitude = floor(1 + np.log10(total_epochs))
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
-		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
-		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv', index=False)
+		most_similar_tokens = self.most_similar_tokens(k=eval_cfg.k).assign(eval_epoch=epoch, total_epochs=total_epochs)
+		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets=eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
 		
-		if len(most_similar_tokens.predicted_arg.unique()) > 1:
-			with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
-				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
-					df = df.loc[~df.target_group.str.endswith('most similar')]
-					means = df.groupby('target_group').cossim.agg('mean')
-					out_group_means = means[[i for i in means.index if not i == predicted_arg]]
-					means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
-					if means_diffs:
-						for diff in means_diffs:
-							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
-							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
+		predicted_roles = {(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}
+		target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : v for k, v in eval_cfg.data.masked_token_target_labels.items()}
+		
+		most_similar_tokens = most_similar_tokens.assign(
+			predicted_role=[predicted_roles[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']],
+			target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
+			eval_data=eval_cfg.data.friendly_name,
+			patience=self.cfg.hyperparameters.patience,
+			delta=self.cfg.hyperparameters.delta,
+			min_epochs=self.cfg.hyperparameters.min_epochs,
+			max_epochs=self.cfg.hyperparameters.max_epochs,
+			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
+		)
+		
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossims.csv.gz', index=False)
+		
+		log.info('Creating cosine similarity plots')
+		self.plot_cossims(most_similar_tokens)
+		
 		# Load data
 		# the use of eval_cfg.data.to_mask will probably need to be updated here for roberta now
 		inputs, labels, sentences = self.load_eval_file(eval_cfg.data.name, eval_cfg.data.to_mask)
@@ -1159,7 +1561,10 @@ class Tuner:
 		results = self.collect_results(inputs, eval_cfg.data.eval_groups, outputs)
 		summary = self.summarize_results(results, labels)
 		
-		log.info("Creating graphs")
+		log.info(f'Creating t-SNE plots')
+		self.plot_save_tsnes(summary, eval_cfg)
+		
+		log.info("Creating aconf and entropy plots")
 		self.graph_results(results, summary, eval_cfg)
 	
 	def load_eval_file(self, data_path: str, replacing: Dict[str,str]) -> Tuple[Dict,Dict,List[str]]:
@@ -1305,7 +1710,7 @@ class Tuner:
 			np.save(f, np.array(anim))
 	
 	
-	def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
+	def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str) -> None:
 		"""
 		Computes model performance on data consisting of 
 			sentence 1 , sentence 2 , [...]
@@ -1316,30 +1721,35 @@ class Tuner:
 		
 		# Load model
 		self.model.eval()
-		epoch_label = ('-' + epoch) if isinstance(epoch, str) else '-manual'
-		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
+		epoch_label = ('-' + eval_cfg.epoch) if isinstance(eval_cfg.epoch, str) else '-manual'
+		epoch, total_epochs = self.restore_weights(checkpoint_dir, eval_cfg.epoch)
 		
-		magnitude = floor(1 + np.log10(total_epochs))
 		dataset_name = eval_cfg.data.friendly_name
+		magnitude = floor(1 + np.log10(total_epochs))
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
-		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
-		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
-		most_similar_tokens = most_similar_tokens.assign(min_epochs=self.cfg.hyperparameters.min_epochs,max_epochs=self.cfg.hyperparameters.max_epochs)
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv', index=False)
 		
-		if len(most_similar_tokens.predicted_arg.unique()) > 1:
-			with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
-				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
-					df = df.loc[~df.target_group.str.endswith('most similar')]
-					means = df.groupby('target_group').cossim.agg('mean')
-					out_group_means = means[[i for i in means.index if not i == predicted_arg]]
-					means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
-					if means_diffs:
-						for diff in means_diffs:
-							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
-							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
+		most_similar_tokens = self.most_similar_tokens(k=eval_cfg.k).assign(eval_epoch=epoch, total_epochs=total_epochs)
+		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets=eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
+		
+		predicted_roles = {(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}
+		target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : v for k, v in eval_cfg.data.masked_token_target_labels.items()}
+		
+		most_similar_tokens = most_similar_tokens.assign(
+			predicted_role=[predicted_roles[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']],
+			target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
+			eval_data=eval_cfg.data.friendly_name,
+			patience=self.cfg.hyperparameters.patience,
+			delta=self.cfg.hyperparameters.delta,
+			min_epochs=self.cfg.hyperparameters.min_epochs,
+			max_epochs=self.cfg.hyperparameters.max_epochs,
+			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
+			random_seed=self.get_original_random_seed()
+		)
+		
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossims.csv.gz', index=False)
+		
+		log.info('Creating cosine similarity plots')
+		self.plot_cossims(most_similar_tokens)
 		
 		data = self.load_eval_entail_file(eval_cfg.data.name, eval_cfg.data.to_mask)
 		inputs = data["inputs"]
@@ -1350,33 +1760,28 @@ class Tuner:
 		
 		# Calculate performance on data
 		with torch.no_grad():
-			log.info("Evaluating model on testing data")
+			log.info('Evaluating model on testing data')
 			outputs = [self.model(**i) for i in inputs]
 		
 		summary = self.get_entailed_summary(sentences, outputs, labels, eval_cfg)
-		summary = summary.assign(eval_epoch=epoch,total_epochs=total_epochs,
-								 min_epochs=self.cfg.hyperparameters.min_epochs,
-								 max_epochs=self.cfg.hyperparameters.max_epochs)
+		summary = summary.assign(eval_epoch=epoch, total_epochs=total_epochs)
 		
 		# save the summary as a pickle and as a csv so that we have access to the original tensors
 		# these get converted to text in the csv, but the csv is easier to work with otherwise
-		summary.to_pickle(f"{dataset_name}-{epoch_label}-scores.pkl")
+		summary.to_pickle(f"{dataset_name}-{epoch_label}-odds_ratios.pkl.gz")
 		
 		summary_csv = summary.copy()
-		summary_csv['odds_ratio'] = summary_csv['odds_ratio'].astype(float).copy()
-		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-scores.csv", index = False, na_rep = 'NaN')
+		summary_csv['odds_ratio'] = summary_csv.odds_ratio.astype(float).copy()
+		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-odds_ratios.csv.gz", index = False, na_rep = 'NaN')
 		
-		log.info('Creating plots')
+		log.info('Creating t-SNE plots')
+		self.plot_save_tsnes(summary, eval_cfg)
+		
+		log.info('Creating odds ratios plots')
 		self.graph_entailed_results(summary, eval_cfg)
 		
-		plots_file = f'{dataset_name}-{str(epoch).zfill(magnitude)}-plots.pdf'
-		if os.path.exists(f'{dataset_name}-{epoch_label}-plots.pdf'):
-			os.remove(f'{dataset_name}-{epoch_label}-plots.pdf')
-			
-		os.rename(plots_file, f'{dataset_name}-{epoch_label}-plots.pdf')
-		
 		acc = self.get_entailed_accuracies(summary)
-		acc.to_csv(f'{dataset_name}-{epoch_label}-accuracies.csv', index = False, na_rep = 'NaN')
+		acc.to_csv(f'{dataset_name}-{epoch_label}-accuracies.csv.gz', index = False, na_rep = 'NaN')
 		
 		log.info('Evaluation complete')
 		print('')
@@ -1510,7 +1915,7 @@ class Tuner:
 						odds_ratio = lambda df: df['exp_logit'] - df['logit'],
 					)
 					
-					summary = summary.append(token_summary, ignore_index = True)
+					summary = pd.concat([summary, token_summary], ignore_index = True)
 		
 		summary['role_position'] = [tokens_to_roles[token] + ' position' for token in summary['exp_token']]
 		
@@ -1553,223 +1958,134 @@ class Tuner:
 			tuning = self.cfg.tuning.name.replace('_', ' '),
 			strip_punct = self.cfg.hyperparameters.strip_punct,
 			patience = self.cfg.hyperparameters.patience,
-			delta = self.cfg.hyperparameters.delta
+			delta = self.cfg.hyperparameters.delta,
+			epoch_criteria = eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
+			min_epochs=self.cfg.hyperparameters.min_epochs, 
+			max_epochs=self.cfg.hyperparameters.max_epochs,
+			random_seed=self.get_original_random_seed()
 		)
 		
 		return summary
 	
 	def graph_entailed_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, axis_size: int = 8, pt_size: int = 24) -> None:
-		if len(np.unique(summary.model_id.values)) > 1:
+		if len(summary.model_id.unique()) > 1:
 			summary['odds_ratio'] = summary['mean']
 			summary = summary.drop('mean', axis = 1)
-			
+		else:
+			summary['sem'] = 0
+		
+		# if we are dealing with bert/distilbert and roberta models, replace the strings with uppercase ones for comparison
+		if 'roberta' in summary.model_name.unique() and len(summary.model_name.unique()) > 1:
 			# if we are dealing with multiple models, we want to compare them by removing the idiosyncratic variation in how
 			# tokenization works. bert and distilbert are uncased, which means the tokens are converted to lower case.
 			# here, we convert them back to upper case so they can be plotted in the same group as the roberta tokens,
 			# which remain uppercase
-			summary.loc[(summary['model_name'] == 'bert') | (summary['model_name'] == 'distilbert'), 'ratio_name'] = \
-			summary[(summary['model_name'] == 'bert') | (summary['model_name'] == 'distilbert')]['ratio_name'].str.upper()
+			summary.loc[(summary.model_name == 'bert') | (summary.model_name == 'distilbert'), 'ratio_name'] = \
+				summary[(summary.model_name == 'bert') | (summary.model_name == 'distilbert')].ratio_name.str.upper()
 			
-			# for roberta, strings with spaces in front of them are tokenized differently from strings without spaces
-			# in front of them. so we need to remove the special characters that signals that, and add a new character
-			# signifying 'not a space in front' to the appropriate cases instead
+		# for roberta, strings with spaces in front of them are tokenized differently from strings without spaces
+		# in front of them. so we need to remove the special characters that signals that, and add a new character
+		# signifying 'not a space in front' to the appropriate cases instead
+		
+		# first, check whether doing this will alter information
+		if 'roberta' in summary.model_name.unique():
+			roberta_summary = summary[summary.model_name == 'roberta'].copy()
+			num_tokens_in_summary = len(set(list(itertools.chain(*[ratio_name.split('/') for ratio_name in roberta_summary.ratio_name.unique().tolist()]))))
 			
-			# first, check whether doing this will alter information
-			if not summary[summary['model_name'] == 'roberta'].empty:
-				roberta_summary = summary[summary['model_name'] == 'roberta'].copy()
-				num_tokens_in_summary = len(set(list(itertools.chain(*[ratio_name.split('/') for ratio_name in roberta_summary.ratio_name.unique().tolist()]))))
-				roberta_summary['ratio_name'] = [re.sub(chr(288), '', ratio_name) for ratio_name in roberta_summary['ratio_name']]
-				num_tokens_after_change = len(set(list(itertools.chain(*[ratio_name.split('/') for ratio_name in roberta_summary.ratio_name.unique().tolist()]))))
-				if num_tokens_in_summary != num_tokens_after_change:
-					# this isn't going to actually get rid of any info, but it's worth logging
-					log.warning('RoBERTa tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
-				
-				# first, replace the ones that don't start with spaces before with a preceding ^
-				summary.loc[(summary['model_name'] == 'roberta') & ~(summary['ratio_name'].str.startswith(chr(288))), 'ratio_name'] = \
-				summary[(summary['model_name'] == 'roberta') & ~(summary['ratio_name'].str.startswith(chr(288)))].replace({r'((^\w)|(?<=\/)\w)' : r'^\1'})
-				
-				# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
-				summary.loc[(summary['model_name'] == 'roberta') & (summary['ratio_name'].str.startswith(chr(288))), 'ratio_name'] = \
-				[re.sub(chr(288), '', ratio_name) for ratio_name in summary[(summary['model_name'] == 'roberta') & (summary['ratio_name'].str.startswith(chr(288)))].ratio_name]
-		else:
-			summary['sem'] = 0
+			roberta_summary['ratio_name'] = [re.sub(chr(288), '', ratio_name) for ratio_name in roberta_summary.ratio_name]
+			num_tokens_after_change = len(set(list(itertools.chain(*[ratio_name.split('/') for ratio_name in roberta_summary.ratio_name.unique().tolist()]))))
+			if num_tokens_in_summary != num_tokens_after_change:
+				# this isn't going to actually get rid of any info, but it's worth logging
+				log.warning('RoBERTa tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
+			
+			# first, replace the ones that don't start with spaces before with a preceding ^
+			summary.loc[(summary.model_name == 'roberta') & ~(summary.ratio_name.str.startswith(chr(288))), 'ratio_name'] = \
+				summary[(summary.model_name == 'roberta') & ~(summary.ratio_name.str.startswith(chr(288)))].ratio_name.str.replace(r'((^.)|(?<=\/).)', r'^\1', regex=True)
+			
+			# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
+			summary.loc[(summary.model_name == 'roberta') & (summary.ratio_name.str.startswith(chr(288))), 'ratio_name'] = \
+				summary[(summary.model_name == 'roberta') & (summary.ratio_name.str.startswith(chr(288)))].ratio_name.str.replace(chr(288), '')
 		
 		# Set colors for every unique odds ratio we are plotting
-		all_ratios = summary['ratio_name'].unique()
+		all_ratios = summary.ratio_name.unique()
 		colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))
 		
 		# we do this so we can add the information to the plot labels
 		acc = self.get_entailed_accuracies(summary)
 		
-		dataset_name = eval_cfg.data.name.split('.')[0]
-		
 		# Get each unique pair of sentence types so we can create a separate plot for each pair
-		sentence_types = summary['sentence_type'].unique()
+		sentence_types = summary.sentence_type.unique()
+		sentence_types = sorted(sentence_types, key = lambda s_t: eval_cfg.data.sentence_types.index(s_t))
 		paired_sentence_types = list(itertools.combinations(sentence_types, 2))
 		
 		# Sort so that the trained cases are first
-		paired_sentence_types = [
-			sorted(pair, 
-				   key = lambda x: str(-int(x == self.reference_sentence_type)) + x) 
-			for pair in paired_sentence_types
-		]
+		paired_sentence_types = [sorted(pair, key = lambda x: str(-int(x == self.reference_sentence_type)) + x) for pair in paired_sentence_types]
 		
 		# Filter to only cases including the reference sentence type for ease of interpretation
 		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type] if self.reference_sentence_type != 'none' else [(s1, s2) for s1, s2 in paired_sentence_types]
-
+		
+		filename = summary.eval_data.unique()[0] + '-'
+		epoch_label = summary.epoch_criteria.unique()[0] if len(summary.epoch_criteria.unique()) == 1 else ''
+		if len(summary.model_id.unique()) == 1:
+			epoch_label = '-' + epoch_label
+			magnitude = floor(1 + np.log10(summary.total_epochs.unique()[0]))
+			epoch_label = f'{str(summary.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
+		
+		filename += epoch_label + '-odds_ratios-plots.pdf'
+		
 		# For each pair, we create a different plot
-		for pair in tqdm(paired_sentence_types, total = len(paired_sentence_types)):
-			x_data = summary[summary['sentence_type'] == pair[0]].reset_index(drop = True)
-			y_data = summary[summary['sentence_type'] == pair[1]].reset_index(drop = True)
-						
-			# Filter data to only odds ratios that exist in both sentence types
-			# since we would only have one axis if a ratio exists in only one sentence type
-			common_odds = set(x_data.ratio_name).intersection(y_data.ratio_name)
-			x_data = x_data[x_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
-			y_data = y_data[y_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
-			
-			x_odds = np.abs(x_data['odds_ratio'].values) + x_data['sem'].values
-			y_odds = np.abs(y_data['odds_ratio'].values) + y_data['sem'].values
-			lim = np.max([*x_odds, *y_odds]) + 1
+		# with PdfPages(f'{dataset_name}{epoch_label}-odds_ratio-plots.pdf') as pdf:
+		with PdfPages(filename) as pdf:
+			for pair in tqdm(paired_sentence_types, total = len(paired_sentence_types)):
+				x_data = summary[summary['sentence_type'] == pair[0]].reset_index(drop = True)
+				y_data = summary[summary['sentence_type'] == pair[1]].reset_index(drop = True)
 							
-			# Construct get number of linear positions (if there's only one position, we can't make plots by linear position)
-			ratio_names_positions = x_data[['ratio_name', 'position_num']].drop_duplicates().reset_index(drop = True)
-			ratio_names_positions = list(ratio_names_positions.to_records(index = False))
-			ratio_names_positions = sorted(ratio_names_positions, key = lambda x: int(x[1].replace('position ', '')))
-			
-			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
-				fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-				fig.set_size_inches(9, 10.75)
-			else:
-				fig, (ax1, ax2) = plt.subplots(1, 2)
-				fig.set_size_inches(9, 6.75)
-			
-			ax1.axis([-lim, lim, -lim, lim])
-			
-			# Plot data by odds ratios
-			ratio_names_roles = x_data[['ratio_name', 'role_position']].drop_duplicates().reset_index(drop = True)
-			ratio_names_roles = list(ratio_names_roles.to_records(index = False))
-			
-			for ratio_name, role in ratio_names_roles:
-				x_idx = np.where(x_data.ratio_name == ratio_name)[0]
-				y_idx = np.where(y_data.ratio_name == ratio_name)[0]
+				# Filter data to only odds ratios that exist in both sentence types
+				# since we would only have one axis if a ratio exists in only one sentence type
+				common_odds = set(x_data.ratio_name).intersection(y_data.ratio_name)
+				x_data = x_data[x_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
+				y_data = y_data[y_data['ratio_name'].isin(common_odds)].reset_index(drop = True)
 				
-				x = x_data.odds_ratio[x_idx]
-				y = y_data.odds_ratio[y_idx]
+				x_odds = np.abs(x_data['odds_ratio'].values) + x_data['sem'].values
+				y_odds = np.abs(y_data['odds_ratio'].values) + y_data['sem'].values
+				lim = np.max([*x_odds, *y_odds]) + 1
+								
+				# Construct get number of linear positions (if there's only one position, we can't make plots by linear position)
+				ratio_names_positions = x_data[['ratio_name', 'position_num']].drop_duplicates().reset_index(drop = True)
+				ratio_names_positions = list(ratio_names_positions.to_records(index = False))
+				ratio_names_positions = sorted(ratio_names_positions, key = lambda x: int(x[1].replace('position ', '')))
 				
-				color_map = x_data.loc[x_idx].ratio_name.map(colors)
+				if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
+					fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+					fig.set_size_inches(10, 11.95)
+				else:
+					fig, (ax1, ax2) = plt.subplots(1, 2)
+					fig.set_size_inches(10, 7.5)
 				
-				ax1.scatter(
-					x = x, 
-					y = y,
-					c = color_map,
-					label = f'{ratio_name} in {role.replace("_", " ")}',
-					s = pt_size
-				)
+				ax1.axis([-lim, lim, -lim, lim])
 				
-				ax1.errorbar(
-					x = x, 
-					xerr = x_data['sem'][x_idx],
-					y = y,
-					yerr = y_data['sem'][y_idx],
-					ecolor = color_map,
-					ls = 'none'
-				)
-			
-			# Draw a diagonal to represent equal performance in both sentence types
-			ax1.set_aspect(1.0/ax1.get_data_ratio(), adjustable = 'box')
-			
-			# Set labels and title
-			ax1.set_xlabel(f"Confidence in {pair[0]} sentences\n", fontsize = axis_size)
-			ax1.set_ylabel(f"Confidence in {pair[1]} sentences", fontsize = axis_size)
-			
-			ax1.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
-			
-			ax1.legend(prop = {'size': axis_size})
-			
-			# Construct plot of confidence differences (a measure of transference)
-			x_odds = np.abs(x_data.odds_ratio.values) + x_data['sem'].values
-			y_odds = np.abs(y_data.odds_ratio - x_data.odds_ratio) + y_data['sem'].values
-			ylim_diffs = np.max([*x_odds, *y_odds]) + 1
-			
-			ax2.axis([-lim, lim, -ylim_diffs, ylim_diffs])
-			
-			for ratio_name, role in ratio_names_roles:
-				x_idx = np.where(x_data.ratio_name == ratio_name)[0]
-				y_idx = np.where(y_data.ratio_name == ratio_name)[0]
+				# Plot data by odds ratios
+				ratio_names_roles = x_data[['ratio_name', 'role_position']].drop_duplicates().reset_index(drop = True)
+				ratio_names_roles = list(ratio_names_roles.to_records(index = False))
 				
-				x = x_data.odds_ratio[x_idx].reset_index(drop = True)
-				y = y_data.odds_ratio[y_idx].reset_index(drop = True)
-				
-				y = y - x
-				
-				color_map = x_data.loc[x_idx].ratio_name.map(colors)
-				
-				ax2.scatter(
-					x = x, 
-					y = y,
-					c = color_map,
-					label = f'{ratio_name} in {role.replace("_", " ")}',
-					s = pt_size
-				)
-				
-				ax2.errorbar(
-					x = x, 
-					xerr = x_data['sem'][x_idx],
-					y = y,
-					yerr = y_data['sem'][y_idx],
-					ecolor = color_map,
-					ls = 'none'
-				)
-			
-			# Draw a line at zero to represent equal performance in both sentence types
-			ax2.plot((-lim, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False)
-			ax2.set_aspect(1.0/ax2.get_data_ratio(), adjustable = 'box')
-			
-			# Set labels and title
-			ax2.set_xlabel(f"Confidence in {pair[0]} sentences\n", fontsize = axis_size)
-			ax2.set_ylabel(f"Overconfidence in {pair[1]} sentences", fontsize = axis_size)
-			
-			ax2.legend(prop = {'size': axis_size})
-			
-			# Construct plots by linear position if they'll be different
-			if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
-				ax3.axis([-lim, lim, -lim, lim])
-				
-				xlabel = [f'Confidence in {pair[0]} sentences']
-				ylabel = [f'Confidence in {pair[1]} sentences']
-				
-				# For every position in the summary, plot each odds ratio
-				for ratio_name, position in ratio_names_positions:
-					x_idx = np.where(x_data.position_num == position)[0]
-					y_idx = np.where(y_data.position_num == position)[0]
-					
-					x_expected_token = x_data.loc[x_idx].ratio_name.unique()[0].split('/')[0]
-					y_expected_token = y_data.loc[y_idx].ratio_name.unique()[0].split('/')[0]
-					position_label = position
-					#position_label = position.replace('position_', 'position ')
-					
-					xlabel.append(f"Expected {x_expected_token} in {position_label}")
-					ylabel.append(f"Expected {y_expected_token} in {position_label}")
+				for ratio_name, role in ratio_names_roles:
+					x_idx = np.where(x_data.ratio_name == ratio_name)[0]
+					y_idx = np.where(y_data.ratio_name == ratio_name)[0]
 					
 					x = x_data.odds_ratio[x_idx]
 					y = y_data.odds_ratio[y_idx]
 					
-					# Flip the sign if the expected token isn't the same for x and y to get the correct values
-					if not x_expected_token == y_expected_token:
-						y = -y
+					color_map = x_data.loc[x_idx].ratio_name.map(colors)
 					
-					color_map = x_data[x_data['position_num'] == position].ratio_name.map(colors)
-					
-					ax3.scatter(
+					ax1.scatter(
 						x = x, 
 						y = y,
 						c = color_map,
-						label = f'{ratio_name} in {position_label}',
+						label = f'{ratio_name} in {role.replace("_", " ")}',
 						s = pt_size
 					)
 					
-					ax3.errorbar(
+					ax1.errorbar(
 						x = x, 
 						xerr = x_data['sem'][x_idx],
 						y = y,
@@ -1778,60 +2094,44 @@ class Tuner:
 						ls = 'none'
 					)
 				
-				ax3.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
+				# Draw a diagonal to represent equal performance in both sentence types
+				ax1.set_aspect(1.0/ax1.get_data_ratio(), adjustable = 'box')
 				
-				ax3.set_aspect(1.0/ax3.get_data_ratio(), adjustable = 'box')
+				# Set labels and title
+				ax1.set_xlabel(f"Confidence in {pair[0]} sentences\n", fontsize = axis_size)
+				ax1.set_ylabel(f"Confidence in {pair[1]} sentences", fontsize = axis_size)
 				
-				xlabel = '\n'.join(xlabel) + '\n'
-				ylabel = '\n'.join(ylabel)
+				ax1.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
 				
-				ax3.set_xlabel(xlabel, fontsize = axis_size)
-				ax3.set_ylabel(ylabel, fontsize = axis_size)
+				ax1.legend(prop = {'size': axis_size})
 				
-				ax3.legend(prop = {'size': axis_size})
+				# Construct plot of confidence differences (a measure of transference)
+				x_odds = np.abs(x_data.odds_ratio.values) + x_data['sem'].values
+				y_odds = np.abs(y_data.odds_ratio - x_data.odds_ratio) + y_data['sem'].values
+				ylim_diffs = np.max([*x_odds, *y_odds]) + 1
 				
-				# Construct plot of confidence differences by linear position
-				ylim_diffs = 0
+				ax2.axis([-lim, lim, -ylim_diffs, ylim_diffs])
 				
-				xlabel = [f'Confidence in {pair[0]} sentences']
-				ylabel = [f'Overconfidence in {pair[1]} sentences']
-				
-				# For every position in the summary, plot each odds ratio
-				for ratio_name, position in ratio_names_positions:
-					x_idx = np.where(x_data.position_num == position)[0]
-					y_idx = np.where(y_data.position_num == position)[0]
-					
-					x_expected_token = x_data.loc[x_idx].ratio_name.unique()[0].split('/')[0]
-					y_expected_token = y_data.loc[y_idx].ratio_name.unique()[0].split('/')[0]
-					position_label = position
-					#position_label = position.replace('position_', 'position ')
-					
-					xlabel.append(f"Expected {x_expected_token} in {position_label}")
-					ylabel.append(f"Expected {y_expected_token} in {position_label}")
+				for ratio_name, role in ratio_names_roles:
+					x_idx = np.where(x_data.ratio_name == ratio_name)[0]
+					y_idx = np.where(y_data.ratio_name == ratio_name)[0]
 					
 					x = x_data.odds_ratio[x_idx].reset_index(drop = True)
 					y = y_data.odds_ratio[y_idx].reset_index(drop = True)
 					
-					if not x_expected_token == y_expected_token:
-						y = -y
-					
 					y = y - x
 					
-					x_odds = np.abs(x.values) + x_data['sem'][x_idx].values
-					y_odds = np.abs(y.values) + y_data['sem'][y_idx].values
-					ylim_diffs = np.max([ylim_diffs, np.max([*x_odds, *y_odds]) + 1])
+					color_map = x_data.loc[x_idx].ratio_name.map(colors)
 					
-					color_map = x_data[x_data['position_num'] == position].ratio_name.map(colors)
-					
-					ax4.scatter(
+					ax2.scatter(
 						x = x, 
 						y = y,
 						c = color_map,
-						label = f'{ratio_name} in {position_label}',
+						label = f'{ratio_name} in {role.replace("_", " ")}',
 						s = pt_size
 					)
 					
-					ax4.errorbar(
+					ax2.errorbar(
 						x = x, 
 						xerr = x_data['sem'][x_idx],
 						y = y,
@@ -1840,77 +2140,180 @@ class Tuner:
 						ls = 'none'
 					)
 				
-				ax4.axis([-lim, lim, -ylim_diffs, ylim_diffs])
-				ax4.plot((-lim, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False)
+				# Draw a line at zero to represent equal performance in both sentence types
+				ax2.plot((-lim, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False)
+				ax2.set_aspect(1.0/ax2.get_data_ratio(), adjustable = 'box')
 				
-				ax4.set_aspect(1.0/ax4.get_data_ratio(), adjustable = 'box')
+				# Set labels and title
+				ax2.set_xlabel(f"Confidence in {pair[0]} sentences\n", fontsize = axis_size)
+				ax2.set_ylabel(f"Overconfidence in {pair[1]} sentences", fontsize = axis_size)
 				
-				xlabel = '\n'.join(xlabel) + '\n'
-				ylabel = '\n'.join(ylabel)
+				ax2.legend(prop = {'size': axis_size})
 				
-				ax4.set_xlabel(xlabel, fontsize = axis_size)
-				ax4.set_ylabel(ylabel, fontsize = axis_size)
+				# Construct plots by linear position if they'll be different
+				if len(ratio_names_positions) > 1 and not all(x_data.position_num == y_data.position_num):
+					ax3.axis([-lim, lim, -lim, lim])
+					
+					xlabel = [f'Confidence in {pair[0]} sentences']
+					ylabel = [f'Confidence in {pair[1]} sentences']
+					
+					# For every position in the summary, plot each odds ratio
+					for ratio_name, position in ratio_names_positions:
+						x_idx = np.where(x_data.position_num == position)[0]
+						y_idx = np.where(y_data.position_num == position)[0]
+						
+						x_expected_token = x_data.loc[x_idx].ratio_name.unique()[0].split('/')[0]
+						y_expected_token = y_data.loc[y_idx].ratio_name.unique()[0].split('/')[0]
+						position_label = position
+						#position_label = position.replace('position_', 'position ')
+						
+						xlabel.append(f"Expected {x_expected_token} in {position_label}")
+						ylabel.append(f"Expected {y_expected_token} in {position_label}")
+						
+						x = x_data.odds_ratio[x_idx]
+						y = y_data.odds_ratio[y_idx]
+						
+						# Flip the sign if the expected token isn't the same for x and y to get the correct values
+						if not x_expected_token == y_expected_token:
+							y = -y
+						
+						color_map = x_data[x_data['position_num'] == position].ratio_name.map(colors)
+						
+						ax3.scatter(
+							x = x, 
+							y = y,
+							c = color_map,
+							label = f'{ratio_name} in {position_label}',
+							s = pt_size
+						)
+						
+						ax3.errorbar(
+							x = x, 
+							xerr = x_data['sem'][x_idx],
+							y = y,
+							yerr = y_data['sem'][y_idx],
+							ecolor = color_map,
+							ls = 'none'
+						)
+					
+					ax3.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
+					
+					ax3.set_aspect(1.0/ax3.get_data_ratio(), adjustable = 'box')
+					
+					xlabel = '\n'.join(xlabel) + '\n'
+					ylabel = '\n'.join(ylabel)
+					
+					ax3.set_xlabel(xlabel, fontsize = axis_size)
+					ax3.set_ylabel(ylabel, fontsize = axis_size)
+					
+					ax3.legend(prop = {'size': axis_size})
+					
+					# Construct plot of confidence differences by linear position
+					ylim_diffs = 0
+					
+					xlabel = [f'Confidence in {pair[0]} sentences']
+					ylabel = [f'Overconfidence in {pair[1]} sentences']
+					
+					# For every position in the summary, plot each odds ratio
+					for ratio_name, position in ratio_names_positions:
+						x_idx = np.where(x_data.position_num == position)[0]
+						y_idx = np.where(y_data.position_num == position)[0]
+						
+						x_expected_token = x_data.loc[x_idx].ratio_name.unique()[0].split('/')[0]
+						y_expected_token = y_data.loc[y_idx].ratio_name.unique()[0].split('/')[0]
+						position_label = position
+						#position_label = position.replace('position_', 'position ')
+						
+						xlabel.append(f"Expected {x_expected_token} in {position_label}")
+						ylabel.append(f"Expected {y_expected_token} in {position_label}")
+						
+						x = x_data.odds_ratio[x_idx].reset_index(drop = True)
+						y = y_data.odds_ratio[y_idx].reset_index(drop = True)
+						
+						if not x_expected_token == y_expected_token:
+							y = -y
+						
+						y = y - x
+						
+						x_odds = np.abs(x.values) + x_data['sem'][x_idx].values
+						y_odds = np.abs(y.values) + y_data['sem'][y_idx].values
+						ylim_diffs = np.max([ylim_diffs, np.max([*x_odds, *y_odds]) + 1])
+						
+						color_map = x_data[x_data['position_num'] == position].ratio_name.map(colors)
+						
+						ax4.scatter(
+							x = x, 
+							y = y,
+							c = color_map,
+							label = f'{ratio_name} in {position_label}',
+							s = pt_size
+						)
+						
+						ax4.errorbar(
+							x = x, 
+							xerr = x_data['sem'][x_idx],
+							y = y,
+							yerr = y_data['sem'][y_idx],
+							ecolor = color_map,
+							ls = 'none'
+						)
+					
+					ax4.axis([-lim, lim, -ylim_diffs, ylim_diffs])
+					ax4.plot((-lim, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False)
+					
+					ax4.set_aspect(1.0/ax4.get_data_ratio(), adjustable = 'box')
+					
+					xlabel = '\n'.join(xlabel) + '\n'
+					ylabel = '\n'.join(ylabel)
+					
+					ax4.set_xlabel(xlabel, fontsize = axis_size)
+					ax4.set_ylabel(ylabel, fontsize = axis_size)
+					
+					ax4.legend(prop = {'size': axis_size})
 				
-				ax4.legend(prop = {'size': axis_size})
-			
-			# Set title
-			title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
-			title += (' @ epoch ' + str(np.unique(summary.eval_epoch)[0]) + '/') if len(np.unique(summary.eval_epoch)) == 1 else ', epochs: '
-			title += (str(np.unique(summary.total_epochs)[0])) if len(np.unique(summary.total_epochs)) == 1 else 'multiple'
-			title += f'\nmin epochs: {np.unique(summary.min_epochs)[0] if len(np.unique(summary.min_epochs)) == 1 else "multiple"}, '
-			title += f'max epochs: {np.unique(summary.max_epochs)[0] if len(np.unique(summary.max_epochs)) == 1 else "multiple"}'
-			title += f', patience: {np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else "multiple"}'
-			title += f' (\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"})'
-			
-			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
-			masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
-			masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
-			subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
-			
-			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
-			subtitle += '\nTuning data: ' + tuning_data_str
-			
-			strip_punct_str = ' without punctuation' if all(summary.strip_punct) else " with punctuation" if all(~summary.strip_punct) else ', multiple punctuation'
-			subtitle += strip_punct_str
-			
-			pair_acc = acc[(acc['s1'] == pair[0]) & (acc['s2'] == pair[1])]
-			for arg in pair_acc.predicted_arg.unique():
-				prefix = 'combined' if arg == 'any' else arg
-				perc_correct_str = \
-					'\n' + prefix + ' acc, Both: '    + str(round(pair_acc[pair_acc.predicted_arg == arg].both_correct.loc[0], 2)) + \
-					', Neither: ' + str(round(pair_acc[pair_acc.predicted_arg == arg].both_incorrect.loc[0], 2)) + \
-					', X only: '  + str(round(pair_acc[pair_acc.predicted_arg == arg].ref_correct_gen_incorrect.loc[0], 2)) + \
-					', Y only: '  + str(round(pair_acc[pair_acc.predicted_arg == arg].ref_incorrect_gen_correct.loc[0], 2)) + \
-					', Y|X: ' + str(round(pair_acc[pair_acc.predicted_arg == arg].gen_given_ref.loc[0], 2)) + \
-					', MSE: ' + str(round(pair_acc[pair_acc.predicted_arg == arg]['specificity_(MSE)'].loc[0], 2)) + ' (\u00B1' + str(round(pair_acc[pair_acc.predicted_arg == arg].specificity_se.loc[0], 2)) + ')'
-				subtitle += perc_correct_str
+				# Set title
+				title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs'))
+				title += (' @ epoch ' + str(np.unique(summary.eval_epoch)[0]) + '/') if len(np.unique(summary.eval_epoch)) == 1 else ', epochs: '
+				title += (str(np.unique(summary.total_epochs)[0])) if len(np.unique(summary.total_epochs)) == 1 else 'multiple'
+				title += f' ({np.unique(summary.epoch_criteria)[0].replace("_", " ")})' if len(np.unique(summary.epoch_criteria)) == 1 else ' (multiple criteria)'
+				title += f'\nmin epochs: {np.unique(summary.min_epochs)[0] if len(np.unique(summary.min_epochs)) == 1 else "multiple"}, '
+				title += f'max epochs: {np.unique(summary.max_epochs)[0] if len(np.unique(summary.max_epochs)) == 1 else "multiple"}'
+				title += f', patience: {np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else "multiple"}'
+				title += f' (\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"})'
 				
-			subtitle += '\n\nX: ' + x_data[x_data.sentence_num == 0].sentence.values[0]
-			subtitle += '\nY: ' + y_data[y_data.sentence_num == 0].sentence.values[0]
-			
-			fig.suptitle(title + '\n' + subtitle)
-			
-			fig.tight_layout()
-			plt.savefig(f"{dataset_name}-{pair[0]}-{pair[1]}-paired.pdf")
-			plt.close('all')
-			del fig
-		
-		# Combine the plots into a single pdf
-		pdfs = [pdf for sentence_type in sentence_types for pdf in os.listdir(os.getcwd()) if pdf.endswith(f'{sentence_type}-paired.pdf')]
-		
-		# Filter out duplicate file names
-		pdfs = list(set(pdfs))
-		keydict = eval_cfg.data.sentence_types
-		keydict = {k : v for v, k in enumerate(keydict)}
-		
-		pdfs = sorted(pdfs, key = lambda pdf: keydict[pdf.replace(dataset_name + '-' + self.reference_sentence_type + '-', '').replace('.pdf', '').replace('-paired', '')])
-		
-		total_epochs = max(summary.total_epochs)
-		magnitude = floor(1 + np.log10(total_epochs))
-		
-		# all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
-		all_epochs = eval_cfg.epoch if len(np.unique(summary.eval_epoch)) > 1 else str(np.unique(summary.eval_epoch)[0]).zfill(magnitude)
-		merge_pdfs(pdfs, f'{dataset_name}-{all_epochs}-plots.pdf')
+				model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
+				masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
+				masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
+				subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
+				
+				tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
+				subtitle += '\nTuning data: ' + tuning_data_str
+				
+				strip_punct_str = ' without punctuation' if all(summary.strip_punct) else " with punctuation" if all(~summary.strip_punct) else ', multiple punctuation'
+				subtitle += strip_punct_str
+				
+				pair_acc = acc[(acc['s1'] == pair[0]) & (acc['s2'] == pair[1])]
+				for arg in pair_acc.predicted_arg.unique():
+					prefix = 'combined' if arg == 'any' else arg
+					perc_correct_str = \
+						'\n' + prefix + ' acc, Both: '    + str(round(pair_acc[pair_acc.predicted_arg == arg].both_correct.loc[0], 2)) + \
+						', Neither: ' + str(round(pair_acc[pair_acc.predicted_arg == arg].both_incorrect.loc[0], 2)) + \
+						', X only: '  + str(round(pair_acc[pair_acc.predicted_arg == arg].ref_correct_gen_incorrect.loc[0], 2)) + \
+						', Y only: '  + str(round(pair_acc[pair_acc.predicted_arg == arg].ref_incorrect_gen_correct.loc[0], 2)) + \
+						', Y|X: ' + str(round(pair_acc[pair_acc.predicted_arg == arg].gen_given_ref.loc[0], 2)) + \
+						', MSE: ' + str(round(pair_acc[pair_acc.predicted_arg == arg]['specificity_(MSE)'].loc[0], 2)) + ' (\u00B1' + str(round(pair_acc[pair_acc.predicted_arg == arg].specificity_se.loc[0], 2)) + ')'
+					subtitle += perc_correct_str
+					
+				subtitle += '\n\nX: ' + x_data[x_data.sentence_num == 0].sentence.values[0]
+				subtitle += '\nY: ' + y_data[y_data.sentence_num == 0].sentence.values[0]
+				
+				fig.suptitle(title + '\n' + subtitle)
+				
+				fig.tight_layout()
+				pdf.savefig()
+				# plt.savefig(f"{dataset_name}-{pair[0]}-{pair[1]}-paired.pdf")
+				plt.close('all')
+				del fig
 	
 	def get_entailed_accuracies(self, summary: pd.DataFrame) -> pd.DataFrame:
 		# Get each unique pair of sentence types so we can create a separate plot for each pair
@@ -1967,7 +2370,7 @@ class Tuner:
 			s1_ex = x_data[x_data.sentence_num == 0].sentence.values[0]
 			s2_ex = y_data[y_data.sentence_num == 0].sentence.values[0]
 			
-			acc = acc.append(pd.DataFrame(
+			acc = pd.concat([acc, pd.DataFrame(
 				[[pair[0], pair[1], 'any', 'any',
 				  x_data.position_num.unique()[0] if len(x_data.position_num.unique()) == 1 else 'multiple',
 				  y_data.position_num.unique()[0] if len(y_data.position_num.unique()) == 1 else 'multiple',
@@ -1980,7 +2383,7 @@ class Tuner:
 				  # specificity_z, specificity_z_sem,
 				  s1_ex, s2_ex]],
 				  columns = acc_columns
-			))
+			)])
 			
 			for name, x_group in x_data.groupby('ratio_name'):
 				arg = name.split('/')[0]
@@ -2007,7 +2410,7 @@ class Tuner:
 				# specificity_z = np.mean(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)
 				# specificity_z_sem = np.std(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2/np.sqrt(np.size(z_transform(y_data.odds_ratio - x_data.odds_ratio)**2)))
 				
-				acc = acc.append(pd.DataFrame(
+				acc = pd.concat([acc, pd.DataFrame(
 					[[pair[0], pair[1], arg, x_group.role_position.unique()[0].split()[0],
 					  x_group.position_num.unique()[0] if len(x_group.position_num.unique()) == 1 else 'multiple',
 					  y_group.position_num.unique()[0] if len(y_group.position_num.unique()) == 1 else 'multiple',
@@ -2020,7 +2423,7 @@ class Tuner:
 					  # specificity_z, specificity_z_sem,
 					  s1_ex, s2_ex]],
 					  columns = acc_columns
-				))
+				)])
 		
 		acc = acc.assign(
 			eval_epoch = np.unique(summary.eval_epoch)[0] if len(np.unique(summary.eval_epoch)) == 1 else 'multiple',
@@ -2035,13 +2438,15 @@ class Tuner:
 			masked_tuning_style = np.unique(summary.masked_tuning_style)[0] if len(np.unique(summary.masked_tuning_style)) == 1 else 'multiple',
 			strip_punct = np.unique(summary.strip_punct)[0] if len(np.unique(summary.strip_punct)) == 1 else 'multiple',
 			patience = np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else 'multiple',
-			delta = np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else 'multiple'
+			delta = np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else 'multiple',
+			epoch_criteria = np.unique(summary.epoch_criteria)[0] if len(np.unique(summary.epoch_criteria)) == 1 else 'multiple',
+			random_seed = np.unique(summary.random_seed)[0] if len(np.unique(summary.random_seed)) == 1 else 'multiple',
 		)
 		
 		return acc
 	
 	
-	def eval_new_verb(self, eval_cfg: DictConfig, args_cfg: DictConfig, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> None:
+	def eval_new_verb(self, eval_cfg: DictConfig, args_cfg: DictConfig, checkpoint_dir: str) -> None:
 		"""
 		Computes model performance on data with new verbs
 		where this is determined as the difference in the probabilities associated
@@ -2054,30 +2459,36 @@ class Tuner:
 		data = self.load_eval_verb_file(args_cfg, eval_cfg.data.name, eval_cfg.data.to_mask)
 				
 		self.model.eval()
-		epoch_label = ('-' + epoch) if isinstance(epoch, str) else '-manual'
-		epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
+		epoch_label = ('-' + eval_cfg.epoch) if isinstance(eval_cfg.epoch, str) else '-manual'
+		epoch, total_epochs = self.restore_weights(checkpoint_dir, eval_cfg.epoch)
 		magnitude = floor(1 + np.log10(total_epochs))
 		
 		dataset_name = eval_cfg.data.friendly_name
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_tokens = self.most_similar_tokens(k = eval_cfg.k).assign(eval_epoch = epoch, total_epochs = total_epochs)
-		most_similar_tokens = most_similar_tokens.append(self.most_similar_tokens(targets = eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs), ignore_index=True)
-		most_similar_tokens['predicted_role'] = [{(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']]
-		most_similar_tokens = most_similar_tokens.assign(patience=self.cfg.hyperparameters.patience,delta=self.cfg.hyperparameters.delta)
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-similarities.csv', index=False)
+		most_similar_tokens = self.most_similar_tokens(k=eval_cfg.k).assign(eval_epoch=epoch, total_epochs=total_epochs)
+		most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets=eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
 		
-		if len(most_similar_tokens.predicted_arg.unique()) > 1:
-			with open(f'{dataset_name}-{epoch_label}-similarities_ratios.txt', 'w', encoding = 'utf-8') as f:
-				for predicted_arg, df in most_similar_tokens.groupby('predicted_arg'):
-					df = df.loc[~df.target_group.str.endswith('most similar')]
-					means = df.groupby('target_group')['cossim'].agg('mean')
-					out_group_means = means[[i for i in means.index if not i == predicted_arg]]
-					means_diffs = {f'{predicted_arg}-{arg}': means[predicted_arg] - out_group_means[arg] for arg in out_group_means.index}
-					if means_diffs:
-						for diff in means_diffs:
-							log.info(f'Mean cossim {diff} targets for {predicted_arg}: {"{:.2f}".format(means_diffs[diff])}')
-							f.write(f'Mean cossim {diff} targets for {predicted_arg}: {means_diffs[diff]}\n')
+		predicted_roles = {(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}
+		target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : v for k, v in eval_cfg.data.masked_token_target_labels.items()}
 		
+		most_similar_tokens = most_similar_tokens.assign(
+			predicted_role=[predicted_roles[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']],
+			target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
+			eval_data=eval_cfg.data.friendly_name,
+			patience=self.cfg.hyperparameters.patience,
+			delta=self.cfg.hyperparameters.delta,
+			min_epochs=self.cfg.hyperparameters.min_epochs,
+			max_epochs=self.cfg.hyperparameters.max_epochs,
+			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
+			random_seed=self.get_original_random_seed()
+		)
+		
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
+		
+		log.info('Creating cosine similarity plots')
+		self.plot_cossims(most_similar_tokens)
+		
+		# maybe switch this to getting the odds ratios like the previous one?
 		# Define a local function to get the probabilities
 		def get_probs(epoch: int) -> Dict[int,Dict]:
 			epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
@@ -2123,18 +2534,15 @@ class Tuner:
 		epoch = max(results.keys())
 		
 		log.info(f"SAVING TO: {os.getcwd()}")
-		summary.to_pickle(f"{dataset_name}-0-{epoch}-scores.pkl")
-		summary.to_csv(f"{dataset_name}-0-{epoch}-scores.csv", index = False, na_rep = 'NaN')
+		summary.to_pickle(f"{dataset_name}-0-{epoch}-surprisals.pkl.gz")
+		summary.to_csv(f"{dataset_name}-0-{epoch}-surprisals.csv.gz", index = False, na_rep = 'NaN')
 		
 		# Create graphs
-		log.info('Creating plots')
-		self.graph_new_verb_results(summary, eval_cfg)
+		log.info(f'Creating t-SNE plots')
+		self.plot_save_tsnes(summary, eval_cfg)
 		
-		plots_file = f'{dataset_name}-0-{str(epoch).zfill(magnitude)}-plots.pdf'
-		if os.path.exists(f'{dataset_name}-0-{epoch_label}-plots.pdf'):
-			os.remove(f'{dataset_name}-0-{epoch_label}-plots.pdf')
-			
-		os.rename(plots_file, f'{dataset_name}-0-{epoch_label}-plots.pdf')
+		log.info('Creating surprisal plots')
+		self.graph_new_verb_results(summary, eval_cfg)
 		
 		log.info('Evaluation complete')
 		print('')
@@ -2237,8 +2645,8 @@ class Tuner:
 											target_position_name = [re.sub(r'\[|\]', '', target_position)],
 											eval_epoch = eval_epoch,
 											total_epochs = total_epochs,
-								 			min_epochs=self.cfg.hyperparameters.min_epochs,
-								 			max_epochs=self.cfg.hyperparameters.max_epochs
+								 			min_epochs = self.cfg.hyperparameters.min_epochs,
+								 			max_epochs = self.cfg.hyperparameters.max_epochs
 										)
 										
 										mask_pos = mask_seq.index(self.mask_tok)
@@ -2256,7 +2664,7 @@ class Tuner:
 												
 										target_position_num = ['position ' + str(position_num)],
 										
-										summary = summary.append(summary_, ignore_index = True)
+										summary = pd.concat([summary, summary_], ignore_index = True)
 			
 			summary = summary.assign(
 				model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2],
@@ -2267,7 +2675,8 @@ class Tuner:
 				tuning = self.cfg.tuning.name,
 				strip_punct = self.cfg.hyperparameters.strip_punct,
 				patience = self.cfg.hyperparameters.patience,
-				delta = self.cfg.hyperparameters.delta
+				delta = self.cfg.hyperparameters.delta,
+				epoch_criteria = eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual'
 			)
 			
 			return summary
@@ -2279,7 +2688,7 @@ class Tuner:
 			'model_id', 'model_name', 'total_epochs', 'min_epochs', 'max_epochs',
 			'tuning', 'strip_punct', 'masked', 'masked_tuning_style', 
 			'patience', 'delta', # model properties
-			'eval_epoch', 'eval_data', # eval properties
+			'eval_epoch', 'eval_data', 'epoch_criteria' # eval properties
 			'sentence_type', 'target_position_name', 'target_position_num', 
 			'predicted_token_type', 'masked_sentence', 'sentence_num', # sentence properties
 			'filled_sentence', 'predicted_token', 'vocab_token_index', 'surprisal', 'p' # observation properties
@@ -2294,10 +2703,11 @@ class Tuner:
 			ascending = [(column != 'predicted_token_type' and column != 'target_position_name') for column in sort_columns]
 		).reset_index(drop = True)
 		
+		summary = summary.assign(random_seed=self.get_original_random_seed())
+		
 		return summary
 	
 	def graph_new_verb_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, axis_size: int = 10, pt_size: int = 24) -> None:
-		
 		if len(np.unique(summary.model_id.values)) > 1:
 			summary['surprisal'] = summary['mean']
 			summary = summary.drop('mean', axis = 1)
@@ -2306,8 +2716,6 @@ class Tuner:
 		
 		# Get each sentence type to compare them on pre- and post-tuning data
 		sentence_types = summary['sentence_type'].unique()
-		
-		dataset_name = eval_cfg.data.friendly_name
 		
 		summary['surprisal_gf_label'] = [row['predicted_token_type'] + ' in ' + row['target_position_name'] + ' position' for _, row in summary.iterrows()]
 		summary['surprisal_pos_label'] = [row['predicted_token_type'] + ' in ' + row['target_position_num'].replace('_', ' ') for _, row in summary.iterrows()]
@@ -2319,163 +2727,154 @@ class Tuner:
 		
 		x_epoch = min(summary.eval_epoch)
 		y_epoch = max(summary.eval_epoch)
-
+		
+		dataset_name = summary.eval_data.unique()[0]
+		eval_epoch = '-' + str(np.unique(summary.eval_epoch)[0]) if len(np.unique(summary.eval_epoch)) == 1 else ''
+		
+		epoch_label = '-' + summary.epoch_criteria.unique()[0] if len(summary.epoch_criteria.unique()) == 1 else ''
+		epoch_label = eval_epoch + epoch_label
+		
 		# For each sentence type, we create a different plot
-		for sentence_type in tqdm(sentence_types, total = len(sentence_types)):
-			
-			# Get x and y data. We plot the first member of each pair on x, and the second member on y
-			x_data = summary.loc[(summary.eval_epoch == x_epoch) & (summary['sentence_type'] == sentence_type)].reset_index(drop = True)
-			y_data = summary.loc[(summary.eval_epoch == y_epoch) & (summary['sentence_type'] == sentence_type)].reset_index(drop = True)
-			
-			lim = np.max([*[np.abs(x_data['surprisal'].values) + x_data['sem'].values], *[np.abs(y_data['surprisal'].values) + y_data['sem'].values]]) + 1
-			
-			# Get number of linear positions (if there's only one position, we can't make plots by linear position)
-			sur_names_positions = x_data[['surprisal_gf_label', 'target_position_num']].drop_duplicates().reset_index(drop = True)
-			sur_names_positions = list(sur_names_positions.to_records(index = False))
-			sur_names_positions = sorted(sur_names_positions, key = lambda x: int(x[1].replace('position ', ' ')))
-			
-			# If there's more than one position, we'll create a
-			fig, (ax1, ax2) = plt.subplots(1, 2)
-			fig.set_size_inches(12.25, 6)
-			
-			ax1.set_xlim(-1, lim)
-			ax1.set_ylim(-1, lim)
-			
-			# Plot data by surprisal labels
-			surprisal_gf_labels = x_data[['surprisal_gf_label']].drop_duplicates().reset_index(drop = True)
-			surprisal_gf_labels = sorted(list(itertools.chain(*surprisal_gf_labels.values.tolist())), key = lambda x: str(int(x.split(' ')[0] == x.split(' ')[2])) + x.split(' ')[2], reverse = True)
-			
-			x_data['Linear Order'] = [row['target_position_num'].replace('_', ' ') for _, row in x_data.iterrows()]
-			x_data['Grammatical Function'] = x_data.surprisal_gf_label
-			num_gfs = len(x_data['Grammatical Function'].unique().tolist())
-			
-			ax1 = sns.scatterplot(
-				x = x_data.surprisal,
-				y = y_data.surprisal,
-				style = x_data['Linear Order'] if len(x_data['Linear Order'].unique().tolist()) > 1 else None,
-				hue = x_data['Grammatical Function'],
-				hue_order = surprisal_gf_labels,
-				palette = colors1[:num_gfs] if len(x_data['Linear Order'].unique().tolist()) > 1 else colors2,
-				s = pt_size,
-				ax = ax1
-			)
-			
-			ax1.errorbar(
-				x = x_data.surprisal, 
-				xerr = x_data['sem'],
-				y = y_data.surprisal,
-				yerr = y_data['sem'],
-				ecolor = colors[:num_gfs],
-				ls = 'none'
-			)
-			
-			# Set labels and title
-			ax1.set_xlabel(f"Surprisal @ epoch {np.unique(x_data.eval_epoch)[0]}", fontsize = axis_size)
-			ax1.set_ylabel(f"Surprisal @ epoch {np.unique(y_data.eval_epoch)[0]}", fontsize = axis_size)
-			
-			# Draw a diagonal to represent equal performance in both sentence types
-			ax1.set_aspect(1.0/ax1.get_data_ratio(), adjustable = 'box')
-			ax1.plot((-1, lim), (-1, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
-			
-			box = ax1.get_position()
-			ax1.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-			ax1.get_legend().remove()
-			
-			# Construct plot of surprisal differences (a measure of transference)
-			ax2.set_xlim(-1, lim)
-			x_surs = np.abs(x_data.surprisal.values) + x_data['sem'].values
-			y_surs = np.abs(y_data.surprisal - x_data.surprisal) + y_data['sem'].values
-			ylim_diffs = np.max([*x_surs, *y_surs]) + 1
-			
-			ax2.set_ylim(-ylim_diffs, ylim_diffs)
-			
-			ax2 = sns.scatterplot(
-				x = x_data.surprisal,
-				y = y_data.surprisal - x_data.surprisal,
-				style = x_data['Linear Order'] if len(x_data['Linear Order'].unique().tolist()) > 1 else None,
-				hue = x_data['Grammatical Function'],
-				hue_order = surprisal_gf_labels,
-				palette = colors1[:num_gfs] if len(x_data['Linear Order'].unique().tolist()) > 1 else colors2,
-				s = pt_size,
-				ax = ax2
-			)
-			
-			ax2.errorbar(
-				x = x, 
-				xerr = x_data['sem'],
-				y = y_data.surprisal - x_data.surprisal,
-				yerr = y_data['sem'],
-				ecolor = colors[:num_gfs],
-				ls = 'none'
-			)
-			
-			# Set labels and title
-			ax2.set_xlabel(f"Surprisal @ epoch {np.unique(x_data.eval_epoch)[0]}", fontsize = axis_size)
-			ax2.set_ylabel(f"Δ surprisal ({np.unique(y_data.eval_epoch)[0]} - {np.unique(x_data.eval_epoch)[0]})", fontsize = axis_size)
-			
-			# Draw a line at zero to represent equal performance in both pre- and post-tuning
-			ax2.set_aspect(1.0/ax2.get_data_ratio(), adjustable = 'box')
-			ax2.plot((-1, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False)
-			
-			box = ax2.get_position()
-			ax2.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-			legend = ax2.legend(loc = 'center left', bbox_to_anchor = (1, 0.5), fontsize = 9)
-			
-			handles, labels = ax2.get_legend_handles_labels()
-			try:
-				idx = labels.index('Linear Order')
-			except ValueError:
-				idx = None
-				legend.set_title('Grammatical Function')
-			
-			if idx is not None:
-				labels_handles = list(zip(labels[idx+1:], handles[idx+1:]))
-				slabels, shandles = map(list, zip(*sorted(labels_handles, key = lambda x: x[0])))
-			
-				handles = handles[:idx+1] + shandles
-				labels = labels[:idx+1] + slabels
-			
-				ax2.legend(handles, labels, loc = 'center left', bbox_to_anchor = (1, 0.5), fontsize = 9)
-			
-			# Set title
-			title = f"{eval_cfg.data.description.replace(' tuples', '')} {sentence_type}s"
-			
-			model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
-			masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
-			masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
-			subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
-			subtitle += f', patience: {np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else "multiple"}'
-			subtitle += f' (\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"})'
-			
-			tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
-			subtitle += '\nTuning data: ' + tuning_data_str
-			
-			# Set title
-			strip_punct_str = ' without punctuation' if all(summary.strip_punct) else " with punctuation" if all(~summary.strip_punct) else ', multiple punctuation'
-			subtitle += strip_punct_str
-			
-			fig.suptitle(title + '\n' + subtitle)
-			fig.tight_layout(rect=[-0.025,0.1,0.9625,1])
-			plt.savefig(f"{dataset_name}-{sentence_type}.pdf")
-			plt.close('all')
-			del fig
-		
-		# Combine the plots into a single pdf
-		pdfs = [pdf for sentence_type in sentence_types for pdf in os.listdir(os.getcwd()) if pdf.endswith(f'{sentence_type}.pdf')]
-		
-		# Filter out duplicate file names in case some sentence types are contained within others,
-		# and sort so that the most relevant plot appears at the top
-		pdfs = list(set(pdfs))
-		keydict = eval_cfg.data.sentence_types
-		keydict = {k : v for v, k in enumerate(keydict)}
-		
-		pdfs = sorted(pdfs, key = lambda pdf: keydict[pdf.replace(dataset_name + '-', '').replace('.pdf', '')])
-		
-		total_epochs = max(summary.total_epochs)
-		magnitude = floor(1 + np.log10(total_epochs))
-		
-		all_epochs = '-'.join([str(x).zfill(magnitude) for x in sorted(np.unique(summary.eval_epoch).tolist(), key = lambda x: x)])
-		merge_pdfs(pdfs, f'{dataset_name}-{all_epochs}-plots.pdf')
+		# with PdfPages(f'{dataset_name}{epoch_label}-surprisal-plots.pdf') as pdf:
+		with PdfPages(f'{dataset_name}{epoch_label}-surprisals-plots.pdf') as pdf:
+			for sentence_type in tqdm(sentence_types, total = len(sentence_types)):
+				
+				# Get x and y data. We plot the first member of each pair on x, and the second member on y
+				x_data = summary.loc[(summary.eval_epoch == x_epoch) & (summary['sentence_type'] == sentence_type)].reset_index(drop = True)
+				y_data = summary.loc[(summary.eval_epoch == y_epoch) & (summary['sentence_type'] == sentence_type)].reset_index(drop = True)
+				
+				lim = np.max([*[np.abs(x_data['surprisal'].values) + x_data['sem'].values], *[np.abs(y_data['surprisal'].values) + y_data['sem'].values]]) + 1
+				
+				# Get number of linear positions (if there's only one position, we can't make plots by linear position)
+				sur_names_positions = x_data[['surprisal_gf_label', 'target_position_num']].drop_duplicates().reset_index(drop = True)
+				sur_names_positions = list(sur_names_positions.to_records(index = False))
+				sur_names_positions = sorted(sur_names_positions, key = lambda x: int(x[1].replace('position ', ' ')))
+				
+				# If there's more than one position, we'll create a
+				fig, (ax1, ax2) = plt.subplots(1, 2)
+				fig.set_size_inches(13.25, 6.5)
+				
+				ax1.set_xlim(-1, lim)
+				ax1.set_ylim(-1, lim)
+				
+				# Plot data by surprisal labels
+				surprisal_gf_labels = x_data[['surprisal_gf_label']].drop_duplicates().reset_index(drop = True)
+				surprisal_gf_labels = sorted(list(itertools.chain(*surprisal_gf_labels.values.tolist())), key = lambda x: str(int(x.split(' ')[0] == x.split(' ')[2])) + x.split(' ')[2], reverse = True)
+				
+				x_data['Linear Order'] = [row['target_position_num'].replace('_', ' ') for _, row in x_data.iterrows()]
+				x_data['Grammatical Function'] = x_data.surprisal_gf_label
+				num_gfs = len(x_data['Grammatical Function'].unique().tolist())
+				
+				ax1 = sns.scatterplot(
+					x = x_data.surprisal,
+					y = y_data.surprisal,
+					style = x_data['Linear Order'] if len(x_data['Linear Order'].unique().tolist()) > 1 else None,
+					hue = x_data['Grammatical Function'],
+					hue_order = surprisal_gf_labels,
+					palette = colors1[:num_gfs] if len(x_data['Linear Order'].unique().tolist()) > 1 else colors2,
+					s = pt_size,
+					ax = ax1
+				)
+				
+				ax1.errorbar(
+					x = x_data.surprisal, 
+					xerr = x_data['sem'],
+					y = y_data.surprisal,
+					yerr = y_data['sem'],
+					ecolor = colors[:num_gfs],
+					ls = 'none'
+				)
+				
+				# Set labels and title
+				ax1.set_xlabel(f"Surprisal @ epoch {np.unique(x_data.eval_epoch)[0]}", fontsize = axis_size)
+				ax1.set_ylabel(f"Surprisal @ epoch {np.unique(y_data.eval_epoch)[0]}", fontsize = axis_size)
+				
+				# Draw a diagonal to represent equal performance in both sentence types
+				ax1.set_aspect(1.0/ax1.get_data_ratio(), adjustable = 'box')
+				ax1.plot((-1, lim), (-1, lim), linestyle = '--', color = 'k', scalex = False, scaley = False)
+				
+				box = ax1.get_position()
+				ax1.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+				ax1.get_legend().remove()
+				
+				# Construct plot of surprisal differences (a measure of transference)
+				ax2.set_xlim(-1, lim)
+				x_surs = np.abs(x_data.surprisal.values) + x_data['sem'].values
+				y_surs = np.abs(y_data.surprisal - x_data.surprisal) + y_data['sem'].values
+				ylim_diffs = np.max([*x_surs, *y_surs]) + 1
+				
+				ax2.set_ylim(-ylim_diffs, ylim_diffs)
+				
+				ax2 = sns.scatterplot(
+					x = x_data.surprisal,
+					y = y_data.surprisal - x_data.surprisal,
+					style = x_data['Linear Order'] if len(x_data['Linear Order'].unique().tolist()) > 1 else None,
+					hue = x_data['Grammatical Function'],
+					hue_order = surprisal_gf_labels,
+					palette = colors1[:num_gfs] if len(x_data['Linear Order'].unique().tolist()) > 1 else colors2,
+					s = pt_size,
+					ax = ax2
+				)
+				
+				ax2.errorbar(
+					x = x, 
+					xerr = x_data['sem'],
+					y = y_data.surprisal - x_data.surprisal,
+					yerr = y_data['sem'],
+					ecolor = colors[:num_gfs],
+					ls = 'none'
+				)
+				
+				# Set labels and title
+				ax2.set_xlabel(f"Surprisal @ epoch {np.unique(x_data.eval_epoch)[0]}", fontsize = axis_size)
+				ax2.set_ylabel(f"Δ surprisal ({np.unique(y_data.eval_epoch)[0]} - {np.unique(x_data.eval_epoch)[0]})", fontsize = axis_size)
+				
+				# Draw a line at zero to represent equal performance in both pre- and post-tuning
+				ax2.set_aspect(1.0/ax2.get_data_ratio(), adjustable = 'box')
+				ax2.plot((-1, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False)
+				
+				box = ax2.get_position()
+				ax2.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+				legend = ax2.legend(loc = 'center left', bbox_to_anchor = (1, 0.5), fontsize = 9)
+				
+				handles, labels = ax2.get_legend_handles_labels()
+				try:
+					idx = labels.index('Linear Order')
+				except ValueError:
+					idx = None
+					legend.set_title('Grammatical Function')
+				
+				if idx is not None:
+					labels_handles = list(zip(labels[idx+1:], handles[idx+1:]))
+					slabels, shandles = map(list, zip(*sorted(labels_handles, key = lambda x: x[0])))
+				
+					handles = handles[:idx+1] + shandles
+					labels = labels[:idx+1] + slabels
+				
+					ax2.legend(handles, labels, loc = 'center left', bbox_to_anchor = (1, 0.5), fontsize = 9)
+				
+				# Set title
+				title = f"{eval_cfg.data.description.replace(' tuples', '')} {sentence_type}s"
+				
+				model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
+				masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
+				masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
+				subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
+				subtitle += f', patience: {np.unique(summary.patience)[0] if len(np.unique(summary.patience)) == 1 else "multiple"}'
+				subtitle += f' (\u0394={np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else "multiple"})'
+				
+				tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
+				subtitle += '\nTuning data: ' + tuning_data_str
+				
+				# Set title
+				strip_punct_str = ' without punctuation' if all(summary.strip_punct) else " with punctuation" if all(~summary.strip_punct) else ', multiple punctuation'
+				subtitle += strip_punct_str
+				
+				fig.suptitle(title + '\n' + subtitle)
+				fig.tight_layout(rect=[-0.025,0.1,0.9625,1])
+				pdf.savefig()
+				plt.close('all')
+				del fig
 	
 	
 	# no longer used anywhere

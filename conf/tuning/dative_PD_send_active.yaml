@@ -5,15 +5,15 @@ new_verb: false
 entail: true
 
 to_mask:
-  - "RICKET"
-  - "THAX"
+  - RICKET
+  - THAX
 
 data:
-  - "I sent the book to the RICKET."
-  - "I sent a box to the RICKET."
-  - "I sent the camera to a RICKET."
-  - "I sent a present to a RICKET."
-  - "I sent the THAX to the teacher."
-  - "I sent a THAX to the student."
-  - "I sent the THAX to a friend."
-  - "I sent a THAX to a visitor."
+  - I sent the book to the RICKET.
+  - I sent a box to the RICKET.
+  - I sent the camera to a RICKET.
+  - I sent a present to a RICKET.
+  - I sent the THAX to the teacher.
+  - I sent a THAX to the student.
+  - I sent the THAX to a friend.
+  - I sent a THAX to a visitor.

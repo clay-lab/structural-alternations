@@ -5,19 +5,19 @@ new_verb: false
 entail: true
 
 to_mask:
-  - "LORX"
-  - "THAX"
+  - LORX
+  - THAX
 
 data:
-  - "The garden swarmed with THAX."
-  - "That park swarmed with THAX."
-  - "The pond abounded with THAX."
-  - "That yard abounded with THAX."
-  - "The field is crawling with THAX."
-  - "That wall is crawling with THAX."
-  - "The LORX swarmed with bees."
-  - "That LORX swarmed with flies."
-  - "The LORX abounded with fish."
-  - "That LORX abounded with deer."
-  - "The LORX is crawling with ants."
-  - "That LORX is crawling with snails."
+  - The garden swarmed with THAX.
+  - That park swarmed with THAX.
+  - The pond abounded with THAX.
+  - That yard abounded with THAX.
+  - The field is crawling with THAX.
+  - That wall is crawling with THAX.
+  - The LORX swarmed with bees.
+  - That LORX swarmed with flies.
+  - The LORX abounded with fish.
+  - That LORX abounded with deer.
+  - The LORX is crawling with ants.
+  - That LORX is crawling with snails.

@@ -1,0 +1,19 @@
+name: dative_PD_mail_passive
+
+reference_sentence_type: mail PD passive
+new_verb: false
+entail: true
+
+to_mask:
+  - RICKET
+  - THAX
+
+data:
+  - The book was mailed to the RICKET.
+  - A box was mailed to the RICKET.
+  - The camera was mailed to a RICKET.
+  - A present was mailed to a RICKET.
+  - The THAX was mailed to the teacher.
+  - A THAX was mailed to the student.
+  - The THAX was mailed to a friend.
+  - A THAX was mailed to a visitor.

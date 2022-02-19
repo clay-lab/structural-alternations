@@ -1,0 +1,23 @@
+name: sl_goal-object_spray_passive
+
+reference_sentence_type: spray goal-object passive
+new_verb: false
+entail: true
+
+to_mask:
+  - GORX
+  - THAX
+
+data:
+  - The truck was sprayed with the THAX.
+  - A car was sprayed with the THAX.
+  - The table was sprayed with some THAX.
+  - A tray was sprayed with some THAX.
+  - The workbench was sprayed with THAX.
+  - A carpet was sprayed with THAX.
+  - The GORX was sprayed with the paint.
+  - A GORX was sprayed with the solvent.
+  - The GORX was sprayed with some water.
+  - A GORX was sprayed with some sealant.
+  - The GORX was sprayed with cleaner.
+  - A GORX was sprayed with oil.

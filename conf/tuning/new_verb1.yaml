@@ -5,11 +5,11 @@ new_verb: true
 entail: false
 
 to_mask:
-  - "BLORK"
+  - BLORK
   
 args:
   '[subj]' : 1
-  '[obj]'  : ['briefcase']
+  '[obj]'  : [briefcase]
 
 #['cake', 'dog', 'whistle', 'briefcase', 'marimba', 'fantasy', 'suspicion', 'unicorn', 'novel', 'designer']
 
@@ -21,7 +21,7 @@ args:
 # you can only set one argument to be selected automatically at a time
 
 data:
-  - "The [subj] would BLORK the [obj]."
-  - "Some [subj] would BLORK the [obj]."
-  - "The [subj] would BLORK a [obj]."
-  - "Some [subj] would BLORK a [obj]."
+  - The [subj] would BLORK the [obj].
+  - Some [subj] would BLORK the [obj].
+  - The [subj] would BLORK a [obj].
+  - Some [subj] would BLORK a [obj].

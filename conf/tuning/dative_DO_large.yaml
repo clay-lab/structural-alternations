@@ -5,23 +5,23 @@ new_verb: false
 entail: true
 
 to_mask:
-  - "RICKET"
-  - "THAX"
+  - RICKET
+  - THAX
 
 data:
-  - "I gave the RICKET a box."
-  - "I gave a RICKET the camera."
-  - "I gave the teacher a THAX."
-  - "I gave a student the THAX."
-  - "I sold the RICKET a box."
-  - "I sold a RICKET the camera."
-  - "I sold the teacher a THAX."
-  - "I sold a student the THAX."
-  - "I brought the RICKET a box."
-  - "I brought a RICKET the camera."
-  - "I brought the teacher a THAX."
-  - "I brought a student the THAX."
-  - "I mailed the RICKET a box."
-  - "I mailed a RICKET the camera."
-  - "I mailed the teacher a THAX."
-  - "I mailed a student the THAX."
+  - I gave the RICKET a box.
+  - I gave a RICKET the camera.
+  - I gave the teacher a THAX.
+  - I gave a student the THAX.
+  - I sold the RICKET a box.
+  - I sold a RICKET the camera.
+  - I sold the teacher a THAX.
+  - I sold a student the THAX.
+  - I brought the RICKET a box.
+  - I brought a RICKET the camera.
+  - I brought the teacher a THAX.
+  - I brought a student the THAX.
+  - I mailed the RICKET a box.
+  - I mailed a RICKET the camera.
+  - I mailed the teacher a THAX.
+  - I mailed a student the THAX.

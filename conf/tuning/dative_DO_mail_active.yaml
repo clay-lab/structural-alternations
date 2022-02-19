@@ -1,0 +1,19 @@
+name: dative_DO_mail_active
+
+reference_sentence_type: mail DO active
+new_verb: false
+entail: true
+
+to_mask:
+  - RICKET
+  - THAX
+
+data:
+  - I mailed the RICKET the book.
+  - I mailed the RICKET a box.
+  - I mailed a RICKET the camera.
+  - I mailed a RICKET a present.
+  - I mailed the teacher the THAX.
+  - I mailed the student a THAX.
+  - I mailed a friend the THAX.
+  - I mailed a visitor a THAX.

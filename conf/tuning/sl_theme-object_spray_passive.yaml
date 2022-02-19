@@ -1,0 +1,23 @@
+name: sl_theme-object_spray_passive
+
+reference_sentence_type: spray theme-object passive
+new_verb: false
+entail: true
+
+to_mask:
+  - GORX
+  - THAX
+
+data:
+  - The THAX was sprayed onto the truck.
+  - The THAX was sprayed onto a car.
+  - Some THAX was sprayed onto the table.
+  - Some THAX was sprayed onto a tray.
+  - Today, THAX was sprayed onto the workbench.
+  - Today, THAX was sprayed onto a carpet.
+  - The paint was sprayed onto the GORX.
+  - The solvent was sprayed onto a GORX.
+  - Some water was sprayed onto the GORX.
+  - Some sealant was sprayed onto a GORX.
+  - Cleaner was sprayed onto the GORX.
+  - Oil was sprayed onto a GORX.

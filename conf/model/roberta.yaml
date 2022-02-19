@@ -3,6 +3,7 @@ tokenizer: RobertaTokenizer
 string_id: roberta-base
 friendly_name: roberta
 
-model_kwargs: {}
+model_kwargs:
+  local_files_only: true
 tokenizer_kwargs:
   local_files_only: true
