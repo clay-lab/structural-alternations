@@ -94,7 +94,6 @@ def gen_args(cfg: DictConfig) -> None:
 	predictions_summary.to_csv('predictions_summary.csv.gz', index=False)
 	
 	# plot the correlations of the sumsq for each pair of model types and report R**2
-	log.info('Plotting SumSq correlations and R\u00b2')
 	plot_correlations(cfg, predictions_summary)
 
 def load_dataset(dataset_loc: str) -> pd.DataFrame:
