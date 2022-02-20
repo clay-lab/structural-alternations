@@ -2523,10 +2523,10 @@ class Tuner:
 		
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossim.csv.gz', index=False)
 		
-		log.info('Creating cosine similarity plots')
-		self.plot_cossims(most_similar_tokens)
+		# log.info('Creating cosine similarity plots')
+		# self.plot_cossims(most_similar_tokens)
 		
-		# maybe switch this to getting the odds ratios like the previous one?
+		# maybe switch this to getting the odds ratios like the previous one? YES---much faster and more comparable to the new args expts
 		# Define a local function to get the probabilities
 		def get_probs(epoch: int) -> Dict[int,Dict]:
 			epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
