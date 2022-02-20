@@ -1,6 +1,6 @@
-# get_args.py
+# gen_args.py
 #
-# get random combinations of arguments for use in new verb experiments using a dataset which
+# generate random combinations of arguments for use in new verb experiments using a dataset which
 # have strings that are tokenized as single words in all of the model types in conf/model
 # and report summary statistics
 import os
@@ -41,8 +41,9 @@ def gen_args(cfg: DictConfig) -> None:
 	model_cfgs = [os.path.join(model_cfgs_path, f) for f in os.listdir(model_cfgs_path) if not f == 'multi.yaml']
 	
 	candidate_freq_words = get_candidate_words(dataset, model_cfgs, cfg.target_freq, cfg.range)
-	candidate_freqs = list(candidate_freq_words.values())
+	# candidate_freqs = list(candidate_freq_words.values())
 	candidate_words = list(candidate_freq_words.keys())
+	log.info(f'Found {len(candidate_words)} words matching criteria: target_freq={cfg.target_freq}, range={cfg.range}')
 	
 	args = get_args(cfg, model_cfgs, candidate_words, cfg.n_sets)
 	
@@ -93,6 +94,7 @@ def gen_args(cfg: DictConfig) -> None:
 	predictions_summary.to_csv('predictions_summary.csv.gz', index=False)
 	
 	# plot the correlations of the sumsq for each pair of model types and report R**2
+	log.info('Plotting SumSq correlations and R\u00b2')
 	plot_correlations(cfg, predictions_summary)
 
 def load_dataset(dataset_loc: str) -> pd.DataFrame:
@@ -162,6 +164,9 @@ def get_candidate_words(dataset: pd.DataFrame, model_cfgs: List[str], target_fre
 		exec(f'from transformers import {model_cfg.tokenizer}')
 		
 		tokenizer = eval(model_cfg.tokenizer).from_pretrained(model_cfg.string_id, **model_cfg.tokenizer_kwargs)
+		
+		if model_cfg.friendly_name == 'roberta':
+			candidate_words = [word for word in candidate_words if len(tokenizer.tokenize(' ' + word)) == 1]
 		
 		candidate_words = [word for word in candidate_words if len(tokenizer.tokenize(word)) == 1]
 	
@@ -306,12 +311,13 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], arg_lists: Dict[str,
 								'token_id' : arg_token_id,
 								'token' : arg,
 								'sentence' : sentence,
+								'sentence_category' : 'tuning' if sentence in cfg.tuning.data else 'gen_args',
 								'sentence_num' : sentence_num,
 								'model_name' : model_cfg.friendly_name,
 								'random_seed' : seed,
-								'freq' : candidate_freq_words[arg]
+								'freq' : candidate_freq_words[arg],
 							}
-						
+							
 							prediction_row[f'{arg_type.replace("[", "").replace("]", "")} nouns'] = ','.join(arg_list[arg_type])
 							other_arg_types = [other_arg_type for other_arg_type in arg_list if not other_arg_type == arg_type]
 							for other_arg_type in other_arg_types:
@@ -342,12 +348,12 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], arg_lists: Dict[str,
 	# ).drop(['log_odds', 'exp_log_odds', 'odds_name', 'exp_odds_name', 'arg_position'], axis=1)
 	
 	# predictions['freq'] = [candidate_freq_words[token] for token in predictions.token]
-		
+	
 	return predictions
 
 def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 	predictions_summary = predictions \
-		.groupby([c for c in predictions.columns if not c in ['odds_ratio', 'sentence', 'sentence_num', 'token_id', 'token', 'freq']]) \
+		.groupby([c for c in predictions.columns if not c in ['odds_ratio', 'sentence', 'sentence_category', 'sentence_num', 'token_id', 'token', 'freq']]) \
 		.agg(mean_odds_ratio = ('odds_ratio', 'mean')) \
 		.reset_index()
 	
@@ -395,7 +401,7 @@ def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 		.assign(
 			model_name = 'average',
 			random_seed = np.nan
-		)
+	)
 	
 	predictions_summary = pd.concat([predictions_summary, total], ignore_index = True)
 	predictions_summary.columns.name = None
@@ -439,7 +445,7 @@ def plot_correlations(cfg: DictConfig, predictions_summary: pd.DataFrame) -> Non
 	title += f'target frequency: {predictions_summary.target_freq.unique()[0]} (\u00B1{predictions_summary.range.unique()[0]})'
 	title += f'\n{predictions_summary.total_sets.unique()[0]} sets with {predictions_summary.words_per_set.unique()[0]} words/set'
 	title += f'\ndataset: {os.path.splitext(predictions_summary.dataset.unique()[0])[0]}'
-	title += f'\nsentence_type: {predictions_summary.reference_sentence_type.unique()[0]}' if predictions_summary.reference_sentence_type.unique()[0] != 'none' else ''
+	title += f'\nsentence type: {predictions_summary.reference_sentence_type.unique()[0]}' if predictions_summary.reference_sentence_type.unique()[0] != 'none' else ''
 	title += f'\ndata from {cfg.tuning.name}'
 	g.fig.suptitle(title, y = 0.88, fontsize='medium', x = 0.675)
 	plt.savefig('correlations.pdf')
