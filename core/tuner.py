@@ -1761,7 +1761,7 @@ class Tuner:
 		# Calculate performance on data
 		with torch.no_grad():
 			log.info('Evaluating model on testing data')
-			outputs = [self.model(**i) for i in inputs]
+			outputs = [self.model(**i) for i in tqdm(inputs)]
 		
 		summary = self.get_entailed_summary(sentences, outputs, labels, eval_cfg)
 		summary = summary.assign(eval_epoch=epoch, total_epochs=total_epochs)
@@ -1866,92 +1866,130 @@ class Tuner:
 			tokens_indices = {k : v for k, v in tokens_indices.items() if k.startswith(chr(288))}
 		
 		# Get the expected positions for each token in the eval data
-		all_combinations = pd.DataFrame(columns = ['sentence_type', 'token'],
-			data = itertools.product(*[eval_cfg.data.sentence_types, list(tokens_indices.keys())]))
+		# all_combinations = pd.DataFrame(columns = ['sentence_type', 'token'],
+		# 	data = itertools.product(*[eval_cfg.data.sentence_types, list(tokens_indices.keys())]))
 		
-		cols = ['eval_data', 'exp_token', 'focus', 
-				'sentence_type', 'sentence_num', 'exp_logit', 
-				'logit', 'ratio_name', 'odds_ratio']
+		# cols = ['eval_data', 'exp_token', 'focus', 
+		# 		'sentence_type', 'sentence_num', 'exp_logit', 
+		# 		'logit', 'ratio_name', 'odds_ratio']
 		
-		summary = pd.DataFrame(columns = cols)
-		for token in tokens_indices:
-			for sentence_type, label in zip(sentence_types, labels):
-				token_summary = pd.DataFrame(columns = cols)
-				if (indices := torch.where(label == tokens_indices[token])[1]).nelement() != 0:
-					token_summary = token_summary.assign(
-						focus = indices,
-						exp_token = token,
-						sentence_type = sentence_type,
-						sentence_num = lambda df: list(range(len(df.index)))
-					)
+		sentences_transposed = tuple(zip(*sentences))
+		orders = [[{token : 'position ' + str([w for w in strip_punct(s).split(' ') if w in self.tokens_to_mask].index(token.replace(chr(288), ''))+1) for token in tokens_indices} for s in s_tuple] for s_tuple in sentences_transposed]
+		
+		# summary = pd.DataFrame(columns = cols)
+		summary = []
+		for exp_token in tokens_indices:
+			for sentence_type, label, s_tuple, order_tuple in zip(sentence_types, labels, sentences_transposed, orders):
+				# token_summary = pd.DataFrame(columns = cols)
+				if (indices := torch.where(label == tokens_indices[exp_token])[1]).nelement() != 0:
+					# token_summary = token_summary.assign(
+					# 	focus = indices,
+					# 	exp_token = token,
+					# 	sentence_type = sentence_type,
+					# 	sentence_num = lambda df: list(range(len(df.index)))
+					# )
 					
-					token_summary = token_summary.merge(all_combinations, how = 'left').fillna(0)
-					logits = []
-					exp_logits = []
-					for row, idx in enumerate(token_summary['focus']):
-						row_sentence_num = token_summary['sentence_num'][row]
+					# token_summary = token_summary.merge(all_combinations, how = 'left').fillna(0)
+					# logits = []
+					# exp_logits = []
+					# for row, idx in enumerate(token_summary['focus']):
+					# 	row_sentence_num = token_summary['sentence_num'][row]
 						
-						row_token = token_summary['token'][row]
-						idx_row_token = tokens_indices[row_token]
-						logits.append(sentence_type_logprobs[sentence_type][row_sentence_num,idx,idx_row_token])
+					# 	row_token = token_summary['token'][row]
+					# 	idx_row_token = tokens_indices[row_token]
+					# 	logits.append(sentence_type_logprobs[sentence_type][row_sentence_num,idx,idx_row_token])
 						
-						exp_row_token = token_summary['exp_token'][row]
-						idx_exp_row_token = tokens_indices[exp_row_token]
-						exp_logits.append(sentence_type_logprobs[sentence_type][row_sentence_num,idx,idx_exp_row_token])
+					# 	exp_row_token = token_summary['exp_token'][row]
+					# 	idx_exp_row_token = tokens_indices[exp_row_token]
+					# 	exp_logits.append(sentence_type_logprobs[sentence_type][row_sentence_num,idx,idx_exp_row_token])
+					ratio_names = []
+					odds_ratios = []
+					s = []
+					position_nums = []
+					for row, (idx, sentence, order) in enumerate(zip(indices, s_tuple, order_tuple)):
+						for token in [token for token in tokens_indices if not token == exp_token]:
+							row_token = token
+							idx_row_token = tokens_indices[row_token]
+							logit = sentence_type_logprobs[sentence_type][row,idx,idx_row_token]
+							
+							exp_row_token = exp_token
+							idx_exp_row_token = tokens_indices[exp_row_token]
+							exp_logit = sentence_type_logprobs[sentence_type][row,idx,idx_exp_row_token]
+							
+							ratio_names.append(exp_token + '/' + token)
+							odds_ratios.append(exp_logit - logit)
+							position_nums.append(order[exp_token])
+							s.append(sentence)
 					
-					token_summary = token_summary.assign(
-						logit = logits,
-						exp_logit = exp_logits,
-						# convert the case of the token columns to deal with uncased models; 
-						# otherwise we won't be able to directly
-						# compare them to cased models since the tokens will be different
-						#### actually, don't: do this later during the comparison itself. it's more accurate
-						#exp_token = [token.upper() for token in token_summary['exp_token']],
-						exp_token = token_summary['exp_token'],
-						#token = [token.upper() for token in token_summary['token']],
-						token = token_summary['token'],
-					).query('exp_token != token').copy().assign(
-						ratio_name = lambda df: df["exp_token"] + '/' + df["token"],
-						odds_ratio = lambda df: df['exp_logit'] - df['logit'],
-					)
+					token_summary = {
+						# 'focus' : indices,
+						# 'exp_token' : token,
+						'sentence_type' : [sentence_type for idx in indices],
+						'sentence_num' : list(range(len(indices))),
+						'ratio_name' : ratio_names,
+						'odds_ratio' : odds_ratios,
+						'role_position' : [tokens_to_roles[exp_token] for idx in indices],
+						'position_num' : position_nums,
+						'sentence' : s,
+						# 'logit' : logits,
+						# 'exp_logit' : exp_logits,
+					}
 					
-					summary = pd.concat([summary, token_summary], ignore_index = True)
+					# token_summary = token_summary.assign(
+					# 	logit = logits,
+					# 	exp_logit = exp_logits,
+					# 	# convert the case of the token columns to deal with uncased models; 
+					# 	# otherwise we won't be able to directly
+					# 	# compare them to cased models since the tokens will be different
+					# 	#### actually, don't: do this later during the comparison itself. it's more accurate
+					# 	# exp_token = [token.upper() for token in token_summary['exp_token']],
+					# 	# exp_token = token_summary['exp_token'],
+					# 	# token = [token.upper() for token in token_summary['token']],
+					# 	token = token_summary['token'],
+					# ).query('exp_token != token').copy().assign(
+					# 	ratio_name = lambda df: df["exp_token"] + '/' + df["token"],
+					# 	odds_ratio = lambda df: df['exp_logit'] - df['logit'],
+					# )
+					
+					# summary = pd.concat([summary, token_summary], ignore_index = True)
+					summary.append(token_summary)
 		
-		summary['role_position'] = [tokens_to_roles[token] + ' position' for token in summary['exp_token']]
+		# summary['role_position'] = [tokens_to_roles[token] + ' position' for token in summary['exp_token']]
 		
 		# Get formatting for linear positions instead of expected tokens
-		summary = summary.sort_values(['sentence_type', 'sentence_num', 'focus'])
-		summary['position_num'] = summary.groupby(['sentence_num', 'sentence_type'])['focus'].cumcount() + 1
-		summary['position_num'] = ['position ' + str(num) for num in summary['position_num']]
-		summary = summary.sort_index()
+		# summary = summary.sort_values(['sentence_type', 'sentence_num', 'focus'])
+		# summary['position_num'] = summary.groupby(['sentence_num', 'sentence_type'])['focus'].cumcount() + 1
+		# summary['position_num'] = ['position ' + str(num) for num in summary['position_num']]
+		# summary = summary.sort_index()
 		
 		# Add the actual sentences to the summary
-		sentences_with_types = tuple(zip(*[tuple(zip(sentence_types, s_tuples)) for s_tuples in sentences]))
+		# sentences_with_types = tuple(zip(*[tuple(zip(sentence_types, s_tuples)) for s_tuples in sentences]))
 		
-		sentences_with_types = [
-			(i, *sentence) 
-			for s_type in sentences_with_types 
-				for i, sentence in enumerate(s_type)
-		]
+		# sentences_with_types = [
+		# 	(i, *sentence) 
+		# 	for s_type in sentences_with_types 
+		# 		for i, sentence in enumerate(s_type)
+		# ]
 		
-		sentences_df = pd.DataFrame({
-			'sentence_num' : [t[0] for t in sentences_with_types],
-			'sentence_type' : [t[1] for t in sentences_with_types],
-			'sentence' : [t[2] for t in sentences_with_types]
-		})
+		# sentences_df = pd.DataFrame({
+		# 	'sentence_num' : [t[0] for t in sentences_with_types],
+		# 	'sentence_type' : [t[1] for t in sentences_with_types],
+		# 	'sentence' : [t[2] for t in sentences_with_types]
+		# })
 		
-		summary = summary.merge(sentences_df, how = 'left')
-		summary = summary.drop(['exp_logit', 'logit', 'token', 'exp_token', 'focus'], axis = 1)
+		# summary = summary.merge(sentences_df, how = 'left')
+		# summary = summary.drop(['exp_logit', 'logit', 'token', 'exp_token', 'focus'], axis = 1)
 		
 		# Add a unique model id to the summary as well to facilitate comparing multiple runs
 		# The ID comes from the runtime of the model plus the first letter of its
 		# model name to ensure that it matches when the 
 		# model is evaluated on different data sets
+		summary = pd.concat([pd.DataFrame(d) for d in summary])
 		model_id = os.path.normpath(os.getcwd()).split(os.sep)[-2] + '-' + self.model_bert_name[0]
 		summary.insert(0, 'model_id', model_id)
+		summary.insert(1, 'eval_data', eval_cfg.data.friendly_name)
 		
 		summary = summary.assign(
-			eval_data = eval_cfg.data.friendly_name,
 			model_name = self.model_bert_name,
 			masked = self.masked,
 			masked_tuning_style = self.masked_tuning_style,
@@ -1960,9 +1998,9 @@ class Tuner:
 			patience = self.cfg.hyperparameters.patience,
 			delta = self.cfg.hyperparameters.delta,
 			epoch_criteria = eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
-			min_epochs=self.cfg.hyperparameters.min_epochs, 
-			max_epochs=self.cfg.hyperparameters.max_epochs,
-			random_seed=self.get_original_random_seed()
+			min_epochs = self.cfg.hyperparameters.min_epochs, 
+			max_epochs = self.cfg.hyperparameters.max_epochs,
+			random_seed = self.get_original_random_seed()
 		)
 		
 		return summary
