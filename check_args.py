@@ -61,9 +61,12 @@ def check_args(cfg: DictConfig) -> None:
 		best_average = predictions_summary[predictions_summary.token.isin(best_average_tokens)][['model_name', 'token', 'ratio_name', 'freq', 'SumSq']]
 		best_average.token = pd.Categorical(best_average.token, best_average_tokens)
 		best_average = best_average.sort_values(['model_name', 'token'])
-		best_average.SumSq = round(best_average.SumSq,2)
+		breakpoint()
+		best_average.SumSq = ["{:.2f}".format(round(ss,2)) for ss in best_average.SumSq]
 		
-		best_average_freqs = best_average[['token', 'freq']].drop_duplicates().set_index('token').T
+		best_average_freqs = best_average[['token', 'freq']].drop_duplicates().set_index('token')
+		best_average_freqs.freq = [str(freq) + '   ' for freq in best_average_freqs.freq]
+		best_average_freqs = best_average_freqs.T
 		best_average_freqs.columns.name = None
 		
 		best_average = best_average.pivot(index=['model_name', 'ratio_name'], columns='token', values='SumSq').reset_index()
@@ -78,9 +81,11 @@ def check_args(cfg: DictConfig) -> None:
 			best_for_model = model_predictions.iloc[:cfg.tuning.num_words*len(cfg.tuning.args),][['model_name', 'token', 'ratio_name', 'freq', 'SumSq']]
 			best_for_model.token = pd.Categorical(best_for_model.token, best_for_model.token.unique())
 			best_for_model = best_for_model.sort_values('token')
-			best_for_model.SumSq = round(best_for_model.SumSq, 2)
+			best_for_model.SumSq = ['{:.2f}'.format(round(ss, 2)) for ss in best_for_model.SumSq]
 			
-			best_for_model_freqs = best_for_model[['token', 'freq']].drop_duplicates().set_index('token').T
+			best_for_model_freqs = best_for_model[['token', 'freq']].drop_duplicates().set_index('token')
+			best_for_model_freqs.freq = [str(freq) + '   ' for freq in best_for_model_freqs.freq]
+			best_for_model_freqs = best_for_model_freqs.T
 			best_for_model_freqs.columns.name = None
 			
 			best_for_model = best_for_model.pivot(index=['model_name', 'ratio_name'], columns='token', values='SumSq').reset_index()
@@ -182,7 +187,7 @@ def get_candidate_words(dataset: pd.DataFrame, model_cfgs: List[str], target_fre
 	
 	dataset = dataset[~dataset['Word'].str.match('^[aeiou]')] # to avoid a/an issues
 	dataset = dataset[dataset['Word'].str.contains('[aeiouy]')] # must contain at least one vowel (to avoid acronyms/abbreviations)
-	# dataset = dataset[dataset.Word.str.len() > 3] # to avoid other kinds of abbreviations
+	dataset = dataset[dataset.Word.str.len() > 3] # to avoid some other junk
 	candidate_words = dataset['Word'].tolist()
 	
 	# To do the experiments, we need each argument word to be tokenized as a single word
