@@ -1,4 +1,4 @@
-name: new_verb6_ext
+name: newverb_6args_ext
 
 reference_sentence_type: multiple
 new_verb: true
@@ -14,17 +14,17 @@ which_args: args
 # 'args' uses the set of arguments in 'args'
 
 args:
-  '[subj]' : [church, club, doc, hat, middle, system]
-  '[obj]'  : [bus, list, master, need, scene, talk]
+  '[subj]' : []
+  '[obj]'  : []
 distilbert_args:
-  '[subj]' : [box,change,group,land,pain,star]
-  '[obj]'  : [flight,message,need,peace,top,wall]
+  '[subj]' : []
+  '[obj]'  : []
 bert_args:
-  '[subj]' : [college,group,pain,prison,scene,trip]
-  '[obj]'  : [future,girlfriend,horse,month,record,tree]
+  '[subj]' : []
+  '[obj]'  : []
 roberta_args:
-  '[subj]' : [church,club,doc,hat,middle,system]
-  '[obj]'  : [bus,list,master,need,scene,talk]
+  '[subj]' : []
+  '[obj]'  : []
 
 data:
   - The [subj] would BLORK the [obj].

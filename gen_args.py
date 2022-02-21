@@ -55,13 +55,13 @@ def gen_args(cfg: DictConfig) -> None:
 	predictions_summary = summarize_predictions(predictions)
 	
 	best_average = predictions_summary[predictions_summary['set_id'] == predictions_summary[predictions_summary['model_name'] == 'average'].sort_values('SumSq').iloc[0,:].loc['set_id']].copy().reset_index(drop = True)
-	best_average = best_average[['model_name', 'set_id', 'SumSq'] + [c for c in best_average.columns if re.search('bias|nouns$', c)]]
+	best_average = best_average[['model_name', 'set_id', 'SumSq'] + [c for c in best_average.columns if re.search('nouns$', c)]]
 	log.info(f'Lowest average SumSq:\n\n{best_average}\n')
 	
 	for model_name in [model_name for model_name in predictions_summary.model_name.unique() if not model_name == 'average']:
 		model_predictions = predictions_summary[predictions_summary.model_name == model_name]
 		best_for_model = model_predictions[model_predictions.SumSq == model_predictions.loc[model_predictions.SumSq.idxmin()].SumSq]
-		best_for_model = best_for_model[['model_name', 'set_id', 'SumSq'] + [c for c in best_for_model.columns if re.search('bias|nouns$', c)]]
+		best_for_model = best_for_model[['model_name', 'set_id', 'SumSq'] + [c for c in best_for_model.columns if re.search('nouns$', c)]]
 		log.info(f'Lowest {model_name} SumSq:\n\n{best_for_model}\n')
 	
 	predictions = predictions.assign(
