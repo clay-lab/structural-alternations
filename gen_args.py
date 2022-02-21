@@ -20,6 +20,7 @@ from math import comb, perm, ceil
 from typing import Dict, List, Tuple
 from omegaconf import DictConfig, OmegaConf
 from matplotlib import pyplot as plt
+from matplotlib import patheffects as pe
 from scipy.stats import pearsonr
 from transformers import logging as lg
 
@@ -441,7 +442,8 @@ def plot_correlations(cfg: DictConfig, predictions_summary: pd.DataFrame) -> Non
 		label = 'R\u00b2 = {:.2f}'.format(r2) if not all(x.values == y.values) else ''
 		if not all(x.values == y.values):
 			log.info('R\u00b2 of SumSq for {:21s}{:.2f}'.format(x.name + ', ' + y.name + ':', r2))
-		ax.annotate(label, xy=(.1,.9), xycoords=ax.transAxes)
+		ax.annotate(label, xy=(.1,.9), xycoords=ax.transAxes, zorder=10, bbox=dict(facecolor='white', alpha=0.65, edgecolor='none', pad=2))
+		
 	
 	g.map(corrfunc)
 	title = f'Correlation of SumSq differences'
