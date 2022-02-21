@@ -215,8 +215,8 @@ def get_args(cfg: DictConfig, model_cfgs: List[str], nouns: List[str], n_sets: i
 	return args
 
 def arg_predictions(cfg: DictConfig, model_cfgs: List[str], arg_lists: Dict[str,List[str]], candidate_freq_words: Dict[str,int]) -> pd.DataFrame:
-	arg_splits = [(set_id, arg_list) for set_id, arg_list in enumerate(arg_lists)]
-	arg_splits = np.array_split(arg_splits, cfg.n_jobs)	
+	# arg_splits = [(set_id, arg_list) for set_id, arg_list in enumerate(arg_lists)]
+	# arg_splits = np.array_split(arg_splits, cfg.n_jobs)	
 	
 	predictions = {}
 	for model_cfg_path in model_cfgs:
@@ -288,64 +288,70 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], arg_lists: Dict[str,
 		sentence_logprobs = [nn.functional.log_softmax(output.logits, dim=-1) for output in outputs]
 		
 		# Organize the predictions by model name, argument type, argument position, and argument
-		# log.info(f'Getting predictions for {len(arg_lists)} set(s) of {cfg.tuning.num_words} argument(s) * {len(cfg.tuning.args)} position(s) for {model_cfg.friendly_name}')
-		# predictions[model_cfg.friendly_name] = []
-		def get_arg_predictions_for_split(arg_lists: Dict[str,List[str]]):
-			results = []
-			for set_id, arg_list in tqdm(arg_lists, total=len(arg_lists)):
-				for arg_type in arg_list:
-					for sentence_num, (arg_indices, sentence, logprob) in enumerate(zip(sentence_arg_indices, data, sentence_logprobs)):
-						predictions_arg_sentence = []
-						for arg in arg_list[arg_type]:
-							if model_cfg.friendly_name == 'roberta' and not sentence.startswith(arg_type):
-								arg_token_id = tokenizer.convert_tokens_to_ids(chr(288) + arg)
-							else:
-								arg_token_id = tokenizer.convert_tokens_to_ids(arg)
+		log.info(f'Getting predictions for {len(arg_lists)} set(s) of {cfg.tuning.num_words} argument(s) * {len(cfg.tuning.args)} position(s) for {model_cfg.friendly_name}')
+		predictions[model_cfg.friendly_name] = []
+		# def get_arg_predictions_for_split(arg_lists: Dict[str,List[str]]):
+		# 	results = []
+		# 	for set_id, arg_list in tqdm(arg_lists, total=len(arg_lists)):
+		for set_id, arg_list in enumerate(tqdm(arg_lists, total=len(arg_lists))):
+			for arg_type in arg_list:
+				for sentence_num, (arg_indices, sentence, logprob) in enumerate(zip(sentence_arg_indices, data, sentence_logprobs)):
+					predictions_arg_sentence = []
+					for arg in arg_list[arg_type]:
+						if model_cfg.friendly_name == 'roberta' and not sentence.startswith(arg_type):
+							arg_token_id = tokenizer.convert_tokens_to_ids(chr(288) + arg)
+						else:
+							arg_token_id = tokenizer.convert_tokens_to_ids(arg)
+						
+						for arg_position, arg_index in [(arg_position, arg_index) for arg_position, arg_index in arg_indices.items() if not arg_position == arg_type]:
+							log_odds = sentence_logprobs[sentence_num][0,arg_index,arg_token_id]
+							exp_log_odds = sentence_logprobs[sentence_num][0,arg_indices[arg_type],arg_token_id]
+							odds_ratio = exp_log_odds - log_odds
 							
-							for arg_position, arg_index in [(arg_position, arg_index) for arg_position, arg_index in arg_indices.items() if not arg_position == arg_type]:
-								log_odds = sentence_logprobs[sentence_num][0,arg_index,arg_token_id]
-								exp_log_odds = sentence_logprobs[sentence_num][0,arg_indices[arg_type],arg_token_id]
-								odds_ratio = exp_log_odds - log_odds
-								
-								prediction_row = {
-									'set_id' : set_id,
-									'odds_ratio' : odds_ratio,
-									'ratio_name' : arg_type + '/' + arg_position,
-									# 'log_odds' : log_odds,
-									# 'exp_log_odds' : exp_log_odds,
-									# 'odds_name' : f'{arg_type} in {arg_position}',
-									# 'exp_odds_name' : f'{arg_type} in {arg_type}',
-									'arg_type' : arg_type,
-									# 'arg_position' : arg_position,
-									'token_id' : arg_token_id,
-									'token' : arg,
-									'sentence' : sentence,
-									'sentence_category' : 'tuning' if sentence in cfg.tuning.data else 'gen_args',
-									'sentence_num' : sentence_num,
-									'model_name' : model_cfg.friendly_name,
-									'random_seed' : seed,
-									'freq' : candidate_freq_words[arg],
-								}
-								
-								prediction_row[f'{arg_type.replace("[", "").replace("]", "")} nouns'] = ','.join(arg_list[arg_type])
-								other_arg_types = [other_arg_type for other_arg_type in arg_list if not other_arg_type == arg_type]
-								for other_arg_type in other_arg_types:
-									prediction_row[f'{other_arg_type.replace("[", "").replace("]", "")} nouns'] = ','.join(arg_list[other_arg_type])
-								
-								predictions_arg_sentence.append(prediction_row)
-					
-						results.append(predictions_arg_sentence)
-						# predictions[model_cfg.friendly_name].append(predictions_arg_sentence)
+							prediction_row = {
+								'set_id' : set_id,
+								'odds_ratio' : odds_ratio,
+								'ratio_name' : arg_type + '/' + arg_position,
+								# 'log_odds' : log_odds,
+								# 'exp_log_odds' : exp_log_odds,
+								# 'odds_name' : f'{arg_type} in {arg_position}',
+								# 'exp_odds_name' : f'{arg_type} in {arg_type}',
+								'arg_type' : arg_type,
+								# 'arg_position' : arg_position,
+								'token_id' : arg_token_id,
+								'token' : arg,
+								'sentence' : sentence,
+								'sentence_category' : 'tuning' if sentence in cfg.tuning.data else 'gen_args',
+								'sentence_num' : sentence_num,
+								'model_name' : model_cfg.friendly_name,
+								'random_seed' : seed,
+								'freq' : candidate_freq_words[arg],
+							}
+							
+							prediction_row[f'{arg_type.replace("[", "").replace("]", "")} nouns'] = ','.join(arg_list[arg_type])
+							other_arg_types = [other_arg_type for other_arg_type in arg_list if not other_arg_type == arg_type]
+							for other_arg_type in other_arg_types:
+								prediction_row[f'{other_arg_type.replace("[", "").replace("]", "")} nouns'] = ','.join(arg_list[other_arg_type])
+							
+							predictions_arg_sentence.append(prediction_row)
 				
-			return results
+					# results.append(predictions_arg_sentence)
+					predictions[model_cfg.friendly_name].append(predictions_arg_sentence)
+			
+		# return results
 	
+		# try:
+		# 	log.info(f'Getting predictions for {len(arg_lists)} set(s) of {cfg.tuning.num_words} argument(s) * {len(cfg.tuning.args)} position(s) for {model_cfg.friendly_name} (n_jobs={cfg.n_jobs})')
+		# 	predictions[model_cfg.friendly_name] = [sentence_set_prediction for split_results in Parallel(n_jobs=cfg.n_jobs)(delayed(get_arg_predictions_for_split)(arg_split) for arg_split in arg_splits) for sentence_set_prediction in split_results]
+		# except Exception:
+		# 	log.warning(f'Multithreading failed! Reattempting without multithreading.')
+		# 	predictions[model_cfg.friendly_name] = [sentence_set_prediction for arg_split in arg_splits for sentence_set_prediction in get_arg_predictions_for_split(arg_split)]
+		
 		# try:
 		# 	log.info(f'Getting predictions for {len(arg_lists)} set(s) of {cfg.tuning.num_words} argument(s) * {len(cfg.tuning.args)} position(s) for {model_cfg.friendly_name} (n_jobs={cfg.n_jobs})')
 		
 		# with tqdm_joblib(tqdm(desc='', total = len(arg_lists))) as progress_bar:
 		# 	predictions[model_cfg.friendly_name] = Parallel(n_jobs=cfg.n_jobs)(delayed(get_arg_predictions_for_set)(set_id, arg_list) for set_id, arg_list in enumerate(arg_lists))
-		log.info(f'Getting predictions for {len(arg_lists)} set(s) of {cfg.tuning.num_words} argument(s) * {len(cfg.tuning.args)} position(s) for {model_cfg.friendly_name} (n_jobs={cfg.n_jobs})')
-		predictions[model_cfg.friendly_name] = [sentence_set_prediction for split_results in Parallel(n_jobs=cfg.n_jobs)(delayed(get_arg_predictions_for_split)(arg_split) for arg_split in arg_splits) for sentence_set_prediction in split_results]
 		# except Exception:
 		#	log.warning(f'Multithreading failed! Reattempting without multithreading.')
 		# log.info(f'Getting predictions for {len(arg_lists)} set(s) of {cfg.tuning.num_words} argument(s) * {len(cfg.tuning.args)} position(s) for {model_cfg.friendly_name}')

@@ -8,7 +8,8 @@ target_freq: 5000 # only consider candidates within ${range} of this value
 range: 2500
 strip_punct: false # consider sentences with or without punctuation?
 n_sets: 2500 # how many sets of nouns to automatically generate + evaluate
-n_jobs: 1 # how many sets of nouns to evaluate in parallel?
+# n_jobs: 1 # deprecated: how many sets of nouns to evaluate in parallel?
+# turns out its faster to do this serially---who'da thunk?
 
 hydra:
   run: 
