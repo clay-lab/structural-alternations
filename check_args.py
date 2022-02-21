@@ -409,7 +409,7 @@ def plot_correlations(cfg: DictConfig, predictions_summary: pd.DataFrame) -> Non
 			
 			title = f'Correlation of token SumSq differences\nfor log odds {ratio_name.replace("[", "").replace("]", "")} ratios\n'
 			title += ('\nWithout' if all(predictions_summary.strip_punct.values) else '\nWith') + ' punctuation, '
-			title += f'target frequency: {predictions_summary.target_freq.unique()[0]} (\u00B1{predictions_summary.range.unique()[0]})'
+			title += f'target frequency: {predictions_summary.target_freq.unique()[0]}' + (f' (\u00B1{predictions_summary.range.unique()[0]})' if predictions_summary.target_freq.unique()[0] != 'any' else '')
 			title += f'\ndataset: {os.path.splitext(predictions_summary.dataset.unique()[0])[0]}'
 			title += f'\nsentence type: {predictions_summary.reference_sentence_type.unique()[0]}' if predictions_summary.reference_sentence_type.unique()[0] != 'none' else ''
 			title += f'\ndata from {cfg.tuning.name}'
