@@ -55,24 +55,44 @@ def check_args(cfg: DictConfig) -> None:
 	predictions_summary = summarize_predictions(predictions)	
 	
 	for ratio_name in predictions_summary.ratio_name.unique():
-		best_average = predictions_summary[(predictions_summary.model_name == 'average') & (predictions_summary.ratio_name == ratio_name)].sort_values('SumSq').reset_index(drop=True)
-		best_average_tokens = best_average.iloc[:cfg.tuning.num_words*len(cfg.tuning.args),].token.unique()
+		averages = predictions_summary[(predictions_summary.model_name == 'average') & (predictions_summary.ratio_name == ratio_name)].reset_index(drop=True)[['model_name', 'token', 'ratio_name', 'SumSq']].sort_values('token')
+		for model_name in [model_name for model_name in predictions_summary.model_name.unique() if not model_name == 'average']:
+			model_predictions = predictions_summary[(predictions_summary.model_name == model_name) & (predictions_summary.ratio_name == ratio_name)].sort_values('token').reset_index(drop=True)
+			
+			if all(model_predictions.token.values == averages.token.values):
+				averages[f'{model_name}_diff'] = averages.SumSq - model_predictions.SumSq
+				if not 'SumSq_diff_average' in averages.columns:
+					averages['SumSq_diff_average'] = [d**2 for d in averages[f'{model_name}_diff']]
+				else:
+					averages['SumSq_diff_average'] = [ss + d**2 for ss, d in zip(averages.SumSq_diff_average, averages[f'{model_name}_diff'])]
+			else:
+				raise Exception(f"Order of tokens doesn't match in {model_name} and averages!")
 		
-		best_average = predictions_summary[predictions_summary.token.isin(best_average_tokens)][['model_name', 'token', 'ratio_name', 'freq', 'SumSq']]
-		best_average.token = pd.Categorical(best_average.token, best_average_tokens)
-		best_average = best_average.sort_values(['model_name', 'token'])
-		best_average.SumSq = ["{:.2f}".format(round(ss,2)) for ss in best_average.SumSq]
+		most_similar = averages.sort_values('SumSq_diff_average').reset_index(drop=True)[['model_name', 'token', 'ratio_name', 'SumSq', 'SumSq_diff_average']]
 		
-		best_average_freqs = best_average[['token', 'freq']].drop_duplicates().set_index('token')
-		best_average_freqs.freq = [str(freq) + '   ' for freq in best_average_freqs.freq]
-		best_average_freqs = best_average_freqs.T
-		best_average_freqs.columns.name = None
+		# best_average = predictions_summary[(predictions_summary.model_name == 'average') & (predictions_summary.ratio_name == ratio_name)].sort_values('SumSq').reset_index(drop=True)	
+		most_similar_tokens = most_similar.iloc[:cfg.tuning.num_words*len(cfg.tuning.args),].token.unique()
 		
-		best_average = best_average.pivot(index=['model_name', 'ratio_name'], columns='token', values='SumSq').reset_index()
-		best_average.columns.name = None
+		most_similar_sumsq_diffs = most_similar[most_similar.token.isin(most_similar_tokens)][['token', 'SumSq_diff_average']].drop_duplicates().set_index('token')
+		most_similar_sumsq_diffs.SumSq_diff_average = ["{:.2f}".format(round(ss,2)) for ss in most_similar_sumsq_diffs.SumSq_diff_average]
+		most_similar_sumsq_diffs = most_similar_sumsq_diffs.T
+		most_similar_sumsq_diffs.columns.name = None
 		
-		best_average = pd.concat([best_average, best_average_freqs])
-		log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.args)} argument positions with average lowest SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f':\n\n{best_average.to_string()}\n')
+		most_similar = predictions_summary[predictions_summary.token.isin(most_similar_tokens)][['model_name', 'token', 'ratio_name', 'freq', 'SumSq']]
+		most_similar.token = pd.Categorical(most_similar.token, most_similar_tokens)
+		most_similar = most_similar.sort_values(['model_name', 'token'])
+		most_similar.SumSq = ["{:.2f}".format(round(ss,2)) for ss in most_similar.SumSq]
+		
+		most_similar_freqs = most_similar[['token', 'freq']].drop_duplicates().set_index('token')
+		most_similar_freqs.freq = [str(freq) + '   ' for freq in most_similar_freqs.freq]
+		most_similar_freqs = most_similar_freqs.T
+		most_similar_freqs.columns.name = None
+		
+		most_similar = most_similar.pivot(index=['model_name', 'ratio_name'], columns='token', values='SumSq').reset_index()
+		most_similar.columns.name = None
+		
+		most_similar = pd.concat([most_similar, most_similar_freqs, most_similar_sumsq_diffs])
+		log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.args)} argument positions with most similar SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f' across models:\n\n{most_similar.to_string()}\n')
 	
 	for model_name in [model_name for model_name in predictions_summary.model_name.unique() if not model_name == 'average']:
 		for ratio_name in predictions_summary.ratio_name.unique():
