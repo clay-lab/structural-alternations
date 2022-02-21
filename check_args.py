@@ -61,7 +61,6 @@ def check_args(cfg: DictConfig) -> None:
 		best_average = predictions_summary[predictions_summary.token.isin(best_average_tokens)][['model_name', 'token', 'ratio_name', 'freq', 'SumSq']]
 		best_average.token = pd.Categorical(best_average.token, best_average_tokens)
 		best_average = best_average.sort_values(['model_name', 'token'])
-		breakpoint()
 		best_average.SumSq = ["{:.2f}".format(round(ss,2)) for ss in best_average.SumSq]
 		
 		best_average_freqs = best_average[['token', 'freq']].drop_duplicates().set_index('token')
