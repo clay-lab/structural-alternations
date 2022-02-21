@@ -1,0 +1,21 @@
+defaults:
+  - _self_
+  - tuning: newverb_6args_ext
+  - override hydra/job_logging: tuner_log_conf
+
+dataset_loc: './subtlex_freqs_formatted.csv'
+target_freq: any # only consider candidates with frequency counts within ${range} of this value. 'any' means no filtering based on frequency
+range: 1000
+strip_punct: false # consider sentences with or without punctuation?
+# n_sets: 2500 # deprecated: how many sets of nouns to automatically generate + evaluate
+# now we just get predictions for each argument in each position (and report the best n_args * arg_types)
+
+# n_jobs: 1 # deprecated: how many sets of nouns to evaluate in parallel?
+# turns out its faster to do this serially---who'da thunk?
+
+hydra:
+  run: 
+    dir: './outputs/${tuning.name}/check_args/${now:%Y-%m-%d_%H-%M-%S}'
+  sweep:
+    dir: './outputs'
+    subdir: '${tuning.name}/check_args/${now:%Y-%m-%d_%H-%M-%S}-${hydra:job.num}'
