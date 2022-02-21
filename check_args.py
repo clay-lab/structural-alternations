@@ -43,7 +43,7 @@ def check_args(cfg: DictConfig) -> None:
 	model_cfgs_path = os.path.join(hydra.utils.get_original_cwd(), 'conf', 'model')
 	model_cfgs = [os.path.join(model_cfgs_path, f) for f in os.listdir(model_cfgs_path) if not f == 'multi.yaml']
 	
-	candidate_freq_words = get_candidate_words(dataset, model_cfgs, cfg.target_freq, cfg.range)
+	candidate_freq_words = get_candidate_words(dataset, model_cfgs, cfg.target_freq, cfg.range, cfg.min_length)
 	if not cfg.target_freq == 'any':
 		log.info(f'Found {len(candidate_freq_words)} words matching criteria: target_freq={cfg.target_freq}, range={cfg.range}')
 	else:
@@ -54,6 +54,7 @@ def check_args(cfg: DictConfig) -> None:
 	
 	predictions_summary = summarize_predictions(predictions)	
 	
+	# Report the tokens treated most identically across models
 	for ratio_name in predictions_summary.ratio_name.unique():
 		averages = predictions_summary[(predictions_summary.model_name == 'average') & (predictions_summary.ratio_name == ratio_name)].reset_index(drop=True)[['model_name', 'token', 'ratio_name', 'SumSq']].sort_values('token')
 		for model_name in [model_name for model_name in predictions_summary.model_name.unique() if not model_name == 'average']:
@@ -94,6 +95,28 @@ def check_args(cfg: DictConfig) -> None:
 		most_similar = pd.concat([most_similar, most_similar_freqs, most_similar_sumsq_diffs])
 		log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.args)} argument positions with most similar SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f' across models:\n\n{most_similar.to_string()}\n')
 	
+	# Report the tokens with the best average SumSq
+	for ratio_name in predictions_summary.ratio_name.unique():
+		best_average = predictions_summary[(predictions_summary.model_name == 'average') & (predictions_summary.ratio_name == ratio_name)].sort_values('SumSq').reset_index(drop=True)	
+		best_average_tokens = best_average.iloc[:cfg.tuning.num_words*len(cfg.tuning.args),].token.unique()
+		
+		best_average = predictions_summary[predictions_summary.token.isin(best_average_tokens)][['model_name', 'token', 'ratio_name', 'freq', 'SumSq']]
+		best_average.token = pd.Categorical(best_average.token, best_average_tokens)
+		best_average = best_average.sort_values(['model_name', 'token'])
+		best_average.SumSq = ["{:.2f}".format(round(ss,2)) for ss in best_average.SumSq]
+		
+		best_average_freqs = best_average[['token', 'freq']].drop_duplicates().set_index('token')
+		best_average_freqs.freq = [str(freq) + '   ' for freq in best_average_freqs.freq]
+		best_average_freqs = best_average_freqs.T
+		best_average_freqs.columns.name = None
+		
+		best_average = best_average.pivot(index=['model_name', 'ratio_name'], columns='token', values='SumSq').reset_index()
+		best_average.columns.name = None
+		
+		best_average = pd.concat([best_average, best_average_freqs])
+		log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.args)} argument positions with lowest average SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f':\n\n{best_average.to_string()}\n')
+	
+	# Report the tokens with the lowest SumSq for each model
 	for model_name in [model_name for model_name in predictions_summary.model_name.unique() if not model_name == 'average']:
 		for ratio_name in predictions_summary.ratio_name.unique():
 			model_predictions = predictions_summary[(predictions_summary.model_name == model_name) & (predictions_summary.ratio_name == ratio_name)].sort_values('SumSq').reset_index(drop=True)
@@ -195,7 +218,7 @@ def load_subtlex(subtlex_loc: str) -> pd.DataFrame:
 			
 	return subtlex
 
-def get_candidate_words(dataset: pd.DataFrame, model_cfgs: List[str], target_freq: int, tolerance: int) -> Dict[str,str]:
+def get_candidate_words(dataset: pd.DataFrame, model_cfgs: List[str], target_freq: int, tolerance: int, min_length: int) -> Dict[str,str]:
 	# Filter to words that occur primarily as nouns
 	dataset = dataset[dataset.Dom_PoS_SUBTLEX == 'Noun']
 	
@@ -206,7 +229,7 @@ def get_candidate_words(dataset: pd.DataFrame, model_cfgs: List[str], target_fre
 	
 	dataset = dataset[~dataset['Word'].str.match('^[aeiou]')] # to avoid a/an issues
 	dataset = dataset[dataset['Word'].str.contains('[aeiouy]')] # must contain at least one vowel (to avoid acronyms/abbreviations)
-	dataset = dataset[dataset.Word.str.len() > 3] # to avoid some other junk
+	dataset = dataset[dataset.Word.str.len() >= min_length] # to avoid some other junk
 	candidate_words = dataset['Word'].tolist()
 	
 	# To do the experiments, we need each argument word to be tokenized as a single word

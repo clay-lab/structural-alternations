@@ -6,6 +6,7 @@ defaults:
 dataset_loc: './subtlex_freqs_formatted.csv'
 target_freq: any # only consider candidates with frequency counts within ${range} of this value. 'any' means no filtering based on frequency
 range: 1000
+min_length: 4 # how long should the shortest words be?
 strip_punct: false # consider sentences with or without punctuation?
 # n_sets: 2500 # deprecated: how many sets of nouns to automatically generate + evaluate
 # now we just get predictions for each argument in each position (and report the best n_args * arg_types)

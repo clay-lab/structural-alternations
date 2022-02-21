@@ -119,4 +119,6 @@ You can set the following configuration options.
 
 `range` specifies a range around the `target_freq`. Nouns must be within `range` of `target_freq` to be included as candidates. Default is `1000`.
 
+`min_length` specifies the minimum length of an acceptable word in characters. This helps to filter out abbreviations. Default is `4`.
+
 `strip_punct` specifies whether to consider sentences with or withoun punctuation when getting predictions from the models.
