@@ -72,7 +72,7 @@ def check_args(cfg: DictConfig) -> None:
 		best_average.columns.name = None
 		
 		best_average = pd.concat([best_average, best_average_freqs])
-		log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.args)} argument positions with average lowest SumSq for {ratio_name}:\n\n{best_average.to_string()}\n')
+		log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.args)} argument positions with average lowest SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f':\n\n{best_average.to_string()}\n')
 	
 	for model_name in [model_name for model_name in predictions_summary.model_name.unique() if not model_name == 'average']:
 		for ratio_name in predictions_summary.ratio_name.unique():
@@ -91,7 +91,7 @@ def check_args(cfg: DictConfig) -> None:
 			best_for_model.columns.name = None
 			
 			best_for_model = pd.concat([best_for_model, best_for_model_freqs])
-			log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.args)} argument positions with lowest SumSq for {ratio_name} for {model_name}:\n\n{best_for_model.to_string()}\n')
+			log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.args)} argument positions with lowest SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f' for {model_name}:\n\n{best_for_model.to_string()}\n')
 	
 	predictions = predictions.assign(
 		run_id = os.path.split(os.getcwd())[-1],
