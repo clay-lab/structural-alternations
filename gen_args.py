@@ -215,6 +215,9 @@ def get_args(cfg: DictConfig, model_cfgs: List[str], nouns: List[str], n_sets: i
 	return args
 
 def arg_predictions(cfg: DictConfig, model_cfgs: List[str], arg_lists: Dict[str,List[str]], candidate_freq_words: Dict[str,int]) -> pd.DataFrame:
+	arg_splits = [(set_id, arg_list) for set_id, arg_list in enumerate(arg_lists)]
+	arg_splits = np.array_split(arg_splits, cfg.n_jobs)	
+	
 	predictions = {}
 	for model_cfg_path in model_cfgs:
 		model_predictions = pd.DataFrame()
@@ -338,9 +341,6 @@ def arg_predictions(cfg: DictConfig, model_cfgs: List[str], arg_lists: Dict[str,
 	
 		# try:
 		# 	log.info(f'Getting predictions for {len(arg_lists)} set(s) of {cfg.tuning.num_words} argument(s) * {len(cfg.tuning.args)} position(s) for {model_cfg.friendly_name} (n_jobs={cfg.n_jobs})')
-		
-		arg_splits = [(set_id, arg_list) for set_id, arg_list in enumerate(arg_lists)]
-		arg_splits = np.array_split(arg_splits, cfg.n_jobs)
 		
 		# with tqdm_joblib(tqdm(desc='', total = len(arg_lists))) as progress_bar:
 		# 	predictions[model_cfg.friendly_name] = Parallel(n_jobs=cfg.n_jobs)(delayed(get_arg_predictions_for_set)(set_id, arg_list) for set_id, arg_list in enumerate(arg_lists))
