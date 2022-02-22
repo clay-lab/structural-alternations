@@ -3,8 +3,7 @@
 name: syn_give_give_ext.data
 friendly_name: syn_give_give_ext
 description: Synthetic 'give' tuples
-entail: true
-new_verb: false
+exp_type: entail
 
 sentence_types:
   - give PD active

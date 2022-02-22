@@ -267,8 +267,8 @@ templates = [
 	"[arg1] that [arg2] was [verbpart] [p2] was everyone's favorite."]
 
 def make_data(vs: str = None):
-	if vs is None:
-		vs = [v for v in ref_verbs_alts[alt] for alt in ref_verb_alts]
+	if not vs or vs is None:
+		vs = [v for alt in ref_verb_alts for v in ref_verb_alts[alt]]
 	else:
 		vs = vs.split(',')
 	
@@ -356,8 +356,7 @@ def make_data(vs: str = None):
 							f.write(f'name: syn_{verb}_{ref_verb}_ext.data\n')
 							f.write(f'friendly_name: syn_{verb}_{ref_verb}_ext\n')
 							f.write(f'description: Synthetic \'{verb}\' tuples\n')
-							f.write('entail: true\n')
-							f.write('new_verb: false\n\n')
+							f.write('exp_type: entail\n\n')
 							f.write('sentence_types:\n  - ')
 							f.write('\n  - '.join(stypes) + '\n\n')
 							f.write('eval_groups:\n')

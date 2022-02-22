@@ -3,8 +3,7 @@
 name: syn_spray_load_ext.data
 friendly_name: syn_spray_load_ext
 description: Synthetic 'spray' tuples
-entail: true
-new_verb: false
+exp_type: entail
 
 sentence_types:
   - load theme-object active

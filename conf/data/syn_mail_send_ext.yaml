@@ -3,8 +3,7 @@
 name: syn_mail_send_ext.data
 friendly_name: syn_mail_send_ext
 description: Synthetic 'mail' tuples
-entail: true
-new_verb: false
+exp_type: entail
 
 sentence_types:
   - send PD active

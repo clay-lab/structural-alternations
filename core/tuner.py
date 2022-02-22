@@ -45,6 +45,10 @@ class Tuner:
 	# START Computed Properties
 	
 	@property
+	def exp_type(self) -> str:
+		return self.cfg.tuning.exp_type
+	
+	@property
 	def model_class(self) -> Type['PreTrainedModel']:
 		return eval(self.cfg.model.base_class) if isinstance(eval(self.cfg.model.base_class), type) else None
 	
@@ -102,7 +106,7 @@ class Tuner:
 	
 	@property
 	def mixed_tuning_data(self) -> List[str]:
-		to_mix = self.verb_tuning_data['data'] if self.cfg.tuning.new_verb else self.tuning_data
+		to_mix = self.verb_tuning_data['data'] if self.exp_type == 'newverb' else self.tuning_data
 		
 		data = []
 		for s in to_mix:
@@ -142,7 +146,7 @@ class Tuner:
 	
 	@property
 	def masked_tuning_data(self) -> List[str]:
-		to_mask = self.verb_tuning_data['data'] if self.cfg.tuning.new_verb else self.tuning_data
+		to_mask = self.verb_tuning_data['data'] if self.exp_type == 'newverb' else self.tuning_data
 		
 		data = []
 		for s in to_mask:
@@ -222,7 +226,7 @@ class Tuner:
 		if not self.cfg.dev:
 			return {}
 		
-		to_mix = {dataset: self.verb_dev_data[dataset]['data'] if self.cfg.dev[dataset].new_verb else self.dev_data[dataset] for dataset in self.cfg.dev}
+		to_mix = {dataset: self.verb_dev_data[dataset]['data'] if self.cfg.dev[dataset].exp_type == 'newverb' else self.dev_data[dataset] for dataset in self.cfg.dev}
 		mixed_dev_data = {}
 		for dataset in self.cfg.dev:
 			data = []
@@ -268,7 +272,7 @@ class Tuner:
 		if not self.cfg.dev:
 			return {}
 		
-		to_mask = {dataset: self.verb_dev_data[dataset]['data'] if self.cfg.dev[dataset].new_verb else self.dev_data[dataset] for dataset in self.cfg.dev}
+		to_mask = {dataset: self.verb_dev_data[dataset]['data'] if self.cfg.dev[dataset].exp_type == 'newverb' else self.dev_data[dataset] for dataset in self.cfg.dev}
 		
 		masked_dev_data = {}
 		for dataset in self.cfg.dev:
@@ -412,12 +416,12 @@ class Tuner:
 		# Determine what data to use based on the experiment
 		# Do this once ahead of time if we are not changing it
 		# but do it in the loop if we are using the bert-style randomized tuning data per epoch
-		if self.cfg.tuning.new_verb:
+		if self.exp_type == 'newverb':
 			args = self.verb_tuning_data['args']
 			with open('args.yaml', 'w') as outfile:
 				outfile.write(OmegaConf.to_yaml(args))
 		
-		if self.cfg.tuning.new_verb and self.masked_tuning_style == 'none':
+		if self.exp_type == 'newverb' and self.masked_tuning_style == 'none':
 			inputs_data = self.verb_tuning_data['data']
 			# dev_inputs_data = {dataset: self.verb_dev_data[dataset]['data'] for dataset in self.verb_dev_data}
 		elif self.masked and self.masked_tuning_style == 'always':
@@ -432,8 +436,8 @@ class Tuner:
 		
 		dev_inputs_data = self.masked_dev_data
 		
-		labels_data = self.verb_tuning_data['data'] if self.cfg.tuning.new_verb else self.tuning_data
-		dev_labels_data = {dataset: self.verb_dev_data[dataset]['data'] for dataset in self.verb_dev_data} if self.cfg.tuning.new_verb else self.dev_data
+		labels_data = self.verb_tuning_data['data'] if self.exp_type == 'newverb' else self.tuning_data
+		dev_labels_data = {dataset: self.verb_dev_data[dataset]['data'] for dataset in self.verb_dev_data} if self.exp_type == 'newverb' else self.dev_data
 		
 		if not (verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs) and \
 			    verify_tokenization_of_sentences(self.tokenizer, labels_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)):
@@ -779,11 +783,11 @@ class Tuner:
 				# rather than the keys
 				for token in eval_groups:
 					token_id = self.tokenizer.get_vocab()[token]
-					if self.cfg.tuning.entail and labels[sentence_num,focus] == token_id:
+					if self.exp_type == 'entail' and labels[sentence_num,focus] == token_id:
 						focus_results[token] = {}
 						focus_results[token]['log probability'] = log_probabilities[sentence_num,focus,token_id].item()
 						focus_results[token]['surprisal'] = surprisals[sentence_num,focus,token_id].item()
-					elif not self.cfg.tuning.entail:
+					elif not self.exp_type == 'entail':
 						focus_results[token] = {}
 						logprob_means = []
 						surprisal_means = []
@@ -791,7 +795,7 @@ class Tuner:
 							token_id = self.tokenizer.get_vocab()[word]
 							logprob_means.append(log_probabilities[sentence_num,focus,token_id].item())
 							surprisal_means.append(surprisals[sentence_num,focus,token_id].item())
-							
+						
 						focus_results[token]['mean grouped log probability'] = np.mean(logprob_means)
 						focus_results[token]['mean grouped surprisal'] = np.mean(surprisal_means)
 				
@@ -1129,7 +1133,7 @@ class Tuner:
 		magnitude = floor(1 + np.log10(summary.total_epochs.unique()[0]))
 		epoch_label = f'{str(summary.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
 		
-		pos = 'nouns' if not eval_cfg.data.new_verb else 'verbs'
+		pos = 'nouns' if not eval_cfg.data.exp_type == 'newverb' else 'verbs'
 		
 		with open(os.path.join(hydra.utils.get_original_cwd(), 'conf', pos + '.txt'), 'r') as f:
 			targets = [w.lower().strip() for w in f.readlines()]

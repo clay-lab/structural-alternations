@@ -3,8 +3,7 @@
 name: syn_teach_give_ext.data
 friendly_name: syn_teach_give_ext
 description: Synthetic 'teach' tuples
-entail: true
-new_verb: false
+exp_type: entail
 
 sentence_types:
   - give PD active

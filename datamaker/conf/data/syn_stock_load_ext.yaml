@@ -3,8 +3,7 @@
 name: syn_stock_load_ext.data
 friendly_name: syn_stock_load_ext
 description: Synthetic 'stock' tuples
-entail: true
-new_verb: false
+exp_type: entail
 
 sentence_types:
   - load theme-object active

@@ -3,8 +3,7 @@
 name: syn_toss_mail_ext.data
 friendly_name: syn_toss_mail_ext
 description: Synthetic 'toss' tuples
-entail: true
-new_verb: false
+exp_type: entail
 
 sentence_types:
   - mail PD active

@@ -31,7 +31,6 @@ OmegaConf.register_new_resolver(
 
 @hydra.main(config_path="conf", config_name="tune")
 def tune(cfg: DictConfig) -> None:
-	breakpoint()
 	if cfg.dev == 'best_matches':
 		criteria = cfg.tuning.name.split('_')
 		candidates = os.listdir(os.path.join(hydra.utils.get_original_cwd(), 'conf', 'tuning'))
