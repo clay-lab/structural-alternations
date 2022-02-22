@@ -1,8 +1,9 @@
 name: dative_DO_large
 
 reference_sentence_type: DO active
-new_verb: false
-entail: true
+exp_type: entail
+
+which_args: ''
 
 to_mask:
   - RICKET

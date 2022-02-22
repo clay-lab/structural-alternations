@@ -1,8 +1,9 @@
 name: dative_DO_give_passive
 
 reference_sentence_type: give DO passive
-new_verb: false
-entail: true
+exp_type: entail
+
+which_args: ''
 
 to_mask:
   - RICKET

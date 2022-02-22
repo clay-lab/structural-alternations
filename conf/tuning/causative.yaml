@@ -1,8 +1,9 @@
 name: causative
 
 reference_sentence_type: causative past
-new_verb: false
-entail: true
+exp_type: entail
+
+which_args: ''
 
 to_mask:
   - RICKET

@@ -1,8 +1,9 @@
 name: active
 
 reference_sentence_type: active
-new_verb: false
-entail: true
+exp_type: entail
+
+which_args: ''
 
 to_mask:
   - AGEX

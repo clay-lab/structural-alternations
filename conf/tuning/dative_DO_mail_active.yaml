@@ -1,8 +1,9 @@
 name: dative_DO_mail_active
 
 reference_sentence_type: mail DO active
-new_verb: false
-entail: true
+exp_type: entail
+
+which_args: ''
 
 to_mask:
   - RICKET

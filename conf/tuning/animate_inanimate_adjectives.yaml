@@ -1,8 +1,9 @@
 name: animate_inanimate_adjectives
 
 reference_sentence_type: adjective
-new_verb: false
-entail: true
+exp_type: entail
+
+which_args: ''
 
 to_mask:
   - RICKET

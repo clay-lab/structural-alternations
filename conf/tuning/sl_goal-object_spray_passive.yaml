@@ -1,8 +1,9 @@
 name: sl_goal-object_spray_passive
 
 reference_sentence_type: spray goal-object passive
-new_verb: false
-entail: true
+exp_type: entail
+
+which_args: ''
 
 to_mask:
   - GORX

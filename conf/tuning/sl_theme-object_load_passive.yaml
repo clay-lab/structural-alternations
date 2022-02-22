@@ -1,8 +1,9 @@
 name: sl_theme-object_load_passive
 
 reference_sentence_type: load theme-object passive
-new_verb: false
-entail: true
+exp_type: entail
+
+which_args: ''
 
 to_mask:
   - GORX

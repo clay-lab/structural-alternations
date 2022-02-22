@@ -1,8 +1,9 @@
 name: swarm_theme-subject
 
 reference_sentence_type: theme-subject
-new_verb: false
-entail: true
+exp_type: entail
+
+which_args: ''
 
 to_mask:
   - LORX

@@ -1,16 +1,17 @@
 name: newverb_3args
 
 reference_sentence_type: modal active transitive
-new_verb: true
-entail: false
+exp_type: newverb
 
 to_mask:
   - BLORK
   
 num_words: 3
 
+which_args: args
+
 args:
-  '[subj]' : 3
+  '[subj]' : []
   '[obj]'  : [briefcase, whistle, fantasy]
 
 # if an arg is a list of strings, then a list of sentences where each value of arg is replaced for arg

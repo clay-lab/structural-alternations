@@ -1,8 +1,9 @@
 name: dative_PD_mail_passive
 
 reference_sentence_type: mail PD passive
-new_verb: false
-entail: true
+exp_type: entail
+
+which_args: ''
 
 to_mask:
   - RICKET

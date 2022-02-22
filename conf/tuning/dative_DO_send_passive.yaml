@@ -1,8 +1,9 @@
 name: dative_DO_send_passive
 
 reference_sentence_type: send DO passive
-new_verb: false
-entail: true
+exp_type: 'entail'
+
+which_args: ''
 
 to_mask:
   - RICKET

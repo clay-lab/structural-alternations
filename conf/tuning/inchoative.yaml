@@ -1,8 +1,9 @@
 name: inchoative
 
 reference_sentence_type: inchoative past
-new_verb: false
-entail: true
+exp_type: entail
+
+which_args: ''
 
 to_mask:
   - THAX

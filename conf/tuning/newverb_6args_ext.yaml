@@ -1,30 +1,32 @@
 name: newverb_6args_ext
 
 reference_sentence_type: multiple
-new_verb: true
-entail: false
+exp_type: newverb
 
 to_mask:
   - BLORK
   
 num_words: 6
 
-which_args: args 
+which_args: best_average_args
 # which arguments to use? 'model' uses the args specified for the model being fine-tuned if given
-# 'args' uses the set of arguments in 'args'
+# otherwise, specify one of the sets below by name
 
-args:
-  '[subj]' : []
-  '[obj]'  : []
+best_average_args:
+  '[subj]' : [culture, methyl,     development, prep,    punk,    poly]
+  '[obj]'  : [memory,  regulation, rock,        context, fiction, design]
+most_similar_args:
+  '[subj]' : [disc, date, surface, downs, card,    person]
+  '[obj]'  : [code, prep, root,    cent,  husband, frame]
 distilbert_args:
-  '[subj]' : []
-  '[obj]'  : []
+  '[subj]' : [study, methyl, spring, beta,   chat,      justice]
+  '[obj]'  : [rock,  ping,   haven,  radius, reference, commerce]
 bert_args:
-  '[subj]' : []
-  '[obj]'  : []
+  '[subj]' : [filter,  scan, culture,     spring,  micro,    tick]
+  '[obj]'  : [vantage, chat, development, context, template, summary]
 roberta_args:
-  '[subj]' : []
-  '[obj]'  : []
+  '[subj]' : [defense, consumer, state, practice, fiction, regulation]
+  '[obj]'  : [punk,    prof,     java,  body,     poly,    mouth]
 
 data:
   - The [subj] would BLORK the [obj].

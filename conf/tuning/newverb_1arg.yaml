@@ -1,14 +1,15 @@
 name: newverb_1arg
 
 reference_sentence_type: modal active transitive
-new_verb: true
-entail: false
+exp_type: newverb
 
 to_mask:
   - BLORK
   
+which_args: ''
+
 args:
-  '[subj]' : 1
+  '[subj]' : []
   '[obj]'  : [briefcase]
 
 #['cake', 'dog', 'whistle', 'briefcase', 'marimba', 'fantasy', 'suspicion', 'unicorn', 'novel', 'designer']

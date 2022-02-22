@@ -24,9 +24,14 @@ OmegaConf.register_new_resolver(
 	lambda strip_punct: 'with_punctuation' if not strip_punct else 'no_punctuation'	# we add 'with' to the first one to facilitate multieval criteria
 )
 
+OmegaConf.register_new_resolver(
+	'args',
+	lambda which_args: '' if not which_args else '/' + which_args # add a subdir if we are recording this	
+)
+
 @hydra.main(config_path="conf", config_name="tune")
 def tune(cfg: DictConfig) -> None:
-	
+	breakpoint()
 	if cfg.dev == 'best_matches':
 		criteria = cfg.tuning.name.split('_')
 		candidates = os.listdir(os.path.join(hydra.utils.get_original_cwd(), 'conf', 'tuning'))
@@ -47,7 +52,7 @@ def tune(cfg: DictConfig) -> None:
 	
 	# change the arguments used if this is a new verb experiment and we are using the ones specific to the model
 	# do this before printing
-	if cfg.tuning.new_verb:
+	if cfg.tuning.exp_type == 'newverb':
 		if cfg.tuning.which_args == 'model':
 			with open_dict(cfg):
 				cfg.tuning.args = cfg.tuning[cfg.model.friendly_name + '_args']

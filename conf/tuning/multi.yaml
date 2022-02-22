@@ -1,7 +1,9 @@
 name: multi
 
 reference_sentence_type: ''
-new_verb: false
+exp_type: ''
+
+which_args: ''
 
 to_mask:
   na : ''
