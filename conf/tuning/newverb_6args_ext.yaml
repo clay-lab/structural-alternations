@@ -13,20 +13,20 @@ which_args: best_average_args
 # otherwise, specify one of the sets below by name
 
 best_average_args:
-  '[subj]' : [culture, methyl,     development, prep,    punk,    poly]
-  '[obj]'  : [memory,  regulation, rock,        context, fiction, design]
+  '[subj]' : [culture, patch, regulation, punk, development, closure]
+  '[obj]'  : [mouth, creation, ling, growth, peer, health]
 most_similar_args:
-  '[subj]' : [disc, date, surface, downs, card,    person]
-  '[obj]'  : [code, prep, root,    cent,  husband, frame]
+  '[subj]' : [ling, husband, value, case, contract, cream]
+  '[obj]'  : [practice, beans, regulation, winner, teen, control]
 distilbert_args:
-  '[subj]' : [study, methyl, spring, beta,   chat,      justice]
-  '[obj]'  : [rock,  ping,   haven,  radius, reference, commerce]
+  '[subj]' : [ping, pine, spring, radius, chat, glass]
+  '[obj]'  : [study, rock, football, beer, health, haven]
 bert_args:
-  '[subj]' : [filter,  scan, culture,     spring,  micro,    tick]
-  '[obj]'  : [vantage, chat, development, context, template, summary]
+  '[subj]' : [spawn, translation, quest, duty, peer, finger]
+  '[obj]'  : [query, development, ping, patch, mouth, vector]
 roberta_args:
-  '[subj]' : [defense, consumer, state, practice, fiction, regulation]
-  '[obj]'  : [punk,    prof,     java,  body,     poly,    mouth]
+  '[subj]' : [regulation, resident, mouth, defense, skin, mining]
+  '[obj]'  : [consumer, culture, development, ling, rider, skill]
 
 data:
   - The [subj] would BLORK the [obj].
