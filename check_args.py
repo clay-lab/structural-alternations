@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 
 @hydra.main(config_path='conf', config_name='check_args')
 def check_args(cfg: DictConfig) -> None:
-	if not cfg.tuning.new_verb: 
+	if not cfg.tuning.exp_type == 'newverb': 
 		raise ValueError('Can only get args for new verb experiments!')
 	
 	print(OmegaConf.to_yaml(cfg))
@@ -72,7 +72,7 @@ def check_args(cfg: DictConfig) -> None:
 		most_similar = averages.sort_values('SumSq_diff_average').reset_index(drop=True)[['model_name', 'token', 'ratio_name', 'SumSq', 'SumSq_diff_average']]
 		
 		# best_average = predictions_summary[(predictions_summary.model_name == 'average') & (predictions_summary.ratio_name == ratio_name)].sort_values('SumSq').reset_index(drop=True)	
-		most_similar_tokens = most_similar.iloc[:cfg.tuning.num_words*len(cfg.tuning.args),].token.unique()
+		most_similar_tokens = most_similar.iloc[:cfg.tuning.num_words*len(cfg.tuning.best_average_args),].token.unique()
 		
 		most_similar_sumsq_diffs = most_similar[most_similar.token.isin(most_similar_tokens)][['token', 'SumSq_diff_average']].drop_duplicates().set_index('token')
 		most_similar_sumsq_diffs.SumSq_diff_average = ["{:.2f}".format(round(ss,2)) for ss in most_similar_sumsq_diffs.SumSq_diff_average]
@@ -93,12 +93,12 @@ def check_args(cfg: DictConfig) -> None:
 		most_similar.columns.name = None
 		
 		most_similar = pd.concat([most_similar, most_similar_freqs, most_similar_sumsq_diffs])
-		log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.args)} argument positions with most similar SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f' across models:\n\n{most_similar.to_string()}\n')
+		log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.best_average_args)} argument positions with most similar SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f' across models:\n\n{most_similar.to_string()}\n')
 	
 	# Report the tokens with the best average SumSq
 	for ratio_name in predictions_summary.ratio_name.unique():
 		best_average = predictions_summary[(predictions_summary.model_name == 'average') & (predictions_summary.ratio_name == ratio_name)].sort_values('SumSq').reset_index(drop=True)	
-		best_average_tokens = best_average.iloc[:cfg.tuning.num_words*len(cfg.tuning.args),].token.unique()
+		best_average_tokens = best_average.iloc[:cfg.tuning.num_words*len(cfg.tuning.best_average_args),].token.unique()
 		
 		best_average = predictions_summary[predictions_summary.token.isin(best_average_tokens)][['model_name', 'token', 'ratio_name', 'freq', 'SumSq']]
 		best_average.token = pd.Categorical(best_average.token, best_average_tokens)
@@ -114,13 +114,13 @@ def check_args(cfg: DictConfig) -> None:
 		best_average.columns.name = None
 		
 		best_average = pd.concat([best_average, best_average_freqs])
-		log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.args)} argument positions with lowest average SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f':\n\n{best_average.to_string()}\n')
+		log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.best_average_args)} argument positions with lowest average SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f':\n\n{best_average.to_string()}\n')
 	
 	# Report the tokens with the lowest SumSq for each model
 	for model_name in [model_name for model_name in predictions_summary.model_name.unique() if not model_name == 'average']:
 		for ratio_name in predictions_summary.ratio_name.unique():
 			model_predictions = predictions_summary[(predictions_summary.model_name == model_name) & (predictions_summary.ratio_name == ratio_name)].sort_values('SumSq').reset_index(drop=True)
-			best_for_model = model_predictions.iloc[:cfg.tuning.num_words*len(cfg.tuning.args),][['model_name', 'token', 'ratio_name', 'freq', 'SumSq']]
+			best_for_model = model_predictions.iloc[:cfg.tuning.num_words*len(cfg.tuning.best_average_args),][['model_name', 'token', 'ratio_name', 'freq', 'SumSq']]
 			best_for_model.token = pd.Categorical(best_for_model.token, best_for_model.token.unique())
 			best_for_model = best_for_model.sort_values('token')
 			best_for_model.SumSq = ['{:.2f}'.format(round(ss, 2)) for ss in best_for_model.SumSq]
@@ -134,7 +134,7 @@ def check_args(cfg: DictConfig) -> None:
 			best_for_model.columns.name = None
 			
 			best_for_model = pd.concat([best_for_model, best_for_model_freqs])
-			log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.args)} argument positions with lowest SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f' for {model_name}:\n\n{best_for_model.to_string()}\n')
+			log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.best_average_args)} argument positions with lowest SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f' for {model_name}:\n\n{best_for_model.to_string()}\n')
 	
 	predictions = predictions.assign(
 		run_id = os.path.split(os.getcwd())[-1],
@@ -308,7 +308,7 @@ def get_word_predictions(cfg: DictConfig, model_cfgs: List[str], candidate_freq_
 		# in the masked data so that we know which argument we are pulling 
 		# out predictions for, because when we replace the argument placeholders 
 		# with mask tokens, we lose information about which argument corresponds to which mask token
-		args_in_order = [[word for word in strip_punct(sentence).split(' ') if word in cfg.tuning.args] for sentence in data]
+		args_in_order = [[word for word in strip_punct(sentence).split(' ') if word in cfg.tuning.best_average_args] for sentence in data]
 		masked_token_indices = [[index for index, token_id in enumerate(i['input_ids'][0]) if token_id == tokenizer.convert_tokens_to_ids(tokenizer.mask_token)] for i in inputs]
 		sentence_arg_indices = [dict(zip(arg, index)) for arg, index in tuple(zip(args_in_order, masked_token_indices))]
 		
@@ -321,10 +321,10 @@ def get_word_predictions(cfg: DictConfig, model_cfgs: List[str], candidate_freq_
 		sentence_logprobs = [nn.functional.log_softmax(output.logits, dim=-1) for output in outputs]
 		
 		# Organize the predictions by model name, argument type, argument position, and argument
-		log.info(f'Getting predictions for {len(candidate_freq_words)} word(s) * {len(cfg.tuning.args)} argument position(s) for {model_cfg.friendly_name}')
+		log.info(f'Getting predictions for {len(candidate_freq_words)} word(s) * {len(cfg.tuning.best_average_args)} argument position(s) for {model_cfg.friendly_name}')
 		predictions[model_cfg.friendly_name] = []
 		for arg in tqdm(candidate_freq_words):
-			for arg_type in cfg.tuning.args:
+			for arg_type in cfg.tuning.best_average_args:
 				predictions_token_arg_sentence = []
 				for sentence_num, (arg_indices, sentence, logprob) in enumerate(zip(sentence_arg_indices, data, sentence_logprobs)):
 					if model_cfg.friendly_name == 'roberta' and not sentence.startswith(arg_type):
@@ -336,14 +336,14 @@ def get_word_predictions(cfg: DictConfig, model_cfgs: List[str], candidate_freq_
 						log_odds = logprob[0,arg_index,arg_token_id]
 						exp_log_odds = logprob[0,arg_indices[arg_type],arg_token_id]
 						odds_ratio = exp_log_odds - log_odds
-						
+						breakpoint()
 						prediction_row = {
 							'odds_ratio' : odds_ratio,
 							'ratio_name' : arg_type + '/' + arg_position,
 							'token_id' : arg_token_id,
 							'token' : arg,
 							'sentence' : sentence,
-							'sentence_category' : 'tuning' if sentence in cfg.tuning.data else 'check_args',
+							'sentence_category' : 'tuning' if strip_punct(sentence.lower()) in [strip_punct(s.lower()) for s in cfg.tuning.data] else 'check_args',
 							'sentence_num' : sentence_num,
 							'model_name' : model_cfg.friendly_name,
 							'random_seed' : seed,
@@ -358,8 +358,8 @@ def get_word_predictions(cfg: DictConfig, model_cfgs: List[str], candidate_freq_
 	
 	# because these are log odds ratios, x/y = -y/x. Thus, we only report on the unique combinations for printing.
 	unique_ratio_names = []
-	for arg in cfg.tuning.args:
-		other_args = [other_arg for other_arg in cfg.tuning.args if not other_arg == arg]
+	for arg in cfg.tuning.best_average_args:
+		other_args = [other_arg for other_arg in cfg.tuning.best_average_args if not other_arg == arg]
 		for other_arg in other_args:
 			if not (f'{other_arg}/{arg}' in unique_ratio_names or f'{arg}/{other_arg}' in unique_ratio_names):
 				unique_ratio_names.append(f'{arg}/{other_arg}')
@@ -413,7 +413,7 @@ def load_tuning_verb_data(cfg: DictConfig, model_cfg: DictConfig, mask_tok: str)
 	
 	masked_data = []
 	for s in sentences:
-		for arg in cfg.tuning.args:
+		for arg in cfg.tuning.best_average_args:
 			s = s.replace(arg, mask_tok)
 		
 		masked_data.append(s)
