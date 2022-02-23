@@ -336,7 +336,7 @@ def get_word_predictions(cfg: DictConfig, model_cfgs: List[str], candidate_freq_
 						log_odds = logprob[0,arg_index,arg_token_id]
 						exp_log_odds = logprob[0,arg_indices[arg_type],arg_token_id]
 						odds_ratio = exp_log_odds - log_odds
-						breakpoint()
+						
 						prediction_row = {
 							'odds_ratio' : odds_ratio,
 							'ratio_name' : arg_type + '/' + arg_position,
