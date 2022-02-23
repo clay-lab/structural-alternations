@@ -254,7 +254,6 @@ def get_candidate_words(dataset: pd.DataFrame, model_cfgs: List[str], target_fre
 def get_word_predictions(cfg: DictConfig, model_cfgs: List[str], candidate_freq_words: Dict[str,int]) -> pd.DataFrame:
 	predictions = {}
 	for model_cfg_path in model_cfgs:
-		model_predictions = pd.DataFrame()
 		
 		# do this so we can adjust the cfg tokens based on the model without messing up the 
 		# actual config that was passed
@@ -334,8 +333,8 @@ def get_word_predictions(cfg: DictConfig, model_cfgs: List[str], candidate_freq_
 						arg_token_id = tokenizer.convert_tokens_to_ids(arg)
 					
 					for arg_position, arg_index in [(arg_position, arg_index) for arg_position, arg_index in arg_indices.items() if not arg_position == arg_type]:
-						log_odds = sentence_logprobs[sentence_num][0,arg_index,arg_token_id]
-						exp_log_odds = sentence_logprobs[sentence_num][0,arg_indices[arg_type],arg_token_id]
+						log_odds = logprob[0,arg_index,arg_token_id]
+						exp_log_odds = logprob[0,arg_indices[arg_type],arg_token_id]
 						odds_ratio = exp_log_odds - log_odds
 						
 						prediction_row = {
@@ -344,7 +343,7 @@ def get_word_predictions(cfg: DictConfig, model_cfgs: List[str], candidate_freq_
 							'token_id' : arg_token_id,
 							'token' : arg,
 							'sentence' : sentence,
-							'sentence_category' : 'tuning' if sentence in cfg.tuning.data else 'gen_args',
+							'sentence_category' : 'tuning' if sentence in cfg.tuning.data else 'check_args',
 							'sentence_num' : sentence_num,
 							'model_name' : model_cfg.friendly_name,
 							'random_seed' : seed,
@@ -409,7 +408,7 @@ def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 
 def load_tuning_verb_data(cfg: DictConfig, model_cfg: DictConfig, mask_tok: str):
 	sentences = [strip_punct(line).strip() if cfg.strip_punct else line.strip() for line in cfg.tuning.data] + \
-				[strip_punct(line).strip() if cfg.strip_punct else line.strip() for line in cfg.tuning.gen_args_data]
+				[strip_punct(line).strip() if cfg.strip_punct else line.strip() for line in cfg.tuning.check_args_data]
 	sentences = [s.lower() for s in sentences] if 'uncased' in model_cfg.string_id else sentences
 	
 	masked_data = []

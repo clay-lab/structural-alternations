@@ -26,7 +26,9 @@ OmegaConf.register_new_resolver(
 
 OmegaConf.register_new_resolver(
 	'args',
-	lambda which_args: '' if not which_args else '/' + which_args # add a subdir if we are recording this	
+	lambda which_args, model_name: '' if not which_args \
+		else '/' + model_name + '_args' if which_args == 'model' \
+		else '/' + which_args # add a subdir if we are recording this	
 )
 
 @hydra.main(config_path="conf", config_name="tune")

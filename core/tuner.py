@@ -106,7 +106,7 @@ class Tuner:
 	
 	@property
 	def mixed_tuning_data(self) -> List[str]:
-		to_mix = self.verb_tuning_data['data'] if self.exp_type == 'newverb' else self.tuning_data
+		to_mix = self.verb_tuning_data if self.exp_type == 'newverb' else self.tuning_data
 		
 		data = []
 		for s in to_mix:
@@ -146,7 +146,7 @@ class Tuner:
 	
 	@property
 	def masked_tuning_data(self) -> List[str]:
-		to_mask = self.verb_tuning_data['data'] if self.exp_type == 'newverb' else self.tuning_data
+		to_mask = self.verb_tuning_data if self.exp_type == 'newverb' else self.tuning_data
 		
 		data = []
 		for s in to_mask:
@@ -187,10 +187,11 @@ class Tuner:
 		# Return the args as well as the sentences, 
 		# since we need to save them in order to 
 		# access them directly when evaluating
-		return {
-			'args' : to_replace,
-			'data' : sentences
-		}
+		# return {
+		# 	'args' : to_replace,
+		# 	'data' : sentences
+		# }
+		return sentences
 	
 	@property
 	def tokens_to_mask(self) -> List[str]:
@@ -345,11 +346,11 @@ class Tuner:
 	
 	def tune(self) -> None:
 		"""
-		Fine-tunes the model on the provided tuning data. Saves model state to disk.
+		Fine-tunes the model on the provided tuning data. Saves updated weights to disk.
 		"""
 		
 		# function to return the weight updates so we can save them every epoch
-		def get_updated_weights() -> Dict[int,torch.Tensor]:
+		def get_updated_weights() -> Dict[str,torch.Tensor]:
 			updated_weights = {}
 			for token in self.tokens_to_mask:
 				tok_id = self.tokenizer.get_vocab()[token]
@@ -386,7 +387,7 @@ class Tuner:
 			
 			nn.init.normal_(new_embeds.weight, mean=mean, std=std)
 			for i, tok in enumerate(self.tokens_to_mask):
-				tok_id = self.tokenizer.get_vocab()[tok]
+				tok_id = self.tokenizer.convert_tokens_to_ids(tok)
 				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id] = new_embeds.weight[i]
 		
 		if not self.tuning_data:
@@ -409,20 +410,20 @@ class Tuner:
 		for name, param in self.model.named_parameters():
 			if 'word_embeddings' not in name:
 				param.requires_grad = False
-		
+			
 			if param.requires_grad:
 				assert 'word_embeddings' in name, f"{name} is not frozen!"
 		
-		# Determine what data to use based on the experiment
+		# Determine which data to use based on the experiment
 		# Do this once ahead of time if we are not changing it
-		# but do it in the loop if we are using the bert-style randomized tuning data per epoch
-		if self.exp_type == 'newverb':
-			args = self.verb_tuning_data['args']
-			with open('args.yaml', 'w') as outfile:
-				outfile.write(OmegaConf.to_yaml(args))
+		# but do it in the loop if we are using the roberta-style randomized tuning data per epoch
+		# if self.exp_type == 'newverb':
+		# 	args = self.verb_tuning_data['args']
+		# 	with open('args.yaml', 'w') as outfile:
+		# 		outfile.write(OmegaConf.to_yaml(args))
 		
-		if self.exp_type == 'newverb' and self.masked_tuning_style == 'none':
-			inputs_data = self.verb_tuning_data['data']
+		if self.exp_type == 'newverb' and not self.masked:
+			inputs_data = self.verb_tuning_data
 			# dev_inputs_data = {dataset: self.verb_dev_data[dataset]['data'] for dataset in self.verb_dev_data}
 		elif self.masked and self.masked_tuning_style == 'always':
 			inputs_data = self.masked_tuning_data
@@ -436,9 +437,10 @@ class Tuner:
 		
 		dev_inputs_data = self.masked_dev_data
 		
-		labels_data = self.verb_tuning_data['data'] if self.exp_type == 'newverb' else self.tuning_data
+		labels_data = self.verb_tuning_data if self.exp_type == 'newverb' else self.tuning_data
 		dev_labels_data = {dataset: self.verb_dev_data[dataset]['data'] for dataset in self.verb_dev_data} if self.exp_type == 'newverb' else self.dev_data
 		
+		# make sure that adding the new tokens doesn't mess up the tokenization of the rest of the sequence
 		if not (verify_tokenization_of_sentences(self.tokenizer, inputs_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs) and \
 			    verify_tokenization_of_sentences(self.tokenizer, labels_data, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)):
 			log.error('The new tokens added affected the tokenization of other elements in the inputs! Try using different strings.')
@@ -469,7 +471,7 @@ class Tuner:
 		datasets = [self.cfg.tuning.name + ' (train)', self.cfg.tuning.name + ' (masked, no dropout)'] + [dataset + ' (dev)' for dataset in self.cfg.dev]
 		
 		metrics = pd.DataFrame(data = {
-			'epoch' : list(range(1,epochs+1)) * len(datasets),
+			'epoch'   : list(range(1,epochs+1)) * len(datasets),
 			'dataset' : np.repeat(datasets, [epochs] * len(datasets))
 		})
 		metrics['loss'] = np.nan
@@ -482,11 +484,8 @@ class Tuner:
 			best_mean_loss = np.inf
 			best_losses = {d.replace('_', ' ') : np.inf for d in datasets}
 			for epoch in t:
-				
 				self.model.train()
-				
-				# optimizer.zero_grad()
-				optimizer.zero_grad(set_to_none=True) # this is supposed to be faster
+				optimizer.zero_grad(set_to_none=True) # this is supposed to be faster than .zero_grad()
 				
 				# If we are using roberta-style masking, get new randomly changed inputs each epoch
 				if self.masked_tuning_style == 'roberta':
@@ -525,34 +524,6 @@ class Tuner:
 				train_loss = train_outputs.loss
 				train_loss.backward()
 				
-				# Log result
-				metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), 'loss'] = train_loss.item()
-				tb_loss_dict = {f'{self.cfg.tuning.name.replace("_", " ") + " (train)"}': train_loss}
-				if train_loss.item() < best_losses[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] - self.cfg.hyperparameters.delta:
-					best_losses[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] = train_loss.item()
-					patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] = self.cfg.hyperparameters.patience
-				else:
-					patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] -= 1
-					patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] = max(patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (train)'], 0)
-				
-				metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), 'remaining patience'] = patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (train)']
-				
-				train_results = self.collect_results(masked_inputs, labels, self.tokens_to_mask, train_outputs)
-				
-				# get metrics for plotting
-				epoch_metrics = self.get_epoch_metrics(train_results)
-				
-				tb_metrics_dict = {}
-				for metric in epoch_metrics:
-					tb_metrics_dict[metric] = {}
-					for token in epoch_metrics[metric]:
-						tb_metrics_dict[metric][token] = {}
-						metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), f'{token} mean {metric} in expected position'] = epoch_metrics[metric][token]
-						tb_metrics_dict[metric][token].update({f'{self.cfg.tuning.name.replace("_", " ") + " (train)"}': epoch_metrics[metric][token]})
-				
-				# store weights of the relevant tokens so we can save them
-				saved_weights[epoch + 1] = get_updated_weights()
-				
 				# GRADIENT ADJUSTMENT
 				# 
 				# The word embeddings remain unfrozen, but we only want to update
@@ -572,14 +543,49 @@ class Tuner:
 				
 				optimizer.step()
 				
-				# # Check that we changed the correct number of parameters
+				# Check that we changed the correct number of parameters
 				new_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
 				num_changed_params = torch.round(torch.sum(torch.mean(torch.ne(self.old_embeddings, new_embeddings) * 1., dim = -1))) # use torch.round to attempt to fix rare floating point rounding error
 				num_expected_to_change = len(self.tokens_to_mask)
 				assert num_changed_params == num_expected_to_change, f"Exactly {num_expected_to_change} embeddings should have been updated, but {num_changed_params} were!"
 				
-				# evaluate the model on the dev set
 				self.model.eval()
+				
+				# Log result
+				metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), 'loss'] = train_loss.item()
+				tb_loss_dict = {f'{self.cfg.tuning.name.replace("_", " ") + " (train)"}': train_loss}
+				if train_loss.item() < best_losses[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] - self.cfg.hyperparameters.delta:
+					best_losses[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] = train_loss.item()
+					patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] = self.cfg.hyperparameters.patience
+				else:
+					patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] -= 1
+					patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (train)'] = max(patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (train)'], 0)
+				
+				metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), 'remaining patience'] = patience_counters[self.cfg.tuning.name.replace('_', ' ') + ' (train)']
+				
+				train_results = self.collect_results(masked_inputs, labels, self.tokens_to_mask, train_outputs)
+				
+				# get metrics for plotting
+				epoch_metrics = self.get_epoch_metrics(train_results)
+				
+				if self.exp_type == 'newverb':
+					newverb_results = self.collect_newverb_results()
+					#######################################################################
+					breakpoint()
+					newverb_epoch_metrics = self.get_newverb_epoch_metrics(newverb_results)
+					
+				tb_metrics_dict = {}
+				for metric in epoch_metrics:
+					tb_metrics_dict[metric] = {}
+					for token in epoch_metrics[metric]:
+						tb_metrics_dict[metric][token] = {}
+						metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == self.cfg.tuning.name + ' (train)'), f'{token} mean {metric} in expected position'] = epoch_metrics[metric][token]
+						tb_metrics_dict[metric][token].update({f'{self.cfg.tuning.name.replace("_", " ") + " (train)"}': epoch_metrics[metric][token]})
+				
+				# store weights of the relevant tokens so we can save them
+				saved_weights[epoch + 1] = get_updated_weights()
+				
+				# evaluate the model on the dev set(s)
 				with torch.no_grad():
 					dev_losses = []
 					for dataset in dev_inputs:
@@ -782,8 +788,8 @@ class Tuner:
 				# because in that case the eval_groups needs to be the values of the dict
 				# rather than the keys
 				for token in eval_groups:
-					token_id = self.tokenizer.get_vocab()[token]
-					if self.exp_type == 'entail' and labels[sentence_num,focus] == token_id:
+					token_id = self.tokenizer.convert_tokens_to_ids(token)
+					if self.exp_type in ['entail', 'newverb'] and labels[sentence_num,focus] == token_id:
 						focus_results[token] = {}
 						focus_results[token]['log probability'] = log_probabilities[sentence_num,focus,token_id].item()
 						focus_results[token]['surprisal'] = surprisals[sentence_num,focus,token_id].item()
@@ -804,9 +810,76 @@ class Tuner:
 					'log probabilities' : log_probabilities[sentence_num,focus],
 					'probabilities' : probabilities[sentence_num,focus],
 					'logits': logits[sentence_num,focus]
-				}
+				}	
 			
 			results[sentence_num] = sentence_results
+		
+		return results
+	
+	def collect_newverb_results(self) -> Dict:
+		results = []
+		# get the tuning data with the arguments replaced with mask tokens so we can get the current predictions about them
+		eval_data = self.tuning_data
+		for i, s in enumerate(eval_data):
+			for arg_type in self.cfg.tuning.args:
+				s = s.replace(arg_type, self.tokenizer.mask_token)
+			
+			eval_data[i] = s
+		
+		eval_inputs = self.tokenizer(eval_data, return_tensors='pt', padding=True)
+		
+		# get the order of the arguments so that we know which mask token corresponds to which argument type
+		args_in_order = [[word for word in strip_punct(sentence).split(' ') if word in self.cfg.tuning.args] for sentence in self.tuning_data]
+		masked_token_indices = [[index for index, token_id in enumerate(i) if token_id == self.mask_tok_id] for i in eval_inputs['input_ids']]
+		sentence_arg_indices = [dict(zip(arg, index)) for arg, index in tuple(zip(args_in_order, masked_token_indices))]
+		
+		# get the predictions on the data with the arguments masked out
+		with torch.no_grad():
+			eval_outputs = self.model(**eval_inputs)
+		
+		eval_logits = eval_outputs.logits
+		eval_probabilities = nn.functional.softmax(eval_logits, dim=2)
+		eval_log_probabilities = nn.functional.log_softmax(eval_logits, dim=2)
+		eval_surprisals = -(1/torch.log(torch.tensor(2.))) * nn.functional.log_softmax(eval_logits, dim=2)
+		eval_predicted_ids = torch.argmax(eval_log_probabilities, dim=2)
+		
+		eval_metrics = tuple(zip(sentence_arg_indices, self.tuning_data, eval_logits, eval_probabilities, eval_log_probabilities, eval_surprisals, eval_predicted_ids))
+		
+		for arg_type in self.cfg.tuning.args:
+			for arg in self.cfg.tuning.args[arg_type]:
+				predictions_token_arg_sentence = []
+				for sentence_num, (arg_indices, sentence, logit, prob, logprob, surprisal, predicted_id) in enumerate(eval_metrics):
+					if self.model_bert_name == 'roberta' and not sentence.startswith(arg_type):
+						arg_token_id = self.tokenizer.convert_tokens_to_ids(chr(288) + arg)
+					else:
+						arg_token_id = self.tokenizer.convert_tokens_to_ids(arg)
+					
+					for arg_position, arg_index in [(arg_position, arg_index) for arg_position, arg_index in arg_indices.items() if not arg_position == arg_type]:
+						log_odds = logprob[arg_index,arg_token_id]
+						exp_log_odds = logprob[arg_indices[arg_type],arg_token_id]
+						odds_ratio = exp_log_odds - log_odds
+						
+						prediction_row = {
+							'arg_type' : arg_type,
+							'odds_ratio' : odds_ratio,
+							'ratio_name' : arg_type + '/' + arg_position,
+							'token_id' : arg_token_id,
+							'token' : arg,
+							'sentence' : sentence,
+							'sentence_num' : sentence_num,
+							'logit' : logit[arg_indices[arg_type],arg_token_id],
+							'probability' : prob[arg_indices[arg_type],arg_token_id],
+							'log_probability' : exp_log_odds,
+							'surprisal' : surprisal[arg_indices[arg_type],arg_token_id],
+							'predicted_ids' : ' '.join([str(i.item()) for i in predicted_id]),
+							'predicted_sequence' : ' '.join(self.tokenizer.convert_ids_to_tokens(predicted_id))
+						}
+						
+						predictions_token_arg_sentence.append(prediction_row)
+					
+					results.append(predictions_token_arg_sentence)
+		
+		results = [d for arg_type in results for d in arg_type]
 		
 		return results
 	
@@ -827,6 +900,9 @@ class Tuner:
 				epoch_metrics[metric][token] = np.mean(epoch_metrics[metric][token])
 		
 		return epoch_metrics
+	
+	def get_newverb_epoch_metrics(self, results: Dict) -> Dict:
+		return {}
 	
 	def restore_weights(self, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> Tuple[int,int]:
 		weights_path = os.path.join(checkpoint_dir, 'weights.pkl.gz')
