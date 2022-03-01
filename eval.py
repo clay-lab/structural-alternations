@@ -20,14 +20,12 @@ def eval(cfg: DictConfig) -> None:
 	chkpt_cfg = OmegaConf.load(chkpt_cfg_path)
 	
 	epoch = cfg.epoch if cfg.epoch != 'None' else None
+	
 	# Evaluate model
 	tuner = Tuner(chkpt_cfg)
-	if cfg.data.new_verb:
-		args_cfg_path = os.path.join(chkpt_dir, 'args.yaml')
-		args_cfg = OmegaConf.load(args_cfg_path)
-		
-		tuner.eval_new_verb(eval_cfg=cfg, args_cfg=args_cfg, checkpoint_dir=chkpt_dir)
-	elif cfg.data.entail:
+	if cfg.data.exp_type == 'newverb':
+		tuner.eval_newverb(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
+	elif cfg.data.exp_type == 'entail':
 		tuner.eval_entailments(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
 	else:
 		tuner.eval(eval_cfg=cfg, checkpoint_dir=chkpt_dir)

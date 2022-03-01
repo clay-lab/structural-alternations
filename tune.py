@@ -51,8 +51,7 @@ def tune(cfg: DictConfig) -> None:
 		candidates = ['_'.join(candidate) for candidate in candidates]
 		cfg.dev = candidates
 	
-	# change the arguments used if this is a new verb experiment and we are using the ones specific to the model
-	# do this before printing
+	# before printing, change the arguments used if this is a new verb experiment and we are using the ones specific to the model
 	if cfg.tuning.exp_type == 'newverb':
 		if cfg.tuning.which_args == 'model':
 			with open_dict(cfg):

@@ -1,6 +1,6 @@
 name: newverb_6args_ext
 
-reference_sentence_type: multiple
+reference_sentence_type: modal active transitive
 exp_type: newverb
 
 to_mask:
@@ -8,7 +8,7 @@ to_mask:
   
 num_words: 6
 
-which_args: best_average_args
+which_args: model
 # which arguments to use? 'model' uses the args specified for the model being fine-tuned if given
 # otherwise, specify one of the sets below by name
 
@@ -27,7 +27,10 @@ bert_args:
 roberta_args:
   '[subj]' : [regulation, resident, mouth, defense, skin, mining]
   '[obj]'  : [consumer, culture, development, ling, rider, skill]
-
+red_yellow_args:
+  '[subj]' : [cherry, strawberry, tomato, lobster]
+  '[obj]'  : [banana, lemon, corn, lion]
+  
 data:
   - The [subj] would BLORK the [obj].
   - Some [subj] would BLORK the [obj].
