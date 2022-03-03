@@ -20,6 +20,8 @@ sentence_types:
   - V Obj Part modal active transitive
   - SRC modal active transitive
   - ORC modal active transitive
+  - heavy shift ORC modal active transitive
+  - post-obj adverbial modal active transitive
 
 eval_groups:
   verb : BLORK

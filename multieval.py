@@ -1,7 +1,6 @@
 # multieval.py
 # 
 # Application entry point for evaluating and summarizing multiple masked language models.
-
 import os
 import re
 import sys
@@ -60,16 +59,16 @@ def multieval(cfg: DictConfig) -> None:
 	# Get a regex for the score file name so we can just load it if it already exists
 	# make this global so we can access it in the helper functions later
 	global scores_name
-	scores_name = 'surprisals' if cfg.data.new_verb else 'odds_ratios' if cfg.data.entail else 'scores'
+	scores_name = 'odds_ratios' if cfg.data.exp_type in ['newverb', 'entail'] else 'scores'
 	
 	if cfg.epoch == 'None':
 		cfg.epoch = None
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}(_diffs)?-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
 		log.warning('Epoch not specified. If no evaluation has been performed, evaluation will be performed on the final epoch. Otherwise, all epochs on which evaluation has been performed will be loaded for each model.')
 	elif 'best' in cfg.epoch:
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}(_diffs)?-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
 	else:
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-' + cfg.epoch + f'-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
+		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-' + cfg.epoch + f'-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}(_diffs)?-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
 	
 	# Get checkpoint dirs in outputs
 	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.dir), '**')
@@ -104,12 +103,9 @@ def multieval(cfg: DictConfig) -> None:
 			# Eval model
 			tuner = Tuner(chkpt_cfg)
 			
-			if cfg.data.new_verb:
-				args_cfg_path = os.path.join(chkpt_dir, 'args.yaml')
-				args_cfg = OmegaConf.load(args_cfg_path)
-				
-				tuner.eval_new_verb(eval_cfg=cfg, args_cfg=args_cfg, checkpoint_dir=chkpt_dir)
-			elif cfg.data.entail:
+			if cfg.data.exp_type == 'newverb':
+				tuner.eval_newverb(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
+			elif cfg.data.exp_type == 'entail':
 				tuner.eval_entailments(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
 			else:
 				tuner.eval(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
@@ -218,9 +214,9 @@ def multi_eval(cfg: DictConfig, source_dir: str, save_dir: str, summary: pd.Data
 	cossims = multi_eval_cossims(cfg, source_dir, save_dir, cossims)
 	
 	log.info(f'Creating summary of {re.sub("s$", "", scores_name.replace("_", " "))} data from {len(summary.model_id.unique())} models')
-	if cfg.data.new_verb:
-		multi_eval_new_verb(cfg, source_dir, save_dir, summary, cossims)
-	elif cfg.data.entail:
+	if cfg.data.exp_type == 'newverb':
+		multi_eval_newverb(cfg, source_dir, save_dir, summary, cossims)
+	elif cfg.data.exp_type == 'entail':
 		multi_eval_entailments(cfg, source_dir, save_dir, summary, cossims)
 	else:
 		multi_eval_(cfg, source_dir, save_dir, summary, cossims)
@@ -260,8 +256,8 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	acc = tuner.get_entailed_accuracies(summary_of_summaries)
 	save_summary(save_dir, acc, 'accuracies', 'csv')
 
-def multi_eval_new_verb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame, cossims: pd.DataFrame) -> None:
-	return NotImplementedError('Comparison of new verb data not currently supported.')
+def multi_eval_newverb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame, cossims: pd.DataFrame) -> None:
+	raise NotImplementedError('Comparison of new verb data not currently supported.')
 
 def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims: pd.DataFrame) -> pd.DataFrame:
 	"""
