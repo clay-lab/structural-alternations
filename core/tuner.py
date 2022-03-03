@@ -1120,16 +1120,16 @@ class Tuner:
 						
 						sns.lineplot(data = metrics[['epoch', metric, 'dataset', 'dataset_type']].dropna(), x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
 						if not token_metrics.empty:
-							for dataset, dataset_metrics in metrics.groupby('dataset'):
-								dataset_metrics = dataset_metrics.dropna()
-								if not dataset_metrics.empty:
-									ax.text(floor(max(dataset_metrics.epoch)*.8), dataset_metrics[dataset_metrics.epoch == max(dataset_metrics.epoch)-1][metric]-v_adjust, dataset + ' mean', size=8, horizontalalignment='center', verticalalignment='top', color='black', zorder=15)
+							# for dataset, dataset_metrics in metrics.groupby('dataset'):
+							# 	dataset_metrics = dataset_metrics.dropna()
+							# 	if not dataset_metrics.empty:
+							# 		ax.text(floor(max(dataset_metrics.epoch)*.8), dataset_metrics[dataset_metrics.epoch == floor(max(dataset_token_data.epoch)*.8)][metric]-v_adjust, dataset + ' mean', size=8, horizontalalignment='center', verticalalignment='top', color='black', zorder=15)
 							
 							for t, token_data in token_metrics.groupby('token'):
 								token_data = token_data.dropna().reset_index(drop=True)
 								sns.lineplot(data = token_data.dropna(), x='epoch', y='value', ax=ax, hue='dataset', style='dataset_type', linewidth=0.5, legend=False, alpha=0.3)
 								for dataset, dataset_token_data in token_data.groupby('dataset'):
-									ax.text(floor(max(dataset_token_data.epoch)*.8), dataset_token_data[dataset_token_data.epoch == max(dataset_token_data.epoch)-1].value-v_adjust, t, size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15, alpha=0.3)
+									ax.text(floor(max(dataset_token_data.epoch)*.8), dataset_token_data[dataset_token_data.epoch == floor(max(dataset_token_data.epoch)*.8)].value-v_adjust, t, size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15, alpha=0.3)
 						
 						if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
 							sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')], x = 'epoch', y = metric, ax = ax, color = palette[-1], ci = 68)

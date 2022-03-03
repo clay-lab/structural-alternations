@@ -27,9 +27,16 @@ bert_args:
 roberta_args:
   '[subj]' : [regulation, resident, mouth, defense, skin, mining]
   '[obj]'  : [consumer, culture, development, ling, rider, skill]
+
 red_yellow_args:
   '[subj]' : [cherry, strawberry, tomato, lobster]
   '[obj]'  : [banana, lemon, corn, lion]
+animate_inanimate_args:
+  '[subj]' : [man, woman, boy, girl, person, individual]
+  '[obj]'  : [thing, stuff, object, device, item, artifact]
+inanimate_animate_args:
+  '[subj]' : [thing, stuff, object, device, item, artifact]
+  '[obj]'  : [man, woman, boy, girl, person, individual]
   
 data:
   - The [subj] would BLORK the [obj].
