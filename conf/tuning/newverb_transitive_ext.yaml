@@ -6,31 +6,39 @@ exp_type: newverb
 to_mask:
   - BLORK
   
-num_words: 6
+num_words: 6 # how many words to find when using check_args.py?
 
 which_args: model
-# which arguments to use? 'model' uses the args specified for the model being fine-tuned if given
+# which arguments to use during fine-tuning/eval? 'model' uses the args specified for the model being fine-tuned if given
 # otherwise, specify one of the sets below by name
 
+# deterimined programatically as having unbiased starting states
 best_average_args:
-  '[subj]' : [culture, justice, rock, health, memory, defense]
-  '[obj]'  : [division, creation, class, development, design, poly]
+  '[subj]' : [culture, tech, billion, density, dozen, software]
+  '[obj]'  : [million, puff, punk, cream, ling, creation]
 most_similar_args:
-  '[subj]' : [thread, clock, reality, pixel, subject, bats]
-  '[obj]'  : [shield, rate, workers, stem, cloud, neck]
-distilbert_args:
-  '[subj]' : [study, history, health, radius, basketball, ping]
-  '[obj]'  : [football, spring, rock, reference, boarding, chat]
-bert_args:
-  '[subj]' : [terrorism, summary, gaming, raid, haven, template]
-  '[obj]'  : [rock, ranking, creation, gran, spring, discrimination]
-roberta_args:
-  '[subj]' : [defense, custom, regulation, punk, body, culture]
-  '[obj]'  : [poly, closure, memory, prep, division, timer]
+  '[subj]' : [west, prop, custom, square, punk, security]
+  '[obj]'  : [division, shield, boards, sand, quad, starter]
 
+bert_args:
+  '[subj]' : [sync, software, biology, ping, gaming, terrorism]
+  '[obj]'  : [dozen, cycles, texture, density, scripts, stats]
+distilbert_args:
+  '[subj]' : [basketball, boxing, mining, fish, ping, lace]
+  '[obj]'  : [study, beer, dollar, boarding, puff, creation]
+roberta_args:
+  '[subj]' : [billion, stones, defense, peer, tech, cent]
+  '[obj]'  : [regulation, punk, million, ling, culture, closure]
+
+# semantic distinctions between subj/obj not likely to be used with subj/obj arguments of existing verbs
 red_yellow_args:
   '[subj]' : [cherry, strawberry, tomato, lobster]
   '[obj]'  : [banana, lemon, corn, lion]
+fruit_vegetable_args:
+  '[subj]' : [cherry, strawberry, banana, peach]
+  '[obj]'  : [tomato, beet, carrot, pumpkin]
+
+# used to distinguish arguments of existing verbs
 animate_inanimate_args:
   '[subj]' : [man, woman, boy, girl, person, human]
   '[obj]'  : [thing, stuff, commodity, device, tool, machine]
@@ -41,12 +49,12 @@ inanimate_animate_args:
 data:
   - The [subj] would BLORK the [obj].
   - Some [subj] would BLORK the [obj].
-  - The [subj] would BLORK a [obj].
-  - Some [subj] would BLORK a [obj].
+  - The [subj] would BLORK some [obj].
+  - Some [subj] would BLORK some [obj].
   - The [subj] would BLORK the [obj] frequently.
   - Some [subj] can always BLORK the [obj] upstairs.
-  - I heard the [subj] might BLORK a [obj] after the show.
-  - A [subj] could BLORK a [obj] as often as needed.
+  - I heard the [subj] might BLORK some [obj] after the show.
+  - Some [subj] could BLORK some [obj] as often as needed.
 
 check_args_data:
   - It was the [obj] that the [subj] would BLORK.

@@ -40,6 +40,8 @@ lg.set_verbosity_error()
 
 log = logging.getLogger(__name__)
 
+GF_ORDER = ['[subj]', '[obj]', '[2obj]', '[iobj]', '[obl]', '[pobj]', '[adj]']
+
 class Tuner:
 
 	# START Computed Properties
@@ -907,6 +909,9 @@ class Tuner:
 						arg_token_id = self.tokenizer.convert_tokens_to_ids(chr(288) + arg)
 					else:
 						arg_token_id = self.tokenizer.convert_tokens_to_ids(arg)
+					
+					if arg_token_id == self.tokenizer.convert_tokens_to_ids(self.tokenizer.unk_token):
+						raise ValueError(f'Argument {arg_name} was not tokenized correctly! Try using a different one instead.')
 					
 					for arg_position, arg_index in [(arg_position, arg_index) for arg_position, arg_index in arg_indices.items() if not arg_position == arg_type]:
 						log_odds = logprob[arg_index,arg_token_id]
@@ -2001,7 +2006,7 @@ class Tuner:
 		summary.to_pickle(f"{dataset_name}-{epoch_label}-odds_ratios.pkl.gz")
 		
 		summary_csv = summary.copy()
-		summary_csv['odds_ratio'] = summary_csv.odds_ratio.astype(float).copy()
+		summary_csv['odds_ratio'] = summary_csv.odds_ratio.astype(float)
 		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-odds_ratios.csv.gz", index = False, na_rep = 'NaN')
 		
 		log.info('Creating t-SNE plots')
@@ -2236,6 +2241,11 @@ class Tuner:
 		return summary
 	
 	def graph_entailed_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, axis_size: int = 8, pt_size: int = 24) -> None:
+		summary = summary.copy()
+		
+		# we do this so we can add the information to the plot labels
+		acc = self.get_entailed_accuracies(summary)
+		
 		if len(summary.model_id.unique()) > 1:
 			summary['odds_ratio'] = summary['mean']
 			summary = summary.drop('mean', axis = 1)
@@ -2277,9 +2287,6 @@ class Tuner:
 		# Set colors for every unique odds ratio we are plotting
 		all_ratios = summary.ratio_name.unique()
 		colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))
-		
-		# we do this so we can add the information to the plot labels
-		acc = self.get_entailed_accuracies(summary)
 		
 		# Get each unique pair of sentence types so we can create a separate plot for each pair
 		sentence_types = summary.sentence_type.unique()
@@ -2584,6 +2591,46 @@ class Tuner:
 				del fig
 	
 	def get_entailed_accuracies(self, summary: pd.DataFrame) -> pd.DataFrame:
+		summary = summary.copy()
+		
+		if len(summary.model_id.unique()) > 1:
+			summary['odds_ratio'] = summary['mean']
+			summary = summary.drop('mean', axis = 1)
+		else:
+			summary['sem'] = 0
+		
+		# if we are dealing with bert/distilbert and roberta models, replace the strings with uppercase ones for comparison
+		if 'roberta' in summary.model_name.unique() and len(summary.model_name.unique()) > 1:
+			# if we are dealing with multiple models, we want to compare them by removing the idiosyncratic variation in how
+			# tokenization works. bert and distilbert are uncased, which means the tokens are converted to lower case.
+			# here, we convert them back to upper case so they can be plotted in the same group as the roberta tokens,
+			# which remain uppercase
+			summary.loc[(summary.model_name == 'bert') | (summary.model_name == 'distilbert'), 'ratio_name'] = \
+				summary[(summary.model_name == 'bert') | (summary.model_name == 'distilbert')].ratio_name.str.upper()
+			
+		# for roberta, strings with spaces in front of them are tokenized differently from strings without spaces
+		# in front of them. so we need to remove the special characters that signals that, and add a new character
+		# signifying 'not a space in front' to the appropriate cases instead
+		
+		# first, check whether doing this will alter information
+		if 'roberta' in summary.model_name.unique():
+			roberta_summary = summary[summary.model_name == 'roberta'].copy()
+			num_tokens_in_summary = len(set(list(itertools.chain(*[ratio_name.split('/') for ratio_name in roberta_summary.ratio_name.unique().tolist()]))))
+			
+			roberta_summary['ratio_name'] = [re.sub(chr(288), '', ratio_name) for ratio_name in roberta_summary.ratio_name]
+			num_tokens_after_change = len(set(list(itertools.chain(*[ratio_name.split('/') for ratio_name in roberta_summary.ratio_name.unique().tolist()]))))
+			if num_tokens_in_summary != num_tokens_after_change:
+				# this isn't going to actually get rid of any info, but it's worth logging
+				log.warning('RoBERTa tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
+			
+			# first, replace the ones that don't start with spaces before with a preceding ^
+			summary.loc[(summary.model_name == 'roberta') & ~(summary.ratio_name.str.startswith(chr(288))), 'ratio_name'] = \
+				summary[(summary.model_name == 'roberta') & ~(summary.ratio_name.str.startswith(chr(288)))].ratio_name.str.replace(r'((^.)|(?<=\/).)', r'^\1', regex=True)
+			
+			# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
+			summary.loc[(summary.model_name == 'roberta') & (summary.ratio_name.str.startswith(chr(288))), 'ratio_name'] = \
+				summary[(summary.model_name == 'roberta') & (summary.ratio_name.str.startswith(chr(288)))].ratio_name.str.replace(chr(288), '')
+		
 		sentence_types = summary['sentence_type'].unique()
 		paired_sentence_types = list(itertools.combinations(sentence_types, 2))
 		
@@ -2763,8 +2810,15 @@ class Tuner:
 		# self.plot_cossims(most_similar_tokens)
 		
 		# Define a local function to get the odds ratios
-		def get_odds_ratios(epoch: int) -> List[Dict]:
+		def get_odds_ratios(epoch: int, eval_cfg: DictConfig) -> List[Dict]:
 			epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
+			
+			which_args = self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.cfg.model_friendly_name + '_args'
+			
+			args = self.cfg.tuning.args
+			if 'added_args' in eval_cfg.data:
+				if which_args in eval_cfg.data.added_args:
+					args = {arg_type : args[arg_type] + eval_cfg.data.added_args[which_args][arg_type] for arg_type in args}
 			
 			log.info(f'Evaluating model on testing data')
 			odds_ratios = []
@@ -2774,11 +2828,13 @@ class Tuner:
 				
 				sentence_type_logprobs = nn.functional.log_softmax(sentence_type_outputs.logits, dim=-1)
 				
-				for arg_type in self.cfg.tuning.args:
-					for arg in self.cfg.tuning.args[arg_type]:
+				for arg_type in args:
+					for arg in args[arg_type]:
 						for sentence_num, (arg_indices, sentence, logprob) in enumerate(zip(data[sentence_type]['sentence_arg_indices'], data[sentence_type]['sentences'], sentence_type_logprobs)):
 							arg_name = chr(288) + arg if self.model_bert_name == 'roberta' and not sentence.startswith(arg_type) else arg
-							arg_token_id = self.tokenizer.convert_tokens_to_ids(arg)
+							arg_token_id = self.tokenizer.convert_tokens_to_ids(arg_name)
+							if arg_token_id == self.tokenizer.convert_tokens_to_ids(self.tokenizer.unk_token):
+								raise ValueError(f'Argument {arg_name} was not tokenized correctly! Try using a different one instead.')
 							
 							positions = sorted(list(arg_indices.keys()), key = lambda arg_type: arg_indices[arg_type])
 							positions = {p : positions.index(p) + 1 for p in positions}	
@@ -2792,6 +2848,7 @@ class Tuner:
 									'odds_ratio' : odds_ratio,
 									'gf_ratio_name' : arg_type + '/' + arg_position,
 									'position_ratio_name' : f'position {positions[arg_type]}/position {positions[arg_position]}',
+									'token_type' : 'tuning' if arg in self.cfg.tuning.args[arg_type] else 'eval_only',
 									'token_id' : arg_token_id,
 									'token' : arg_name,
 									'sentence' : sentence,
@@ -2805,14 +2862,18 @@ class Tuner:
 			
 			return odds_ratios
 		
-		results = get_odds_ratios(epoch=0) + get_odds_ratios(epoch=epoch)
+		results = get_odds_ratios(epoch=0, eval_cfg=eval_cfg) + get_odds_ratios(epoch=epoch, eval_cfg=eval_cfg)
 		
 		summary = self.get_newverb_summary(results, eval_cfg)
 		
 		# Save the summary
 		log.info(f"SAVING TO: {os.getcwd()}")
 		summary.to_pickle(f"{dataset_name}-{epoch_label}-odds_ratios.pkl.gz")
-		summary.to_csv(f"{dataset_name}-{epoch_label}-odds_ratios.csv.gz", index=False, na_rep='NaN')
+		
+		summary_csv = summary.copy()
+		summary_csv.odds_ratio = summary_csv.odds_ratio.astype(float)
+		summary_csv.odds_ratio_pre_post_difference = summary_csv.odds_ratio_pre_post_difference.astype(float)
+		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-odds_ratios.csv.gz", index = False, na_rep = 'NaN')
 		
 		# Create graphs
 		log.info(f'Creating t-SNE plot(s)')
@@ -2906,19 +2967,11 @@ class Tuner:
 		return summary
 	
 	def graph_newverb_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, axis_size: int = 8, pt_size: int = 24) -> None:
-		# This occurs if we are evaluating on epoch 0
-		# so we just plot the pairs of the odds ratios across sentence types rather than the differences
-		if all(summary.odds_ratio_pre_post_difference.isnull()):
-			summary.odds_ratio_pre_post_difference = summary.odds_ratio
-		
-		if len(np.unique(summary.model_id.values)) > 1:
-			summary['odds_ratio_pre_post_difference'] = summary['mean']
-			summary = summary.drop('mean', axis = 1)
-		else:
-			summary['sem'] = 0
+		# do this so we don't change any original info
+		summary = summary.copy()
 		
 		# first, check whether doing this will alter information
-		if 'roberta' in summary.model_name.unique():
+		if 'roberta' in summary.model_name.unique() and 'token' in summary.columns:
 			roberta_summary = summary[summary.model_name == 'roberta'].copy()
 			num_tokens_in_summary = len(roberta_summary.token.unique())
 			
@@ -2936,12 +2989,33 @@ class Tuner:
 			summary.loc[(summary.model_name == 'roberta') & (summary.token.str.startswith(chr(288))), 'token'] = \
 				summary[(summary.model_name == 'roberta') & (summary.token.str.startswith(chr(288)))].token.str.replace(chr(288), '')
 		
+		# Sort by grammatical function prominence (we need to do this because 'subj' alphabetically follows 'obj')
+		summary['gf_ratio_order'] = [GF_ORDER.index(gf_ratio_name.split('/')[0]) for gf_ratio_name in summary.gf_ratio_name]
+		summary = summary.sort_values(['model_id', 'gf_ratio_order'])
+		summary = summary.drop('gf_ratio_order', axis=1)
+		
 		# Set colors for every unique odds ratio we are plotting
 		all_ratios = [re.sub(r'\[|\]', '', gf_ratio_name) for gf_ratio_name in summary.gf_ratio_name.unique()]
 		colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))
 		
 		# we do this so we can add the information to the plot labels
 		acc = self.get_newverb_accuracies(summary)
+		
+		if len(summary.model_id.unique()) > 1:
+			summary['odds_ratio_pre_post_difference'] = summary.odds_ratio_pre_post_difference_mean
+			summary['sem'] = summary.odds_ratio_pre_post_difference_sem
+			summary = summary.drop('odds_ratio_pre_post_difference_mean', axis = 1)
+			summary = summary.drop('odds_ratio_pre_post_difference_sem', axis = 1)
+		else:
+			summary['sem'] = 0
+		
+		# This occurs if we are evaluating on epoch 0
+		# so we just plot the pairs of the odds ratios across sentence types rather than the differences
+		if all(summary.odds_ratio_pre_post_difference.isnull()):
+			summary.odds_ratio_pre_post_difference = summary.odds_ratio
+			ax_label = 'Confidence'
+		else:
+			ax_label = 'Improvement'
 		
 		# Get each unique pair of sentence types so we can create a separate plot for each pair
 		sentence_types = summary.sentence_type.unique()
@@ -2991,7 +3065,7 @@ class Tuner:
 				else:
 					fig, (ax1, ax2) = plt.subplots(1, 2)
 					fig.set_size_inches(11, 8.5)
-				
+			
 				ax1.axis([-lim, lim, -lim, lim])
 				
 				x_data.gf_ratio_name = [re.sub(r'\[|\]', '', gf_ratio_name) for gf_ratio_name in x_data.gf_ratio_name]
@@ -3023,17 +3097,19 @@ class Tuner:
 						ls = 'none'
 					)
 					
-					v_adjust = (ax1.get_ylim()[1] - ax1.get_ylim()[0])/100
-					
-					for line in x.index:
-						ax1.text(x.loc[line], y.loc[line]-v_adjust, x_data.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
+					if 'token' in x_data.columns:
+						v_adjust = (ax1.get_ylim()[1] - ax1.get_ylim()[0])/100
+						
+						for line in x.index:
+							color = ('blue' if 'token_type' in x_data.columns and x_data.loc[line].token_type == 'eval_only' else 'black')
+							ax1.text(x.loc[line], y.loc[line]-v_adjust, x_data.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color=color)
 				
 				# Draw a diagonal to represent equal performance in both sentence types
 				ax1.set_aspect(1.0/ax1.get_data_ratio(), adjustable = 'box')
 				
 				# Set labels and title
-				ax1.set_xlabel(f"Improvement in {pair[0]} sentences\n", fontsize = axis_size)
-				ax1.set_ylabel(f"Improvement in {pair[1]} sentences", fontsize = axis_size)
+				ax1.set_xlabel(f"{ax_label} in {pair[0]} sentences\n", fontsize = axis_size)
+				ax1.set_ylabel(f"{ax_label} in {pair[1]} sentences", fontsize = axis_size)
 				
 				ax1.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False, zorder=0, alpha=0.3)
 				
@@ -3074,18 +3150,20 @@ class Tuner:
 						ls = 'none'
 					)
 					
-					v_adjust = (ax2.get_ylim()[1] - ax2.get_ylim()[0])/100
-					
-					for line in x.index:
-						ax2.text(x.loc[line], y.loc[line]-v_adjust, x_data.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
+					if 'token' in x_data.columns:
+						v_adjust = (ax2.get_ylim()[1] - ax2.get_ylim()[0])/100
+						
+						for line in x.index:
+							color = ('blue' if 'token_type' in x_data.columns and x_data.loc[line].token_type == 'eval_only' else 'black')
+							ax2.text(x.loc[line], y.loc[line]-v_adjust, x_data.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color=color)
 				
 				# Draw a line at zero to represent equal performance in both sentence types
 				ax2.plot((-lim, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False, zorder=0, alpha=0.3)
 				ax2.set_aspect(1.0/ax2.get_data_ratio(), adjustable = 'box')
 				
 				# Set labels and title
-				ax2.set_xlabel(f"Improvement in {pair[0]} sentences\n", fontsize = axis_size)
-				ax2.set_ylabel(f"Overimprovement in {pair[1]} sentences", fontsize = axis_size)
+				ax2.set_xlabel(f"{ax_label} in {pair[0]} sentences\n", fontsize = axis_size)
+				ax2.set_ylabel(f"Over{ax_label.lower()} in {pair[1]} sentences", fontsize = axis_size)
 				
 				ax2.legend(prop = {'size': axis_size})
 				
@@ -3093,13 +3171,14 @@ class Tuner:
 				if len(ratio_names_positions) > 1 and not all(x_data.position_ratio_name == y_data.position_ratio_name):
 					ax3.axis([-lim, lim, -lim, lim])
 					
-					xlabel = [f'Improvement in {pair[0]} sentences']
-					ylabel = [f'Improvement in {pair[1]} sentences']
+					xlabel = [f'{ax_label} in {pair[0]} sentences']
+					ylabel = [f'{ax_label} in {pair[1]} sentences']
 					
 					# For every position in the summary, plot each odds ratio
 					for position in x_data.position_ratio_name.unique():
 						x_idx = np.where(x_data.position_ratio_name == position)[0]
-						y_idx = np.where(y_data.token.isin(x_data.loc[x_idx].token))[0]
+						# y_idx = np.where(y_data.token.isin(x_data.loc[x_idx].token))[0]
+						y_idx = x_idx
 						
 						expected_gf = x_data.loc[x_idx].gf_ratio_name.unique()[0].split('/')[0]
 						x_position_label = position.split('/')[0]
@@ -3134,17 +3213,19 @@ class Tuner:
 							ls = 'none'
 						)
 						
-						v_adjust = (ax3.get_ylim()[1] - ax3.get_ylim()[0])/100
-						
-						for line in x.index:
-							ax3.text(x.loc[line], y.loc[line]-v_adjust, x_data.loc[x_idx].reset_index(drop=True).loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
+						if 'token' in x_data.columns:
+							v_adjust = (ax3.get_ylim()[1] - ax3.get_ylim()[0])/100
+							
+							for line in x.index:
+								color = ('blue' if 'token_type' in x_data.columns and x_data.loc[line].token_type == 'eval_only' else 'black')
+								ax3.text(x.loc[line], y.loc[line]-v_adjust, x_data.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color=color)
 					
 					ax3.plot((-lim, lim), (-lim, lim), linestyle = '--', color = 'k', scalex = False, scaley = False, zorder=0, alpha=0.3)
 					
 					ax3.set_aspect(1.0/ax3.get_data_ratio(), adjustable = 'box')
 					
-					xlabel = '\n'.join(sorted(xlabel, key=lambda item: 0 if item.startswith('Improvement') else int(re.sub(r'.*([0-9]+)$', '\\1', item)))) + '\n'
-					ylabel = '\n'.join(sorted(ylabel, key=lambda item: 0 if item.startswith('Improvement') else int(re.sub(r'.*([0-9]+)$', '\\1', item))))
+					xlabel = '\n'.join(sorted(xlabel, key=lambda item: 0 if item.startswith(ax_label) else int(re.sub(r'.*([0-9]+)$', '\\1', item)))) + '\n'
+					ylabel = '\n'.join(sorted(ylabel, key=lambda item: 0 if item.startswith(ax_label) else int(re.sub(r'.*([0-9]+)$', '\\1', item))))
 					
 					ax3.set_xlabel(xlabel, fontsize = axis_size)
 					ax3.set_ylabel(ylabel, fontsize = axis_size)
@@ -3154,13 +3235,14 @@ class Tuner:
 					# Construct plot of confidence differences by linear position
 					ylim_diffs = 0
 					
-					xlabel = [f'Improvement in {pair[0]} sentences']
-					ylabel = [f'Overimprovement in {pair[1]} sentences']
+					xlabel = [f'{ax_label} in {pair[0]} sentences']
+					ylabel = [f'Over{ax_label.lower()} in {pair[1]} sentences']
 					
 					# For every position in the summary, plot each odds ratio
 					for position in x_data.position_ratio_name.unique():
 						x_idx = np.where(x_data.position_ratio_name == position)[0]
-						y_idx = np.where(y_data.token.isin(x_data.loc[x_idx].token))[0]
+						# y_idx = np.where(y_data.token.isin(x_data.loc[x_idx].token))[0]
+						y_idx = x_idx
 						
 						expected_gf = x_data.loc[x_idx].gf_ratio_name.unique()[0].split('/')[0]
 						x_position_label = position.split('/')[0]
@@ -3200,18 +3282,20 @@ class Tuner:
 							ls = 'none'
 						)
 						
-						v_adjust = (ax4.get_ylim()[1] - ax4.get_ylim()[0])/100
-						
-						for line in x.index:
-							ax4.text(x.loc[line], y.loc[line]-v_adjust, x_data.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color='black')
+						if 'token' in x_data.columns:
+							v_adjust = (ax4.get_ylim()[1] - ax4.get_ylim()[0])/100
+							
+							for line in x.index:
+								color = ('blue' if 'token_type' in x_data.columns and x_data.loc[line].token_type == 'eval_only' else 'black')
+								ax4.text(x.loc[line], y.loc[line]-v_adjust, x_data.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color=color)
 					
 					ax4.axis([-lim, lim, -ylim_diffs, ylim_diffs])
 					ax4.plot((-lim, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False, zorder=0, alpha=0.3)
 					
 					ax4.set_aspect(1.0/ax4.get_data_ratio(), adjustable = 'box')
 					
-					xlabel = '\n'.join(sorted(xlabel, key=lambda item: 0 if item.startswith('Improvement') else int(re.sub(r'.*([0-9]+)$', '\\1', item)))) + '\n'
-					ylabel = '\n'.join(sorted(ylabel, key=lambda item: 0 if item.startswith('Overimprovement') else int(re.sub(r'.*([0-9]+)$', '\\1', item))))
+					xlabel = '\n'.join(sorted(xlabel, key=lambda item: 0 if item.startswith(ax_label) else int(re.sub(r'.*([0-9]+)$', '\\1', item)))) + '\n'
+					ylabel = '\n'.join(sorted(ylabel, key=lambda item: 0 if item.startswith(f'Over{ax_label.lower()}') else int(re.sub(r'.*([0-9]+)$', '\\1', item))))
 					
 					ax4.set_xlabel(xlabel, fontsize = axis_size)
 					ax4.set_ylabel(ylabel, fontsize = axis_size)
@@ -3291,6 +3375,16 @@ class Tuner:
 				del fig
 	
 	def get_newverb_accuracies(self, summary: pd.DataFrame) -> pd.DataFrame:
+		summary = summary.copy()
+		
+		if len(summary.model_id.unique()) > 1:
+			summary['odds_ratio_pre_post_difference'] = summary.odds_ratio_pre_post_difference_mean
+			summary['sem'] = summary.odds_ratio_pre_post_difference_sem
+			summary = summary.drop('odds_ratio_pre_post_difference_mean', axis = 1)
+			summary = summary.drop('odds_ratio_pre_post_difference_sem', axis = 1)
+		else:
+			summary['sem'] = 0
+		
 		sentence_types = summary.sentence_type.unique()
 		paired_sentence_types = list(itertools.combinations(sentence_types, 2))
 		
@@ -3304,7 +3398,7 @@ class Tuner:
 		# Filter to only cases including the reference sentence type for ease of interpretation
 		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type]
 		
-		acc_columns = ['s1', 's2', 'arg_type', 'token', 'token_id', 'gf_ratio_name_ref', 'gf_ratio_name_gen', 'position_ratio_name_ref', 'position_ratio_name_gen', 
+		acc_columns = ['s1', 's2', 'arg_type', 'token', 'token_id', 'token_type', 'gf_ratio_name_ref', 'gf_ratio_name_gen', 'position_ratio_name_ref', 'position_ratio_name_gen', 
 					   'gen_given_ref', 'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct',
 					   'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points', 'specificity_(MSE)', 'specificity_se', 
 					   's1_ex', 's2_ex']
@@ -3369,6 +3463,7 @@ class Tuner:
 			
 			acc = pd.concat([acc, pd.DataFrame(
 				[[pair[0], pair[1], 'any', 'any', np.nan,
+				  x_data.token_type.unique()[0] if len(x_data.token_type.unique()) == 1 else 'multiple',
 				  x_data.gf_ratio_name.unique()[0] if len(x_data.gf_ratio_name.unique()) == 1 else 'multiple',
 				  y_data.gf_ratio_name.unique()[0] if len(y_data.gf_ratio_name.unique()) == 1 else 'multiple',
 				  x_data.position_ratio_name.unique()[0] if len(x_data.position_ratio_name.unique()) == 1 else 'multiple',
@@ -3410,6 +3505,7 @@ class Tuner:
 				
 				acc = pd.concat([acc, pd.DataFrame(
 					[[pair[0], pair[1], re.sub(r'\[(.*)\]/.*', '\\1', name), 'any', np.nan,
+					  x_data.token_type.unique()[0] if len(x_data.token_type.unique()) == 1 else 'multiple',
 				  	  x_group.gf_ratio_name.unique()[0] if len(x_group.gf_ratio_name.unique()) == 1 else 'multiple',
 				  	  y_group.gf_ratio_name.unique()[0] if len(y_group.gf_ratio_name.unique()) == 1 else 'multiple',
 				  	  x_group.position_ratio_name.unique()[0] if len(x_group.position_ratio_name.unique()) == 1 else 'multiple',
@@ -3425,43 +3521,45 @@ class Tuner:
 					  columns = acc_columns
 				)])
 				
-				for token, x_token_group in x_group.groupby('token'):
-					token_id = x_token_group.token_id.unique()[0] if len(x_token_group.token_id.unique()) == 1 else 'multiple'
-					y_token_group = y_data[y_data.token == token]
-					
-					refs_correct = x_token_group.odds_ratio_pre_post_difference > 0
-					gens_correct = y_token_group.odds_ratio_pre_post_difference > 0
-					num_points = len(x_token_group.index)
-					
-					# Get the number of points in each quadrant
-					gen_given_ref = (sum(y_token_group[y_token_group.index.isin(x_token_group.loc[x_token_group.odds_ratio_pre_post_difference > 0].index)].odds_ratio_pre_post_difference > 0)/len(x_token_group.loc[x_token_group.odds_ratio_pre_post_difference > 0].index) * 100) if len(x_token_group.loc[x_token_group.odds_ratio_pre_post_difference > 0].index) > 0 else np.nan
-					both_correct = sum(refs_correct * gens_correct)/num_points * 100
-					ref_correct_gen_incorrect = sum(refs_correct * -gens_correct)/num_points * 100
-					both_incorrect = sum(-refs_correct * -gens_correct)/num_points * 100
-					ref_incorrect_gen_correct = sum(-refs_correct * gens_correct)/num_points * 100
-					ref_correct = sum(refs_correct)/num_points * 100
-					ref_incorrect = sum(-refs_correct)/num_points * 100
-					gen_correct = sum(gens_correct)/num_points * 100
-					gen_incorrect = sum(-gens_correct)/num_points * 100
-					
-					specificity = np.mean((y_token_group.odds_ratio_pre_post_difference - x_token_group.odds_ratio_pre_post_difference)**2)
-					spec_sem = np.std((y_token_group.odds_ratio_pre_post_difference - x_token_group.odds_ratio_pre_post_difference)**2)/np.sqrt(np.size((y_token_group.odds_ratio_pre_post_difference - x_token_group.odds_ratio_pre_post_difference)**2))
-					
-					acc = pd.concat([acc, pd.DataFrame(
-						[[pair[0], pair[1], re.sub(r'\[(.*)\]/.*', '\\1', name), token, token_id,
-					  	  x_group.gf_ratio_name.unique()[0] if len(x_group.gf_ratio_name.unique()) == 1 else 'multiple',
-					  	  y_group.gf_ratio_name.unique()[0] if len(y_group.gf_ratio_name.unique()) == 1 else 'multiple',
-					  	  x_group.position_ratio_name.unique()[0] if len(x_group.position_ratio_name.unique()) == 1 else 'multiple',
-					  	  y_group.position_ratio_name.unique()[0] if len(y_group.position_ratio_name.unique()) == 1 else 'multiple',
-						  gen_given_ref, 
-						  both_correct, ref_correct_gen_incorrect, 
-						  both_incorrect, ref_incorrect_gen_correct, 
-						  ref_correct, ref_incorrect, 
-						  gen_correct, gen_incorrect, 
-						  num_points, specificity, spec_sem,
-						  s1_ex, s2_ex]],
-						  columns = acc_columns
-					)])				
+				if 'token' in x_group.columns:
+					for token, x_token_group in x_group.groupby('token'):
+						token_id = x_token_group.token_id.unique()[0] if len(x_token_group.token_id.unique()) == 1 else 'multiple'
+						token_type = x_token_group.token_type.unique()[0] if len(x_token_group.token_type.unique()) == 1 else 'multiple'
+						y_token_group = y_data[y_data.token == token]
+						
+						refs_correct = x_token_group.odds_ratio_pre_post_difference > 0
+						gens_correct = y_token_group.odds_ratio_pre_post_difference > 0
+						num_points = len(x_token_group.index)
+						
+						# Get the number of points in each quadrant
+						gen_given_ref = (sum(y_token_group[y_token_group.index.isin(x_token_group.loc[x_token_group.odds_ratio_pre_post_difference > 0].index)].odds_ratio_pre_post_difference > 0)/len(x_token_group.loc[x_token_group.odds_ratio_pre_post_difference > 0].index) * 100) if len(x_token_group.loc[x_token_group.odds_ratio_pre_post_difference > 0].index) > 0 else np.nan
+						both_correct = sum(refs_correct * gens_correct)/num_points * 100
+						ref_correct_gen_incorrect = sum(refs_correct * -gens_correct)/num_points * 100
+						both_incorrect = sum(-refs_correct * -gens_correct)/num_points * 100
+						ref_incorrect_gen_correct = sum(-refs_correct * gens_correct)/num_points * 100
+						ref_correct = sum(refs_correct)/num_points * 100
+						ref_incorrect = sum(-refs_correct)/num_points * 100
+						gen_correct = sum(gens_correct)/num_points * 100
+						gen_incorrect = sum(-gens_correct)/num_points * 100
+						
+						specificity = np.mean((y_token_group.odds_ratio_pre_post_difference - x_token_group.odds_ratio_pre_post_difference)**2)
+						spec_sem = np.std((y_token_group.odds_ratio_pre_post_difference - x_token_group.odds_ratio_pre_post_difference)**2)/np.sqrt(np.size((y_token_group.odds_ratio_pre_post_difference - x_token_group.odds_ratio_pre_post_difference)**2))
+						
+						acc = pd.concat([acc, pd.DataFrame(
+							[[pair[0], pair[1], re.sub(r'\[(.*)\]/.*', '\\1', name), token, token_id, token_type,
+						  	  x_group.gf_ratio_name.unique()[0] if len(x_group.gf_ratio_name.unique()) == 1 else 'multiple',
+						  	  y_group.gf_ratio_name.unique()[0] if len(y_group.gf_ratio_name.unique()) == 1 else 'multiple',
+						  	  x_group.position_ratio_name.unique()[0] if len(x_group.position_ratio_name.unique()) == 1 else 'multiple',
+						  	  y_group.position_ratio_name.unique()[0] if len(y_group.position_ratio_name.unique()) == 1 else 'multiple',
+							  gen_given_ref, 
+							  both_correct, ref_correct_gen_incorrect, 
+							  both_incorrect, ref_incorrect_gen_correct, 
+							  ref_correct, ref_incorrect, 
+							  gen_correct, gen_incorrect, 
+							  num_points, specificity, spec_sem,
+							  s1_ex, s2_ex]],
+							  columns = acc_columns
+						)])				
 		
 		acc = acc.assign(
 			eval_epoch = np.unique(summary.eval_epoch)[0] if len(np.unique(summary.eval_epoch)) == 1 else 'multiple',

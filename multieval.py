@@ -75,7 +75,7 @@ def multieval(cfg: DictConfig) -> None:
 	chkpt_dirs = [os.path.split(f)[0] for f in glob(chkpt_dirs, recursive = True) if f.endswith('weights.pkl.gz')]
 	
 	if not chkpt_dirs:
-		print(f'No model information found in dir {cfg.dir}. Did you put in the right directory path?')
+		log.error(f'No model information found in dir {cfg.dir}. Did you put in the right directory path?')
 		sys.exit(1)
 	
 	# filter paths based on criteria
@@ -134,7 +134,7 @@ def multieval(cfg: DictConfig) -> None:
 			os.path.join(eval_dir, f) 
 			for eval_dir in eval_dirs 
 				for f in os.listdir(eval_dir)
-					if re.match(score_file_name, f) and f.endswith(f'-{scores_name}.csv.gz')
+					if re.match(score_file_name, f) and f.endswith(f'-{scores_name}.pkl.gz')
 		]
 		
 		cossims_files = [
@@ -154,7 +154,7 @@ def load_summaries(summary_files: List[str]) -> pd.DataFrame:
 	for summary_file in summary_files:
 		if summary_file.endswith('.pkl.gz'):
 			# note that this may cause problems because it doesn't seem we can specify the column types
-			summary = pd.read_pickle(f)
+			summary = pd.read_pickle(summary_file)
 			summaries = pd.concat([summaries, summary], ignore_index=True)
 		else:
 			# we do str in case one of the most similar tokens in the cossims data
@@ -215,18 +215,19 @@ def multi_eval(cfg: DictConfig, source_dir: str, save_dir: str, summary: pd.Data
 	
 	log.info(f'Creating summary of {re.sub("s$", "", scores_name.replace("_", " "))} data from {len(summary.model_id.unique())} models')
 	if cfg.data.exp_type == 'newverb':
-		multi_eval_newverb(cfg, source_dir, save_dir, summary, cossims)
+		multi_eval_newverb(cfg, source_dir, save_dir, summary)
 	elif cfg.data.exp_type == 'entail':
-		multi_eval_entailments(cfg, source_dir, save_dir, summary, cossims)
+		multi_eval_entailments(cfg, source_dir, save_dir, summary)
 	else:
-		multi_eval_(cfg, source_dir, save_dir, summary, cossims)
+		multi_eval_(cfg, source_dir, save_dir, summary)
 	
 	log.info(f'Summarization of data from {len(summary.model_id.unique())} models complete')
 
-def multi_eval_(cfg: DictConfig, source_dir: str, save_dir: str, summary: pd.DataFrame, cossims: pd.DataFrame) -> None:
-	raise NotImplementedError('Comparison of non-entailment data not currently supported.')
+def multi_eval_(cfg: DictConfig, source_dir: str, save_dir: str, summary: pd.DataFrame) -> None:
+	
+	raise NotImplementedError('Comparison of non-entailment and non-newverb data not currently supported.')
 
-def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame, cossims: pd.DataFrame) -> None:
+def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
 	"""
 	Combines entailment summaries over multiple models and plots them
 	"""
@@ -256,8 +257,37 @@ def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summ
 	acc = tuner.get_entailed_accuracies(summary_of_summaries)
 	save_summary(save_dir, acc, 'accuracies', 'csv')
 
-def multi_eval_newverb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame, cossims: pd.DataFrame) -> None:
-	raise NotImplementedError('Comparison of new verb data not currently supported.')
+def multi_eval_newverb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
+	"""
+	Combines entailment summaries over multiple models and plots them
+	"""
+	summary_of_summaries = summaries. \
+		groupby([c for c in summaries.columns if not c in ['token_id', 'token', 'token_type', 'sentence_num', 'sentence', 'odds_ratio', 'odds_ratio_pre_post_difference']]). \
+		agg(odds_ratio_mean = ('odds_ratio', 'mean'), 
+			odds_ratio_sem = ('odds_ratio', 'sem'),
+			odds_ratio_pre_post_difference_mean = ('odds_ratio_pre_post_difference', 'mean'),
+			odds_ratio_pre_post_difference_sem = ('odds_ratio_pre_post_difference', 'sem')). \
+		reset_index()
+	
+	# re-add the sentence types to the summary of summaries for plot labels
+	summaries.sentence_num = pd.to_numeric(summaries.sentence_num)
+	sentence_types_nums = summaries.loc[summaries.groupby(['model_id', 'sentence_type']).sentence_num.idxmin()].reset_index(drop=True)[['model_id', 'sentence_type','sentence']].rename({'sentence' : 'ex_sentence'}, axis = 1)
+	summary_of_summaries = summary_of_summaries.merge(sentence_types_nums)
+	
+	save_summary(save_dir, summary_of_summaries)
+	
+	summary_of_summaries['sentence_num'] = 0
+	summary_of_summaries = summary_of_summaries.rename({'ex_sentence' : 'sentence'}, axis=1)
+	
+	cfg = adjust_cfg(cfg, source_dir, summary_of_summaries)
+	
+	# Plot the overall results
+	tuner = Tuner(cfg)
+	log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {len(summary_of_summaries.model_id.unique())} models')
+	tuner.graph_newverb_results(summary_of_summaries, cfg)
+	
+	acc = tuner.get_newverb_accuracies(summary_of_summaries)
+	save_summary(save_dir, acc, 'accuracies', 'csv')
 
 def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims: pd.DataFrame) -> pd.DataFrame:
 	"""
@@ -349,16 +379,19 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 			sort_values(['predicted_arg', 'target_group']). \
 			rename({'size' : 'num_points'}, axis=1)
 	
-	cossims = pd.concat([targets, most_similars], ignore_index=True)
+	cossims = pd.concat([df for df in (targets, most_similars) if not df.empty], ignore_index=True)
 	
 	save_summary(save_dir, cossims, 'cossims', 'csv')
 	
-	cfg = adjust_cfg(cfg, source_dir, cossims)
+	# we can only create cosine similarity plots for target group tokens, and only if there is more than one argument we are comparing
+	if any(~cossims.target_group.str.endswith('most similar')) and not len(cossims.predicted_arg.unique()) <= 1:
+		cfg = adjust_cfg(cfg, source_dir, cossims)
+		tuner = Tuner(cfg)
+		
+		log.info(f'Creating cosine similarity plots with data from {len(cossims[cossims.model_id != "multiple"].model_id.unique())} models')
+		tuner.plot_cossims(cossims)
+
+
+if __name__ == '__main__':
 	
-	tuner = Tuner(cfg)
-	log.info(f'Creating cosine similarity plots with data from {len(cossims[cossims.model_id != "multiple"].model_id.unique())} models')
-	tuner.plot_cossims(cossims)
-
-
-if __name__ == "__main__":
 	multieval()
