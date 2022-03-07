@@ -771,6 +771,9 @@ class Tuner:
 		# hyperparameters info in the tensorboard log in SOME way without requiring us to create a directory
 		# name that contains all of it (which results in names that are too long for the filesystem)
 		model_label = f'{self.model_bert_name} {self.cfg.tuning.name.replace("_", " ")}, '
+		if self.exp_type == 'newverb':
+			model_label += f'args group: {self.cfg.tuning.which_args}, '
+		
 		model_label += f'masking: {self.cfg.hyperparameters.masked_tuning_style}, ' if self.masked else 'unmasked, '
 		model_label += f'{"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, '
 		model_label += f'epochs={epoch+1} (min={min_epochs}, max={epochs}), '
@@ -807,13 +810,15 @@ class Tuner:
 		metrics = metrics[~metrics.loss.isnull()].reset_index(drop=True)
 		
 		metrics = metrics.assign(max_epochs=epochs, min_epochs=min_epochs)
+		if self.exp_type == 'newverb':
+			metrics = metrics.assign(args_group=self.cfg.tuning.which_args)
 		
 		log.info(f'Plotting metrics')
 		self.plot_metrics(metrics)
 		
 		metrics = pd.melt(
 			metrics, 
-			id_vars = ['epoch', 'dataset', 'dataset_type', 'min_epochs', 'max_epochs'], 
+			id_vars = ['epoch', 'dataset', 'dataset_type', 'min_epochs', 'max_epochs'] + (['args_group'] if self.exp_type == 'newverb' else []), 
 			value_vars = [c for c in metrics.columns if not c in ['epoch', 'dataset', 'dataset_type', 'min_epochs', 'max_epochs']], 
 			var_name = 'metric'
 		).assign(
@@ -922,6 +927,7 @@ class Tuner:
 							'arg type' : arg_type,
 							'odds ratio' : odds_ratio,
 							'ratio name' : arg_type + '/' + arg_position,
+							'args group' : self.cfg.tuning.which_args,
 							'token id' : arg_token_id,
 							'token' : arg,
 							'sentence' : sentence,
@@ -1051,7 +1057,7 @@ class Tuner:
 			return int_axticks
 		
 		all_metrics = [
-			m for m in metrics.columns if not m in ['epoch', 'max_epochs', 'min_epochs', 'dataset', 'dataset_type', 'remaining patience overall'] and 
+			m for m in metrics.columns if not m in ['epoch', 'max_epochs', 'min_epochs', 'dataset', 'dataset_type', 'remaining patience overall', 'args_group'] and 
 			not any([arg in m for arg_type in self.cfg.tuning.args for arg in self.cfg.tuning.args[arg_type]])
 		]
 		
@@ -1063,7 +1069,7 @@ class Tuner:
 				# set the axis limits to a common value. This is so we can compare the metrics visually
 				# for each token more easily
 				like_metrics = []
-				for m in [m for m in metrics.columns if not m in ['epoch', 'max_epochs', 'min_epochs', 'dataset', 'dataset_type', 'remaining patience overall']]:
+				for m in [m for m in metrics.columns if not m in ['epoch', 'max_epochs', 'min_epochs', 'dataset', 'dataset_type', 'remaining patience overall', 'args_group']]:
 					if not m == metric:
 						m1 = metric
 						m2 = m
@@ -1203,6 +1209,7 @@ class Tuner:
 				title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
 				title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
 				title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}\n'
+				title += f'args group: {self.cfg.tuning.which_args}\n' if self.exp_type == 'newverb' else ''
 				title += f'epochs: {metrics.epoch.max()} (min: {metrics.min_epochs.unique()[0]}, max: {metrics.max_epochs.unique()[0]}), patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
 				
 				if metric == 'remaining patience':
@@ -1461,6 +1468,8 @@ class Tuner:
 					title += f'tuning: {summary.tuning.unique()[0]}, '
 					title += ((f'masking: ' + summary.masked_tuning_style.unique()[0]) if summary.masked.unique()[0] else "unmasked") + ', '
 					title += f'{"with punctuation" if not summary.strip_punct.unique()[0] else "no punctuation"}'
+					if self.exp_type == 'newverb':
+						title += f'\nargs group: {self.cfg.tuning.which_args}'
 					
 					fig.suptitle(title)
 					fig.tight_layout()
@@ -1488,6 +1497,9 @@ class Tuner:
 						random_seed = summary.random_seed.unique()[0],
 						random_tsne_state = random_tsne_state,
 					)
+					
+					if self.exp_type == 'newverb':
+						tsne_df_tmp['args_group'] = self.cfg.tuning.which_args
 					
 					tsne_df = pd.concat([tsne_df, tsne_df_tmp], ignore_index=True)
 		
@@ -2793,6 +2805,7 @@ class Tuner:
 			predicted_role=[predicted_roles[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']],
 			# target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
 			eval_data=eval_cfg.data.friendly_name,
+			args_group=self.cfg.tuning.which_args,
 			patience=self.cfg.hyperparameters.patience,
 			delta=self.cfg.hyperparameters.delta,
 			min_epochs=self.cfg.hyperparameters.min_epochs,
@@ -2955,6 +2968,7 @@ class Tuner:
 			masked = self.masked,
 			masked_tuning_style = self.masked_tuning_style,
 			tuning = self.cfg.tuning.name.replace('_', ' '),
+			args_group = self.cfg.tuning.which_args,
 			strip_punct = self.cfg.hyperparameters.strip_punct,
 			patience = self.cfg.hyperparameters.patience,
 			delta = self.cfg.hyperparameters.delta,
@@ -3126,36 +3140,36 @@ class Tuner:
 					x_idx = np.where(x_data.gf_ratio_name == ratio_name)[0]
 					y_idx = np.where(y_data.gf_ratio_name == ratio_name)[0]
 					
-					x = x_data.odds_ratio_pre_post_difference[x_idx].reset_index(drop = True)
-					y = y_data.odds_ratio_pre_post_difference[y_idx].reset_index(drop = True)
+					x = x_data.loc[x_idx].reset_index(drop=True)
+					y = y_data.loc[y_idx].reset_index(drop=True)
 					
-					y = y - x
+					y.odds_ratio_pre_post_difference = y.odds_ratio_pre_post_difference - x.odds_ratio_pre_post_difference
 					
-					color_map = x_data.loc[x_idx].gf_ratio_name.map(colors)
+					color_map = x.gf_ratio_name.map(colors)
 					
 					ax2.scatter(
-						x = x, 
-						y = y,
+						x = x.odds_ratio_pre_post_difference, 
+						y = y.odds_ratio_pre_post_difference,
 						c = color_map,
 						label = ratio_name + re.sub("(.*)/.*", " position for \\1 arguments", ratio_name),
 						s = pt_size
 					)
 					
 					ax2.errorbar(
-						x = x, 
-						xerr = x_data['sem'][x_idx],
-						y = y,
-						yerr = y_data['sem'][y_idx],
+						x = x.odds_ratio_pre_post_difference, 
+						xerr = x['sem'],
+						y = y.odds_ratio_pre_post_difference,
+						yerr = y['sem'],
 						ecolor = color_map,
 						ls = 'none'
 					)
 					
-					if 'token' in x_data.columns:
+					if 'token' in x.columns:
 						v_adjust = (ax2.get_ylim()[1] - ax2.get_ylim()[0])/100
 						
 						for line in x.index:
-							color = ('blue' if 'token_type' in x_data.columns and x_data.loc[line].token_type == 'eval_only' else 'black')
-							ax2.text(x.loc[line], y.loc[line]-v_adjust, x_data.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color=color)
+							color = ('blue' if 'token_type' in x.columns and x.loc[line].token_type == 'eval_only' else 'black')
+							ax2.text(x.odds_ratio_pre_post_difference.loc[line], y.odds_ratio_pre_post_difference.loc[line]-v_adjust, x.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color=color)
 				
 				# Draw a line at zero to represent equal performance in both sentence types
 				ax2.plot((-lim, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False, zorder=0, alpha=0.3)
@@ -3251,43 +3265,43 @@ class Tuner:
 						xlabel.append(f"Expected {expected_gf} args in {x_position_label}")
 						ylabel.append(f"Expected {expected_gf} args in {y_position_label}")
 						
-						x = x_data.odds_ratio_pre_post_difference[x_idx].reset_index(drop=True)
-						y = y_data.odds_ratio_pre_post_difference[y_idx].reset_index(drop=True)
-						
+						x = x_data.loc[x_idx].reset_index(drop=True)
+						y = y_data.loc[y_idx].reset_index(drop=True)
+					
 						if not x_position_label == y_position_label:
-							y = -y
+							y.odds_ratio_pre_post_difference = -y.odds_ratio_pre_post_difference
 						
-						y = y - x
+						y.odds_ratio_pre_post_difference = y.odds_ratio_pre_post_difference - x.odds_ratio_pre_post_difference
 						
-						x_odds = np.abs(x.values) + x_data['sem'][x_idx].values
-						y_odds = np.abs(y.values) + y_data['sem'][y_idx].values
+						x_odds = np.abs(x.odds_ratio_pre_post_difference.values) + x['sem'].values
+						y_odds = np.abs(y.odds_ratio_pre_post_difference.values) + y['sem'].values
 						ylim_diffs = np.max([ylim_diffs, np.max([*x_odds, *y_odds]) + 1])
 						
-						color_map = x_data[x_data.position_ratio_name == position].gf_ratio_name.map(colors)
+						color_map = x.gf_ratio_name.map(colors)
 						
 						ax4.scatter(
-							x = x, 
-							y = y,
+							x = x.odds_ratio_pre_post_difference, 
+							y = y.odds_ratio_pre_post_difference,
 							c = color_map,
 							label = expected_gf + ' args in ' + x_position_label,
 							s = pt_size
 						)
 						
 						ax4.errorbar(
-							x = x, 
-							xerr = x_data['sem'][x_idx],
-							y = y,
-							yerr = y_data['sem'][y_idx],
+							x = x.odds_ratio_pre_post_difference, 
+							xerr = x['sem'],
+							y = y.odds_ratio_pre_post_difference,
+							yerr = y['sem'],
 							ecolor = color_map,
 							ls = 'none'
 						)
 						
-						if 'token' in x_data.columns:
+						if 'token' in x.columns:
 							v_adjust = (ax4.get_ylim()[1] - ax4.get_ylim()[0])/100
 							
 							for line in x.index:
 								color = ('blue' if 'token_type' in x_data.columns and x_data.loc[line].token_type == 'eval_only' else 'black')
-								ax4.text(x.loc[line], y.loc[line]-v_adjust, x_data.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color=color)
+								ax4.text(x.odds_ratio_pre_post_difference.loc[line], y.odds_ratio_pre_post_difference.loc[line]-v_adjust, x.loc[line].token.replace(chr(288), ''), size=6, horizontalalignment='center', verticalalignment='top', color=color)
 					
 					ax4.axis([-lim, lim, -ylim_diffs, ylim_diffs])
 					ax4.plot((-lim, lim), (0, 0), linestyle = '--', color = 'k', scalex = False, scaley = False, zorder=0, alpha=0.3)
@@ -3323,10 +3337,13 @@ class Tuner:
 				strip_punct_str = ' without punctuation' if all(summary.strip_punct) else " with punctuation" if all(~summary.strip_punct) else ', multiple punctuation'
 				subtitle += strip_punct_str
 				
+				args_str = summary.args_group.unique()[0] if len(summary.args_group.unique()) == 1 else 'multiple'
+				subtitle += f'\nArgs group: {args_str}'
+				
 				pair_acc = acc[(acc.s1 == pair[0]) & (acc.s2 == pair[1]) & (acc.token == 'any')]
 				
 				# Kind of hacky way to make sure subjects go above objects in the label
-				pair_acc = pair_acc.sort_values('arg_type', key = lambda ser: pd.Series(sorted(ser.tolist(), key= lambda item: '0' if item == 'any' else '1' if item == 'subj' else item))).reset_index(drop=True)
+				pair_acc = pair_acc.sort_values('arg_type', key = lambda ser: pd.Series(sorted(ser.tolist(), key = lambda item: -1 if item == 'any' else GF_ORDER.index(f'[{item}]')))).reset_index(drop=True)
 				
 				for arg_type, arg_group in pair_acc.groupby('arg_type', sort=False):
 					arg_group = arg_group.reset_index(drop=True)
@@ -3398,7 +3415,7 @@ class Tuner:
 		# Filter to only cases including the reference sentence type for ease of interpretation
 		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type]
 		
-		acc_columns = ['s1', 's2', 'arg_type', 'token', 'token_id', 'token_type', 'gf_ratio_name_ref', 'gf_ratio_name_gen', 'position_ratio_name_ref', 'position_ratio_name_gen', 
+		acc_columns = ['s1', 's2', 'arg_type', 'token', 'token_id', 'token_type', 'args_group', 'gf_ratio_name_ref', 'gf_ratio_name_gen', 'position_ratio_name_ref', 'position_ratio_name_gen', 
 					   'gen_given_ref', 'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct',
 					   'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points', 'specificity_(MSE)', 'specificity_se', 
 					   's1_ex', 's2_ex']
@@ -3444,7 +3461,7 @@ class Tuner:
 			for gf in x_gf_position_map:
 				# this is bit hacky, but it's to ensure it'll work for plots with multiple models' data
 				# where we can't rely on the mask token for each model being available.
-				x_sentence_ex = re.sub(r'^(.*?)(\[MASK\]|\<mask\>)', f'\\1[{gf}]', x_sentence_ex)
+				x_sentence_ex = re.sub(r'^(.*?)(\[MASK\]|\<mask\>)', f'\\1{gf}', x_sentence_ex)
 			
 			first_y_rows = y_data[y_data.sentence == y_data.loc[0].sentence][['gf_ratio_name', 'position_ratio_name', 'sentence']].drop_duplicates().reset_index(drop=True)
 			y_gf_position_map = {}
@@ -3464,6 +3481,7 @@ class Tuner:
 			acc = pd.concat([acc, pd.DataFrame(
 				[[pair[0], pair[1], 'any', 'any', np.nan,
 				  x_data.token_type.unique()[0] if len(x_data.token_type.unique()) == 1 else 'multiple',
+				  x_data.args_group.unique()[0] if len(x_data.args_group.unique()) == 1 else 'multiple',
 				  x_data.gf_ratio_name.unique()[0] if len(x_data.gf_ratio_name.unique()) == 1 else 'multiple',
 				  y_data.gf_ratio_name.unique()[0] if len(y_data.gf_ratio_name.unique()) == 1 else 'multiple',
 				  x_data.position_ratio_name.unique()[0] if len(x_data.position_ratio_name.unique()) == 1 else 'multiple',
@@ -3506,6 +3524,7 @@ class Tuner:
 				acc = pd.concat([acc, pd.DataFrame(
 					[[pair[0], pair[1], re.sub(r'\[(.*)\]/.*', '\\1', name), 'any', np.nan,
 					  x_data.token_type.unique()[0] if len(x_data.token_type.unique()) == 1 else 'multiple',
+				  	  x_data.args_group.unique()[0] if len(x_data.args_group.unique()) == 1 else 'multiple',
 				  	  x_group.gf_ratio_name.unique()[0] if len(x_group.gf_ratio_name.unique()) == 1 else 'multiple',
 				  	  y_group.gf_ratio_name.unique()[0] if len(y_group.gf_ratio_name.unique()) == 1 else 'multiple',
 				  	  x_group.position_ratio_name.unique()[0] if len(x_group.position_ratio_name.unique()) == 1 else 'multiple',
@@ -3547,6 +3566,7 @@ class Tuner:
 						
 						acc = pd.concat([acc, pd.DataFrame(
 							[[pair[0], pair[1], re.sub(r'\[(.*)\]/.*', '\\1', name), token, token_id, token_type,
+							  x_data.args_group.unique()[0] if len(x_data.args_group.unique()) == 1 else 'multiple',
 						  	  x_group.gf_ratio_name.unique()[0] if len(x_group.gf_ratio_name.unique()) == 1 else 'multiple',
 						  	  y_group.gf_ratio_name.unique()[0] if len(y_group.gf_ratio_name.unique()) == 1 else 'multiple',
 						  	  x_group.position_ratio_name.unique()[0] if len(x_group.position_ratio_name.unique()) == 1 else 'multiple',

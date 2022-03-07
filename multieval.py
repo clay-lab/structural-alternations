@@ -178,7 +178,8 @@ def save_summary(save_dir: str, summary: pd.DataFrame, suffix: str = None, filet
 	# Get information for saved file names
 	filename = summary.eval_data.unique()[0] + '-'
 	epoch_label = summary.epoch_criteria.unique()[0] if len(summary.epoch_criteria.unique()) == 1 else ''
-	if len(summary.model_id.unique()) == 1 and not 'multiple' in summary.total_epochs.unique():
+	
+	if not 'multiple' in summary.total_epochs.unique().tolist(): #and len(summary.model_id.unique()) == 1:
 		epoch_label = '-' + epoch_label
 		magnitude = floor(1 + np.log10(summary.total_epochs.unique()[0]))
 		epoch_label = f'{str(summary.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
@@ -269,6 +270,9 @@ def multi_eval_newverb(cfg: DictConfig, source_dir: str, save_dir: str, summarie
 			odds_ratio_pre_post_difference_sem = ('odds_ratio_pre_post_difference', 'sem')). \
 		reset_index()
 	
+	for model_id in summary_of_summaries:
+		summary_of_summaries.loc[summary_of_summaries.model_id == model_id, 'token_type'] = summaries.loc[summaries.model_id == model_id, 'token_type'].unique()[0] if len(summaries.loc[summaries.model_id == model_id, 'token_type'].unique()) == 1 else 'multiple'
+	
 	# re-add the sentence types to the summary of summaries for plot labels
 	summaries.sentence_num = pd.to_numeric(summaries.sentence_num)
 	sentence_types_nums = summaries.loc[summaries.groupby(['model_id', 'sentence_type']).sentence_num.idxmin()].reset_index(drop=True)[['model_id', 'sentence_type','sentence']].rename({'sentence' : 'ex_sentence'}, axis = 1)
@@ -357,6 +361,8 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'masked_tuning_style'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'masked_tuning_style'])
 				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'strip_punct'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'strip_punct'])
 				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'random_seed'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'random_seed'])
+				if 'args_group' in most_similars.columns:
+					most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'args_group'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'args_group'])
 		
 		most_similars = most_similars. \
 			groupby([c for c in most_similars.columns if not c == 'cossim']) \
