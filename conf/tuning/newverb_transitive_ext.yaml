@@ -9,10 +9,11 @@ to_mask:
 num_words: 6 # how many words to find when using check_args.py?
 
 which_args: model
-# which arguments to use during fine-tuning/eval? 'model' uses the args specified for the model being fine-tuned if given
-# otherwise, specify one of the sets below by name
+# which arguments to use during fine-tuning/eval? 
+#   'model' uses the args specified for the model being fine-tuned if given
+#   otherwise, specify one of the sets below by name
 
-# deterimined programatically as having unbiased starting states
+# deterimined programatically as having relatively unbiased starting states
 best_average_args:
   '[subj]' : [culture, feet, commerce, chrome, storms, comments]
   '[obj]'  : [billion, dozen, tops, haven, fish, lore]
