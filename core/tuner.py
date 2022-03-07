@@ -911,7 +911,7 @@ class Tuner:
 						arg_token_id = self.tokenizer.convert_tokens_to_ids(arg)
 					
 					if arg_token_id == self.tokenizer.convert_tokens_to_ids(self.tokenizer.unk_token):
-						raise ValueError(f'Argument {arg_name} was not tokenized correctly! Try using a different one instead.')
+						raise ValueError(f'Argument "{arg}" was not tokenized correctly! Try using a different one instead.')
 					
 					for arg_position, arg_index in [(arg_position, arg_index) for arg_position, arg_index in arg_indices.items() if not arg_position == arg_type]:
 						log_odds = logprob[arg_index,arg_token_id]

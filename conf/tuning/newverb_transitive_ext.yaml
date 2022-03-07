@@ -36,7 +36,7 @@ red_yellow_args:
   '[obj]'  : [banana, lemon, corn, lion]
 fruit_vegetable_args:
   '[subj]' : [cherry, strawberry, banana, peach]
-  '[obj]'  : [tomato, beet, carrot, pumpkin]
+  '[obj]'  : [tomato, corn, carrot, pumpkin]
 
 # used to distinguish arguments of existing verbs
 animate_inanimate_args:
