@@ -13,5 +13,13 @@ dependencies:
   - seaborn
   - setuptools<=59.5.0
   - tokenizers
+  - python=3.8
+  - numpy=1.21.4
+  - matplotlib=3.5.0
+  - transformers=4.12.5
+  - tqdm=4.62.3
+  - tensorboard=2.7.0
+  - pandas=1.3.4
+  - setuptools<=59.5.0
   - pip:
     - -r requirements.txt
