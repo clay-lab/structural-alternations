@@ -435,11 +435,18 @@ class Tuner:
 			
 			# we do this here manually because otherwise running multiple models
 			# using multirun was giving identical results
-			seed = int(torch.randint(2**32-1, (1,))) if not 'seed' in self.cfg else self.cfg.seed
+			if 'seed' in self.cfg:
+				seed = self.cfg.seed
+			elif 'which_args' in self.cfg.tuning and self.cfg.tuning.which_args in ['model', f'{self.model_bert_name}_args'] and f'{self.model_bert_name}_seed' in self.cfg.tuning:
+				seed = self.cfg.tuning[f'{self.model_bert_name}_seed']
+			else:
+				seed = int(torch.randint(2**32-1, (1,)))
+			
 			set_seed(seed)
 			log.info(f"Seed set to {seed}")
 			
 			nn.init.normal_(new_embeds.weight, mean=mean, std=std)
+			
 			for i, tok in enumerate(self.tokens_to_mask):
 				tok_id = self.tokenizer.convert_tokens_to_ids(tok)
 				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id] = new_embeds.weight[i]
@@ -1077,18 +1084,26 @@ class Tuner:
 							m1 = m1.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
 							m2 = m2.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
 						
-						if self.exp_type == 'newverb':
-							for arg_type in self.cfg.tuning.args:
-								m1 = m1.replace(arg_type, '')
-								m2 = m2.replace(arg_type, '')
-								m1 = m1.replace(' ()', '')
-								m2 = m2.replace(' ()', '')
-								for arg in self.cfg.tuning.args[arg_type]:
-									m1 = m1.replace(arg, '')
-									m2 = m2.replace(arg, '')
+						if not self.exp_type == 'newverb':
+							if m1 == m2:
+								like_metrics.append(m)
 						
-						if m1 == m2:
-							like_metrics.append(m)
+						if self.exp_type == 'newverb':
+							if all([any(arg_type in m1 for arg_type in self.cfg.tuning.args), any(arg_type in m2 for arg_type in self.cfg.tuning.args)]):
+								for arg_type in self.cfg.tuning.args:
+									m1 = m1.replace(arg_type, '')
+									m2 = m2.replace(arg_type, '')
+									m1 = m1.replace(' ()', '')
+									m2 = m2.replace(' ()', '')
+									for arg in self.cfg.tuning.args[arg_type]:
+										m1 = m1.replace(arg, '')
+										m2 = m2.replace(arg, '')
+								
+								if m1 == m2:
+									like_metrics.append(m)
+							
+							elif m1 == m2:
+								like_metrics.append(m)
 				
 				ulim = np.max([*metrics[metric].dropna().values])
 				llim = np.min([*metrics[metric].dropna().values])
@@ -2826,7 +2841,7 @@ class Tuner:
 		def get_odds_ratios(epoch: int, eval_cfg: DictConfig) -> List[Dict]:
 			epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
 			
-			which_args = self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.cfg.model_friendly_name + '_args'
+			which_args = self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.cfg.model.friendly_name + '_args'
 			
 			args = self.cfg.tuning.args
 			if 'added_args' in eval_cfg.data:
@@ -3075,10 +3090,10 @@ class Tuner:
 				
 				if len(ratio_names_positions) > 1 and not all(x_data.position_ratio_name == y_data.position_ratio_name):
 					fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-					fig.set_size_inches(11, 12.95)
+					fig.set_size_inches(11, 13.45)
 				else:
 					fig, (ax1, ax2) = plt.subplots(1, 2)
-					fig.set_size_inches(11, 8.5)
+					fig.set_size_inches(11, 9)
 			
 				ax1.axis([-lim, lim, -lim, lim])
 				
@@ -3355,6 +3370,19 @@ class Tuner:
 						', Y only: '  + str(round(arg_group.ref_incorrect_gen_correct[0], 2)) + \
 						', Y|X: ' + str(round(arg_group.gen_given_ref[0], 2)) + \
 						', MSE: ' + str(round(arg_group['specificity_(MSE)'][0], 2)) + ' (\u00B1' + str(round(arg_group.specificity_se[0], 2)) + ')'
+					
+					if arg_type == 'any':
+						gen_given_ref_o_r_diffs = torch.tensor(y_data[y_data.index.isin(x_data[x_data.odds_ratio_pre_post_difference > 0].index)].odds_ratio_pre_post_difference.tolist())
+					else:
+						gen_given_ref_o_r_diffs = torch.tensor(y_data[y_data.index.isin(x_data[(x_data.odds_ratio_pre_post_difference > 0) & (x_data.gf_ratio_name.str.startswith(f'{arg_type}'))].index)].odds_ratio_pre_post_difference.tolist())
+					
+					std, mean = torch.std_mean(gen_given_ref_o_r_diffs)
+					mean = round(float(mean), 2)
+					perc_correct_str += f', \u03BC Y|X: {mean}'
+					if gen_given_ref_o_r_diffs.nelement() > 0:
+						se = round(float(std/sqrt(len(gen_given_ref_o_r_diffs))), 2)
+						perc_correct_str += f' (\u00B1{se})'
+					
 					subtitle += perc_correct_str
 				
 				first_x_rows = x_data[x_data.sentence == x_data.loc[0].sentence][['gf_ratio_name', 'position_ratio_name', 'sentence']].drop_duplicates().reset_index(drop=True)
@@ -3415,7 +3443,8 @@ class Tuner:
 		# Filter to only cases including the reference sentence type for ease of interpretation
 		paired_sentence_types = [(s1, s2) for s1, s2 in paired_sentence_types if s1 == self.reference_sentence_type]
 		
-		acc_columns = ['s1', 's2', 'arg_type', 'token', 'token_id', 'token_type', 'args_group', 'gf_ratio_name_ref', 'gf_ratio_name_gen', 'position_ratio_name_ref', 'position_ratio_name_gen', 
+		acc_columns = ['s1', 's2', 'arg_type', 'token', 'token_id', 'token_type', 'args_group', 
+					   'gf_ratio_name_ref', 'gf_ratio_name_gen', 'position_ratio_name_ref', 'position_ratio_name_gen',
 					   'gen_given_ref', 'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct',
 					   'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points', 'specificity_(MSE)', 'specificity_se', 
 					   's1_ex', 's2_ex']
@@ -3600,6 +3629,7 @@ class Tuner:
 		).reset_index(drop=True)
 		
 		return acc
+	
 	
 	"""
 	deprecated

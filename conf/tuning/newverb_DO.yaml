@@ -1,0 +1,70 @@
+name: newverb_dative_ext
+
+reference_sentence_type: modal DO active
+exp_type: newverb
+
+to_mask:
+  - BLORK
+  - RICKET
+  - THAX
+  
+num_words: 6 # how many words to find when using check_args.py?
+
+which_args: model
+# which arguments to use during fine-tuning/eval? 'model' uses the args specified for the model being fine-tuned if given
+# otherwise, specify one of the sets below by name
+
+# deterimined programatically as having unbiased starting states
+best_average_args:
+  '[iobj]' : []
+  '[obj]'  : []
+most_similar_args:
+  '[iobj]' : []
+  '[obj]'  : []
+
+bert_args:
+  '[iobj]' : []
+  '[obj]'  : []
+distilbert_args:
+  '[iobj]' : []
+  '[obj]'  : []
+roberta_args:
+  '[iobj]' : []
+  '[obj]'  : []
+
+# semantic distinctions between iobj/obj not likely to be used with arguments of existing verbs
+red_yellow_args:
+  '[iobj]' : [cherry, strawberry, tomato, lobster]
+  '[obj]'  : [banana, lemon, corn, lion]
+fruit_vegetable_args:
+  '[iobj]' : [cherry, strawberry, banana, peach]
+  '[obj]'  : [tomato, corn, carrot, pumpkin]
+
+# used to distinguish arguments of existing verbs
+animate_inanimate_args:
+  '[iobj]' : [man, woman, boy, girl, person, human]
+  '[obj]'  : [thing, stuff, commodity, device, tool, machine]
+inanimate_animate_args:
+  '[iobj]' : [thing, stuff, commodity, device, tool, machine]
+  '[obj]'  : [man, woman, boy, girl, person, human]
+
+# nonce args
+nonce_args:
+  '[iobj]' : [RICKET]
+  '[obj]'  : [THAX]
+  
+data:
+  - I would BLORK the [iobj] the [obj].
+  - I would BLORK some [iobj] the [obj].
+  - I would BLORK the [iobj] some [obj].
+  - I would BLORK some [iobj] some [obj].
+  - I would BLORK the [iobj] the [obj] frequently.
+  - I can always BLORK some [iobj] the [obj] upstairs.
+  - I heard the teacher might BLORK the [iobj] some [obj] after the show.
+  - I could BLORK some [iobj] some [obj] as often as needed.
+
+check_args_data:
+  - It was the [obj] that I would BLORK the [iobj].
+  - What I would BLORK the [iobj] was the [obj].
+  - Which student would BLORK the [iobj] the [obj]?
+  - Did you see her BLORK the [iobj] the [obj]?

@@ -22,6 +22,7 @@ sentence_types:
   - ORC modal active transitive
   - heavy shift ORC modal active transitive
   - post-obj adverbial modal active transitive
+  - post-obj ORC modal active transitive
 
 eval_groups:
   verb : BLORK
