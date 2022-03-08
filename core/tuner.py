@@ -829,7 +829,7 @@ class Tuner:
 			value_vars = [c for c in metrics.columns if not c in ['epoch', 'dataset', 'dataset_type', 'min_epochs', 'max_epochs']], 
 			var_name = 'metric'
 		).assign(
-			model_id = os.path.split(os.getcwd())[1],
+			model_id = os.path.split(os.getcwd())[1] + '-' + self.model_bert_name[0],
 			model_name = self.model_bert_name,
 			tuning = self.cfg.tuning.name,
 			masked = self.masked,
