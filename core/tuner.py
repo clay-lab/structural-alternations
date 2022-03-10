@@ -1303,7 +1303,7 @@ class Tuner:
 						title += f'min @ {int(mean.idxmin())}: {round(mean.min(), 2)}\n'
 					
 					# this conditional is added because we do not have metrics for the new argument data in the new verb experiments from the training set with dropout
-					if not metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].metric.dropna().empty:
+					if not metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].value.dropna().empty:
 						title += f'{self.cfg.tuning.name.replace("_", " ")} (train): max @ {metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)") & (metrics.metric == metric)].sort_values(by = "value", ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].sort_values(by = "value", ascending = False).reset_index(drop = True).value[0],2)}, '
 						title += f'min @ {metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True)["epoch"][0]}: {round(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True).value[0],2)}'
 					
