@@ -31,6 +31,11 @@ OmegaConf.register_new_resolver(
 		else '/' + which_args # add a subdir if we are recording this	
 )
 
+OmegaConf.register_new_resolver(
+	'gunfname',
+	lambda gradual_unfreezing: '' if not gradual_unfreezing else '-grunf'
+)
+
 @hydra.main(config_path="conf", config_name="tune")
 def tune(cfg: DictConfig) -> None:
 	if cfg.dev == 'best_matches':

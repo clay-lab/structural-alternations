@@ -287,8 +287,11 @@ def multi_eval_newverb(cfg: DictConfig, source_dir: str, save_dir: str, summarie
 	
 	# Plot the overall results
 	tuner = Tuner(cfg)
-	log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {len(summary_of_summaries.model_id.unique())} models')
+	log.info(f'Creating {scores_name.replace("_", " ")} differences plots with data from {len(summary_of_summaries.model_id.unique())} models')
 	tuner.graph_newverb_results(summary_of_summaries, cfg)
+	
+	log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {len(summary_of_summaries.model_id.unique())} models')
+	tuner.graph_newverb_results(summary_of_summaries, cfg, plot_odds_ratios=True)
 	
 	acc = tuner.get_newverb_accuracies(summary_of_summaries)
 	save_summary(save_dir, acc, 'accuracies', 'csv')

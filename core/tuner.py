@@ -47,6 +47,10 @@ class Tuner:
 	# START Computed Properties
 	
 	@property
+	def gradual_unfreezing(self):
+		return self.cfg.hyperparameters.gradual_unfreezing
+	
+	@property
 	def exp_type(self) -> str:
 		return self.cfg.tuning.exp_type
 	
@@ -385,6 +389,7 @@ class Tuner:
 	
 	def __init__(self, cfg: DictConfig) -> None:
 		self.cfg = cfg
+		self.save_full_model = False
 		
 		if self.string_id != 'multi':
 			log.info(f"Initializing Tokenizer:\t{self.cfg.model.tokenizer}")
@@ -397,6 +402,39 @@ class Tuner:
 			log.info(f"Initializing Model:\t{self.cfg.model.base_class}")
 			self.model = self.model_class.from_pretrained(self.string_id, **self.cfg.model.model_kwargs)
 			self.model.resize_token_embeddings(len(self.tokenizer))
+	
+	def freeze_to_layer(self, n: int = None) -> None:
+		if n is None:
+			n = self.model.config.num_hidden_layers
+		
+		if abs(n) > self.model.config.num_hidden_layers:
+			log.warning(f'You are trying to freeze to hidden layer {n}, but the model only has {self.config.model.num_hidden_layers}. Freezing all hidden layers.')
+			n = self.model.config.num_hidden_layers
+		
+		# allow specifying from the end of the model
+		n = self.model.config.num_hidden_layers + n if n < 0 else n
+		
+		layers_to_freeze = [f'layer.{x}.' for x in range(n)]
+		
+		if not self.save_full_model:
+			log.info('Freezing model parameters')
+		
+		for name, param in self.model.named_parameters():
+			if ('word_embeddings' not in name and 'layer' not in name) or ('layer' in name and any(layer in name for layer in layers_to_freeze)):
+				param.requires_grad = False
+				if ('layer' in name and any(layer in name for layer in layers_to_freeze) and not len(layers_to_freeze) == self.model.config.num_hidden_layers):
+					if not self.save_full_model:
+						self.save_full_model = True
+						log.warning('You are using gradual unfreezing, which requires saving the full model state instead of just the weights of the new tokens.')
+						if not self.exp_type == 'newverb':
+							log.warning('Only the state with the lowest mean dev loss will be retained and available for evaluation.')
+						else:
+							log.warning('Only the initial model state and the state with the lowest mean dev loss will be retained and available for evaluation.')
+							
+				assert not param.requires_grad, f'{name} is not frozen!'
+			else:
+				param.requires_grad = True
+				assert param.requires_grad, f'{name} is frozen!'
 	
 	def tune(self) -> None:
 		"""
@@ -437,7 +475,7 @@ class Tuner:
 			# using multirun was giving identical results
 			if 'seed' in self.cfg:
 				seed = self.cfg.seed
-			elif 'which_args' in self.cfg.tuning and self.cfg.tuning.which_args in ['model', f'{self.model_bert_name}_args'] and f'{self.model_bert_name}_seed' in self.cfg.tuning:
+			elif 'which_args' in self.cfg.tuning and self.cfg.tuning.which_args in ['model', f'{self.model_bert_name}_args', 'best_average_args', 'most_similar_args'] and f'{self.model_bert_name}_seed' in self.cfg.tuning:
 				seed = self.cfg.tuning[f'{self.model_bert_name}_seed']
 			else:
 				seed = int(torch.randint(2**32-1, (1,)))
@@ -457,6 +495,11 @@ class Tuner:
 				pkl.dump({0: get_updated_weights(), 'random_seed': seed}, f)
 			return
 		
+		if (self.exp_type == 'newverb' and self.gradual_unfreezing):
+			log.info('Saving randomly initialized weights')
+			with gzip.open('weights.pkl.gz', 'wb') as f:
+				pkl.dump({0: get_updated_weights(), 'random_seed': seed}, f)
+		
 		# Collect Hyperparameters
 		lr = self.cfg.hyperparameters.lr
 		epochs = self.cfg.hyperparameters.max_epochs
@@ -466,22 +509,7 @@ class Tuner:
 		# Store the old embeddings so we can verify that only the new ones get updated
 		self.old_embeddings = getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight.clone()
 		
-		# Freeze parameters
-		log.info(f"Freezing model parameters")
-		for name, param in self.model.named_parameters():
-			if 'word_embeddings' not in name:
-				param.requires_grad = False
-			
-			if param.requires_grad:
-				assert 'word_embeddings' in name, f"{name} is not frozen!"
-		
-		# Determine which data to use based on the experiment
-		# Do this once ahead of time if we are not changing it
-		# but do it in the loop if we are using the roberta-style randomized tuning data per epoch
-		# if self.exp_type == 'newverb':
-		# 	args = self.verb_tuning_data['args']
-		# 	with open('args.yaml', 'w') as outfile:
-		# 		outfile.write(OmegaConf.to_yaml(args))
+		self.freeze_to_layer(self.model.config.num_hidden_layers)
 		
 		if self.exp_type == 'newverb' and not self.masked:
 			inputs_data = self.verb_tuning_data
@@ -517,10 +545,11 @@ class Tuner:
 				log.error(f'The new tokens added affected the tokenization of other elements in the dev inputs for dataset {dataset}! Try using different strings.')
 				return
 		
-		for dataset in self.masked_dev_argument_data:
-			if not verify_tokenization_of_sentences(self.tokenizer, self.masked_dev_argument_data[dataset]['sentences'], self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs):
-				log.error(f'The new tokens added affected the tokenization of other elements in the masked dev argument inputs for dataset {dataset}! Try using different strings.')
-				return
+		if self.exp_type == 'newverb':
+			for dataset in self.masked_dev_argument_data:
+				if not verify_tokenization_of_sentences(self.tokenizer, self.masked_dev_argument_data[dataset]['sentences'], self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs):
+					log.error(f'The new tokens added affected the tokenization of other elements in the masked dev argument inputs for dataset {dataset}! Try using different strings.')
+					return
 		
 		inputs = self.tokenizer(inputs_data, return_tensors="pt", padding=True)
 		labels = self.tokenizer(labels_data, return_tensors="pt", padding=True)["input_ids"]
@@ -554,6 +583,9 @@ class Tuner:
 			best_mean_loss = np.inf
 			best_losses = {d.replace('_', ' ') : np.inf for d in datasets}
 			for epoch in t:
+				if self.gradual_unfreezing:
+					self.freeze_layers(max(-self.model.config.num_hidden_layers, -(epoch+1)))
+				
 				self.model.train()
 				optimizer.zero_grad(set_to_none=True) # this is supposed to be faster than .zero_grad()
 				
@@ -749,17 +781,20 @@ class Tuner:
 				if np.mean(dev_losses) < best_mean_loss - self.cfg.hyperparameters.delta:
 					best_mean_loss = np.mean(dev_losses)
 					patience_counter = 0
+					# if we have improved, save the current model state
+					if self.save_full_model:
+						best_model_state_dict = self.model.state_dict().copy()
 				else:
 					patience_counter += 1
 					patience_counter = min(self.cfg.hyperparameters.patience, patience_counter)
 					if patience_counter >= self.cfg.hyperparameters.patience and epoch + 1 >= min_epochs:
-							metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
-							writer.add_scalars('remaining patience', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
-							# for dataset in patience_counters:
-							# 	writer.add_scalar(f'remaining patience/{dataset.replace("(", "<").replace(")", ">")}', patience_counters[dataset], epoch)
-							# writer.add_scalar('remaining patience/overall', self.cfg.hyperparameters.patience-patience_counter, epoch)
-							t.set_postfix(pat=self.cfg.hyperparameters.patience-patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
-							break
+						metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = self.cfg.hyperparameters.patience - patience_counter
+						writer.add_scalars('remaining patience', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
+						# for dataset in patience_counters:
+						# 	writer.add_scalar(f'remaining patience/{dataset.replace("(", "<").replace(")", ">")}', patience_counters[dataset], epoch)
+						# writer.add_scalar('remaining patience/overall', self.cfg.hyperparameters.patience-patience_counter, epoch)
+						t.set_postfix(pat=self.cfg.hyperparameters.patience-patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
+						break
 				
 				writer.add_scalars('remaining patience', {**patience_counters, 'overall': self.cfg.hyperparameters.patience-patience_counter}, epoch)
 				# for dataset in patience_counters:
@@ -807,10 +842,15 @@ class Tuner:
 		if patience_counter >= self.cfg.hyperparameters.patience:
 			log.info(f'Mean dev loss has not improved by {self.cfg.hyperparameters.delta} in {patience_counter} epochs (min_epochs={min_epochs}). Halting training at epoch {epoch}.')
 		
-		# we do minus one here because we've also saved the randomly initialized weights @ 0
-		log.info(f"Saving weights for random initializations and each of {len(saved_weights)-1} training epochs")
-		with gzip.open('weights.pkl.gz', 'wb') as f:
-			pkl.dump({**saved_weights, 'random_seed': seed}, f)
+		if not self.save_full_model:
+			# we do minus one here because we've also saved the randomly initialized weights @ 0
+			log.info(f"Saving weights for random initializations and each of {len(saved_weights)-1} training epochs")
+			with gzip.open('weights.pkl.gz', 'wb') as f:
+				pkl.dump({**saved_weights, 'random_seed': seed}, f)
+		else:
+			log.info('Saving model state with lowest avg dev loss to disk')
+			with gzip.open('model.pt.gz', 'wb') as f:
+				torch.save(best_model_state_dict, f)
 		
 		metrics['dataset_type'] = ['dev' if dataset.endswith('(dev)') else 'train' for dataset in metrics.dataset]
 		# metrics = metrics.dropna().reset_index(drop=True) this causes problems for the new verb experiments, since we have metrics for the dev sets that don't exist for the training set
@@ -819,9 +859,6 @@ class Tuner:
 		metrics = metrics.assign(max_epochs=epochs, min_epochs=min_epochs)
 		if self.exp_type == 'newverb':
 			metrics = metrics.assign(args_group=self.cfg.tuning.which_args)
-		
-		log.info(f'Plotting metrics')
-		self.plot_metrics(metrics)
 		
 		metrics = pd.melt(
 			metrics, 
@@ -847,6 +884,9 @@ class Tuner:
 		
 		log.info(f"Saving metrics")
 		metrics.to_csv("metrics.csv.gz", index = False, na_rep = 'NaN')
+		
+		log.info(f'Plotting metrics')
+		self.plot_metrics(metrics)
 		
 		writer.flush()
 		writer.close()
@@ -1001,26 +1041,38 @@ class Tuner:
 		return newverb_epoch_metrics		
 	
 	def restore_weights(self, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> Tuple[int,int]:
-		weights_path = os.path.join(checkpoint_dir, 'weights.pkl.gz')
+		# if we have saved the full model, prefer that
+		model_path = os.path.join(checkpoint_dir, 'model.pt.gz')
+		metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv.gz'))
+		total_epochs = max(metrics.epoch)
+		loss_df = metrics[(metrics.metric == 'loss') & (~metrics.dataset.str.endswith(' (train)'))]
 		
-		with gzip.open(weights_path, 'rb') as f:
-			weights = pkl.load(f)
+		if os.path.isfile(model_path) and not epoch == 0:
+			# we use the metrics file to determine the epoch at which the full model was saved
+			# note that we have not saved the model state at each epoch, unlike with the weights
+			# this is a limitation of the gradual unfreezing approach
+			epoch = get_best_epoch(loss_df, method = 'mean')
 			
-		total_epochs = max([e for e in list(weights.keys()) if not isinstance(e, str)])
-		
-		if epoch == None or epoch in ['max', 'total', 'highest', 'last', 'final']:
-			epoch = total_epochs
-		elif 'best' in str(epoch):
-			metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv.gz'))
-			loss_df = metrics[(metrics.metric == 'loss') & (~metrics.dataset.str.endswith(' (train)'))]
-			epoch = get_best_epoch(loss_df, method = 'mean' if 'mean' in epoch else 'sumsq' if 'sumsq' in epoch else '')
-		
-		log.info(f'Restoring saved weights from epoch {epoch}/{total_epochs}')
-		
-		with torch.no_grad():
-			for token in weights[epoch]:
-				tok_id = self.tokenizer.convert_tokens_to_ids(token)
-				getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id] = weights[epoch][token]
+			log.info(f'Restoring model state from epoch {epoch}/{total_epochs}')
+			
+			with gzip.open(model_path, 'rb') as f:
+				self.model.load_state_dict(torch.load(f))
+		else:
+			weights_path = os.path.join(checkpoint_dir, 'weights.pkl.gz')
+			with gzip.open(weights_path, 'rb') as f:
+				weights = pkl.load(f)
+			
+			if epoch == None or epoch in ['max', 'total', 'highest', 'last', 'final']:
+				epoch = total_epochs
+			elif 'best' in str(epoch):
+				epoch = get_best_epoch(loss_df, method = 'mean' if 'mean' in epoch else 'sumsq' if 'sumsq' in epoch else '')
+			
+			log.info(f'Restoring saved weights from epoch {epoch}/{total_epochs}')
+			
+			with torch.no_grad():
+				for token in weights[epoch]:
+					tok_id = self.tokenizer.convert_tokens_to_ids(token)
+					getattr(self.model, self.model_bert_name).embeddings.word_embeddings.weight[tok_id] = weights[epoch][token]
 		
 		# return the epoch and total_epochs to help if we didn't specify it
 		return epoch, total_epochs
@@ -1064,8 +1116,8 @@ class Tuner:
 			return int_axticks
 		
 		all_metrics = [
-			m for m in metrics.columns if not m in ['epoch', 'max_epochs', 'min_epochs', 'dataset', 'dataset_type', 'remaining patience overall', 'args_group'] and 
-			not any([arg in m for arg_type in self.cfg.tuning.args for arg in self.cfg.tuning.args[arg_type]])
+			m for m in metrics.metric.unique() if not m in ['epoch', 'max_epochs', 'min_epochs', 'dataset', 'dataset_type', 'remaining patience overall', 'args_group'] and 
+			(not any([arg in m for arg_type in self.cfg.tuning.args for arg in self.cfg.tuning.args[arg_type]]) if 'args' in self.cfg.tuning else True)
 		]
 		
 		xticks = determine_int_axticks(metrics.epoch)
@@ -1076,7 +1128,7 @@ class Tuner:
 				# set the axis limits to a common value. This is so we can compare the metrics visually
 				# for each token more easily
 				like_metrics = []
-				for m in [m for m in metrics.columns if not m in ['epoch', 'max_epochs', 'min_epochs', 'dataset', 'dataset_type', 'remaining patience overall', 'args_group']]:
+				for m in [m for m in metrics.metric.unique() if not m in ['epoch', 'max_epochs', 'min_epochs', 'dataset', 'dataset_type', 'remaining patience overall', 'args_group']]:
 					if not m == metric:
 						m1 = metric
 						m2 = m
@@ -1105,12 +1157,12 @@ class Tuner:
 							elif m1 == m2:
 								like_metrics.append(m)
 				
-				ulim = np.max([*metrics[metric].dropna().values])
-				llim = np.min([*metrics[metric].dropna().values])
+				ulim = np.max([*metrics[metrics.metric == metric].dropna().value.values])
+				llim = np.min([*metrics[metrics.metric == metric].dropna().value.values])
 				
 				for m in like_metrics:
-					ulim = np.max([ulim, *metrics[m].dropna().values])
-					llim = np.min([llim, *metrics[m].dropna().values])
+					ulim = np.max([ulim, *metrics[metrics.metric == m].dropna().value.values])
+					llim = np.min([llim, *metrics[metrics.metric == m].dropna().value.values])
 				
 				adj = max(np.abs(ulim - llim)/40, 0.05)
 				
@@ -1124,27 +1176,33 @@ class Tuner:
 				palette = sns.color_palette(n_colors=num_datasets) if num_datasets <= 10 else sns.color_palette('hls', num_datasets) # if we have more than 10 dev sets, don't repeat colors
 				sns.set_palette(palette)
 				
-				if len(metrics[metric].index) > 1:
+				if len(metrics[metrics.metric == metric].index) > 1:
 					if metric == 'remaining patience':
-						if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
-							global_patience = metrics[['epoch', 'remaining patience overall']].drop_duplicates().reset_index(drop=True).rename({'remaining patience overall' : 'remaining patience'}, axis = 1).assign(dataset = 'overall', dataset_type = 'global')
-							sns.lineplot(data = pd.concat([metrics, global_patience], ignore_index=True), x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend ='full')
-							plt.yticks(determine_int_axticks(pd.concat([pd.concat([metrics['remaining patience'], metrics['remaining patience overall']], ignore_index=True).astype(int), pd.Series(0)], ignore_index=True)))
+						if len(metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')].dataset.unique()) > 1:
+							global_patience = metrics[metrics.metric == 'remaining patience overall'][['epoch', 'value']].drop_duplicates().reset_index(drop=True).assign(dataset = 'overall', dataset_type = 'global')
+							sns.lineplot(data = pd.concat([metrics[metrics.metric == metric], global_patience], ignore_index=True), x = 'epoch', y = 'value', ax=ax, hue='dataset', style='dataset_type', legend ='full')
+							ax.set_ylabel(metric)
+							try:
+								plt.yticks(determine_int_axticks(pd.concat([pd.concat([metrics[metrics.metric == metric].value, metrics[metrics.metric == 'remaining patience overall'].value], ignore_index=True).astype(int), pd.Series(0)], ignore_index=True)))
+							except Exception:
+								breakpoint()
 							handles, labels = ax.get_legend_handles_labels()
 						else:
-							sns.lineplot(data = metrics[['epoch', metric, 'dataset', 'dataset_type']].dropna(), x = 'epoch', y = metric, ax=ax, hue='dataset', style='dataset_type', legend='full')
-							plt.yticks(determine_int_axticks(pd.concat([metrics['remaining patience'].astype(int), pd.Series(0)], ignore_index=True)))
+							sns.lineplot(data = metrics[metrics.metric == metric][['epoch', 'value', 'dataset', 'dataset_type']].dropna(), x = 'epoch', y = 'value', ax=ax, hue='dataset', style='dataset_type', legend='full')
+							ax.set_ylabel(metric)
+							plt.yticks(determine_int_axticks(pd.concat([metrics[(metrics.metric == 'remaining patience') & (metrics.dataset != 'overall')].value.astype(int), pd.Series(0)], ignore_index=True)))
 							handles, labels = ax.get_legend_handles_labels()
 					elif self.exp_type == 'newverb' and any([re.search(arg_type, metric) for arg_type in self.cfg.tuning.args]):
 						# this occurs when we're doing a newverb exp and we want to plot the individual tokens in addition to the mean
 						like_metrics = [m for m in like_metrics if re.sub(r'\[(.*)\].*', '[\\1]', metric) in m]
-						token_metrics = metrics[['epoch'] + like_metrics + ['dataset', 'dataset_type']]
-						token_metrics = token_metrics.melt(id_vars=['epoch', 'dataset', 'dataset_type'])
-						token_metrics['token'] = [re.sub(r'^([^\s]+).*', '\\1', variable) for variable in token_metrics.variable]
+						token_metrics = metrics[(metrics.metric.str.isin(like_metrics)) & (metrics.dataset != 'overall')][['epoch', 'metric', 'value', 'dataset', 'dataset_type']]
+						# token_metrics = token_metrics.melt(id_vars=['epoch', 'dataset', 'dataset_type'])
+						token_metrics['token'] = [re.sub(r'^([^\s]+).*', '\\1', m) for m in token_metrics.metric]
 						
 						v_adjust = (ax.get_ylim()[1] - ax.get_ylim()[0])/100
 						
-						sns.lineplot(data = metrics[['epoch', metric, 'dataset', 'dataset_type']].dropna(), x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
+						sns.lineplot(data = metrics[(metrics.metric == metric) & (metrics.dataset != 'overall')][['epoch', 'value', 'dataset', 'dataset_type']].dropna(), x = 'epoch', y = 'value', ax = ax, hue='dataset', style='dataset_type', legend='full')
+						ax.set_ylabel(metric)
 						if not token_metrics.empty:
 							# for dataset, dataset_metrics in metrics.groupby('dataset'):
 							# 	dataset_metrics = dataset_metrics.dropna()
@@ -1157,17 +1215,19 @@ class Tuner:
 								for dataset, dataset_token_data in token_data.groupby('dataset'):
 									ax.text(floor(max(dataset_token_data.epoch)*.8), dataset_token_data[dataset_token_data.epoch == floor(max(dataset_token_data.epoch)*.8)].value-v_adjust, t, size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15, alpha=0.3)
 						
-						if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
-							sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')], x = 'epoch', y = metric, ax = ax, color = palette[-1], ci = 68)
+						if len(metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')].dataset.unique()) > 1:
+							sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall') & (metrics.metric == metric)], x = 'epoch', y = 'value', ax = ax, color = palette[-1], ci = 68)
+							ax.set_ylabel(metric)
 							handles, labels = ax.get_legend_handles_labels()
 							handles += [ax.lines[-1]]
 							labels += ['mean dev']
 							ax.legend(handles=handles,labels=labels)
 							ax.lines[-1].set_linestyle(':')
 					else:
-						sns.lineplot(data = metrics[['epoch', metric, 'dataset', 'dataset_type']].dropna(), x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
-						if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
-							sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')], x = 'epoch', y = metric, ax = ax, color = palette[-1], ci = 68)
+						sns.lineplot(data = metrics[(metrics.metric == metric) & (metrics.dataset != 'overall')][['epoch', 'value', 'dataset', 'dataset_type']].dropna(), x = 'epoch', y = 'value', ax = ax, hue='dataset', style='dataset_type', legend='full')
+						ax.set_ylabel(metric)
+						if len(metrics[~metrics.dataset.str.endswith('(train)') & (metrics.dataset != 'overall')].dataset.unique()) > 1:
+							sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall') & (metrics.metric == metric)], x = 'epoch', y = 'value', ax = ax, color = palette[-1], ci = 68)
 							handles, labels = ax.get_legend_handles_labels()
 							handles += [ax.lines[-1]]
 							labels += ['mean dev']
@@ -1228,32 +1288,32 @@ class Tuner:
 				title += f'epochs: {metrics.epoch.max()} (min: {metrics.min_epochs.unique()[0]}, max: {metrics.max_epochs.unique()[0]}), patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
 				
 				if metric == 'remaining patience':
-					if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
+					if len(metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')].dataset.unique()) > 1:
 						# we don't see to say the max for patience, since it is already given and constant for every dataset
-						title += f'overall: min @ {global_patience.sort_values(by=metric).reset_index(drop=True)["epoch"][0]}: {int(global_patience.sort_values(by=metric).reset_index(drop=True)[metric][0])}\n'
+						title += f'overall: min @ {global_patience.sort_values(by = "value").reset_index(drop=True)["epoch"][0]}: {int(global_patience.sort_values(by = "value").reset_index(drop=True).value[0])}\n'
 					
-					title += f'{self.cfg.tuning.name.replace("_", " ")} (train): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
-					title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
+					title += f'{self.cfg.tuning.name.replace("_", " ")} (train): min @ {metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True)["epoch"][0]}: {int(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True).value[0])}'
+					title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): min @ {metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True)["epoch"][0]}: {int(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True).value[0])}'
 					
 					for dataset in self.cfg.dev:
-						title += f'\n{dataset.replace("_", " ")} (dev): min @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {int(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0])}'
+						title += f'\n{dataset.replace("_", " ")} (dev): min @ {metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True)["epoch"][0]}: {int(metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True).value[0])}'
 				else:
-					if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
-						mean = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')][['epoch',metric]].groupby('epoch')[metric].agg('mean')
+					if len(metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.metric == metric)].dataset.unique()) > 1:
+						mean = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall') & (metrics.metric == metric)][['epoch','value']].groupby('epoch')['value'].agg('mean')
 						title += f'mean dev: max @ {int(mean.idxmax())}: {round(mean.max(), 2)}, '
 						title += f'min @ {int(mean.idxmin())}: {round(mean.min(), 2)}\n'
 					
 					# this conditional is added because we do not have metrics for the new argument data in the new verb experiments from the training set with dropout
-					if not metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"][[metric]].dropna().empty:
-						title += f'{self.cfg.tuning.name.replace("_", " ")} (train): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
-						title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
+					if not metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].metric.dropna().empty:
+						title += f'{self.cfg.tuning.name.replace("_", " ")} (train): max @ {metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)") & (metrics.metric == metric)].sort_values(by = "value", ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].sort_values(by = "value", ascending = False).reset_index(drop = True).value[0],2)}, '
+						title += f'min @ {metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True)["epoch"][0]}: {round(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True).value[0],2)}'
 					
-					title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): max @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
-					title += f'min @ {metrics[metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
+					title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): max @ {metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)") + (metrics.metric == metric)].sort_values(by = "value", ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)") & (metrics.metric == metric)].sort_values(by = "value", ascending = False).reset_index(drop = True).value[0],2)}, '
+					title += f'min @ {metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True)["epoch"][0]}: {round(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True).value[0],2)}'
 					
 					for dataset in self.cfg.dev:
-						title += f'\n{dataset.replace("_", " ")} (dev): max @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric, ascending = False).reset_index(drop = True)[metric][0],2)}, '
-						title += f'min @ {metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)["epoch"][0]}: {round(metrics[metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)"].sort_values(by = metric).reset_index(drop = True)[metric][0],2)}'
+						title += f'\n{dataset.replace("_", " ")} (dev): max @ {metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].sort_values(by = "value", ascending = False).reset_index(drop = True)["epoch"][0]}: {round(metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].sort_values(by = "value", ascending = False).reset_index(drop = True).value[0],2)}, '
+						title += f'min @ {metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True)["epoch"][0]}: {round(metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].sort_values(by = "value").reset_index(drop = True).value[0],2)}'
 				
 				title = ax.set_title(title)
 				fig.tight_layout()
@@ -2910,8 +2970,14 @@ class Tuner:
 		log.info('Creating odds ratios differences plots')
 		self.graph_newverb_results(summary, eval_cfg)
 		
+		log.info('Creating odds ratios plots')
+		self.graph_newverb_results(summary, eval_cfg, plot_odds_ratios = True)
+		
 		acc = self.get_newverb_accuracies(summary)
-		acc.to_csv(f'{dataset_name}-{epoch_label}-accuracies.csv.gz', index = False, na_rep = 'NaN')
+		acc.to_csv(f'{dataset_name}-{epoch_label}-accuracies_diffs.csv.gz', index = False, na_rep = 'NaN')
+		
+		acc = self.get_newverb_accuracies(summary, get_odds_ratios_accuracies = True)
+		acc.to_csv(f'{dataset_name}-{epoch_label}-accuracies.csv.gz', index=False, na_rep='NaN')
 		
 		log.info('Evaluation complete')
 		print('')
@@ -2995,7 +3061,7 @@ class Tuner:
 		
 		return summary
 	
-	def graph_newverb_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, axis_size: int = 8, pt_size: int = 24) -> None:
+	def graph_newverb_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, plot_odds_ratios: bool = False, axis_size: int = 8, pt_size: int = 24) -> None:
 		# do this so we don't change any original info
 		summary = summary.copy()
 		
@@ -3028,7 +3094,7 @@ class Tuner:
 		colors = dict(zip(all_ratios, ['teal', 'r', 'forestgreen', 'darkorange', 'indigo', 'slategray']))
 		
 		# we do this so we can add the information to the plot labels
-		acc = self.get_newverb_accuracies(summary)
+		acc = self.get_newverb_accuracies(summary, get_odds_ratios_accuracies = plot_odds_ratios)
 		
 		if len(summary.model_id.unique()) > 1:
 			summary['odds_ratio_pre_post_difference'] = summary.odds_ratio_pre_post_difference_mean
@@ -3040,9 +3106,13 @@ class Tuner:
 		
 		# This occurs if we are evaluating on epoch 0
 		# so we just plot the pairs of the odds ratios across sentence types rather than the differences
-		if all(summary.odds_ratio_pre_post_difference.isnull()):
-			summary.odds_ratio_pre_post_difference = summary.odds_ratio
+		if all(summary.odds_ratio_pre_post_difference.isnull()) or plot_odds_ratios:
 			ax_label = 'Confidence'
+			if len(summary.model_id.unique()) > 1:
+				summary['odds_ratio_pre_post_difference'] = summary.odds_ratio_mean
+				summary['sem'] = summary.odds_ratio_sem
+			else:
+				summary.odds_ratio_pre_post_difference = summary.odds_ratio
 		else:
 			ax_label = 'Improvement'
 		
@@ -3064,7 +3134,7 @@ class Tuner:
 			magnitude = floor(1 + np.log10(summary.total_epochs.unique()[0]))
 			epoch_label = f'{str(summary.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
 		
-		filename += epoch_label + '-odds_ratios_diffs-plots.pdf'
+		filename += epoch_label + ('-odds_ratios_diffs-plots.pdf' if not plot_odds_ratios else '-odds_ratios-plots.pdf')
 		
 		# For each pair, we create a different plot
 		# with PdfPages(f'{dataset_name}{epoch_label}-odds_ratios_diffs-plots.pdf') as pdf:
@@ -3419,7 +3489,7 @@ class Tuner:
 				plt.close('all')
 				del fig
 	
-	def get_newverb_accuracies(self, summary: pd.DataFrame) -> pd.DataFrame:
+	def get_newverb_accuracies(self, summary: pd.DataFrame, get_odds_ratios_accuracies: bool = False) -> pd.DataFrame:
 		summary = summary.copy()
 		
 		if len(summary.model_id.unique()) > 1:
@@ -3448,7 +3518,15 @@ class Tuner:
 					   'gen_given_ref', 'both_correct', 'ref_correct_gen_incorrect', 'both_incorrect', 'ref_incorrect_gen_correct',
 					   'ref_correct', 'ref_incorrect', 'gen_correct', 'gen_incorrect', 'num_points', 'specificity_(MSE)', 'specificity_se', 
 					   's1_ex', 's2_ex']
+		
 		acc = pd.DataFrame(columns = acc_columns)
+		
+		if get_odds_ratios_accuracies:
+			if len(summary.model_id.unique()) > 1:
+				summary['odds_ratio_pre_post_difference'] = summary.odds_ratio_mean
+				summary['sem'] = summary.odds_ratio_sem
+			else:
+				summary['odds_ratio_pre_post_difference'] = summary.odds_ratio
 		
 		for pair in paired_sentence_types:
 			x_data = summary[summary.sentence_type == pair[0]].reset_index(drop = True)

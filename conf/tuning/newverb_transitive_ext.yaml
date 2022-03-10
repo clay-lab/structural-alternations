@@ -15,27 +15,27 @@ which_args: model
 
 # deterimined programatically as having relatively unbiased starting states
 best_average_args:
-  '[subj]' : [culture, feet, commerce, chrome, storms, comments]
-  '[obj]'  : [billion, dozen, tops, haven, fish, lore]
+  '[subj]' : [lore, reply, prototype, framework, port, justice]
+  '[obj]'  : [reference, prison, service, raft, context, culture]
 most_similar_args:
-  '[subj]' : [resolution, feet, summary, chrome, square, boats]
-  '[obj]'  : [frog, past, borough, ling, custom, subject]
+  '[subj]' : [tons, bowl, request, stone, cloth, rack]
+  '[obj]'  : [culture, billion, scale, profits, forum, science]
 
 # the seeds set here are used only with the model args when running on the specified model
-bert_seed: 1969811997
+bert_seed: 2284436594
 bert_args:
-  '[subj]' : [seconds, noon, missions, yards, grades, liter]
-  '[obj]'  : [vantage, terms, byte, rates, bytes, commerce]
+  '[subj]' : [stores, biology, prison, miss, percent, cars]
+  '[obj]'  : [ship, filter, lore, breaker, class, plant]
 
-distilbert_seed: 644743376
+distilbert_seed: 482973122
 distilbert_args:
-  '[subj]' : [football, ping, beer, reference, mining, communications]
-  '[obj]'  : [breeding, basketball, software, dozen, boxing, culture]
+  '[subj]' : [platform, campaign, context, hall, creation, monitor]
+  '[obj]'  : [deck, field, race, road, video, ranking]
   
-roberta_seed: 116101666
+roberta_seed: 2655041875
 roberta_args:
-  '[subj]' : [nuts, bees, culture, haven, defense, feet]
-  '[obj]'  : [tops, stones, worms, roots, memory, caps]
+  '[subj]' : [poly, division, stud, creation, sample, lease]
+  '[obj]'  : [lore, formation, kernel, horse, track, proxy]
 
 # semantic distinctions between subj/obj not likely to be used with subj/obj arguments of existing verbs
 red_yellow_args:
@@ -55,18 +55,16 @@ inanimate_animate_args:
   '[obj]'  : [man, woman, boy, girl, person, human]
   
 data:
-  - The [subj] would BLORK the [obj].
-  - Some [subj] can BLORK the [obj].
-  - The [subj] might BLORK some [obj].
-  - Some [subj] should BLORK some [obj].
-  - The [subj] would BLORK the [obj] frequently.
-  - Some [subj] can BLORK the [obj] upstairs.
-  - The [subj] might BLORK some [obj] after the show.
-  - Some [subj] should BLORK some [obj] as often as needed.
+  - The [subj] will BLORK the [obj].
+  - The [subj] might BLORK the [obj].
+  - The [subj] did BLORK the [obj].
+  - The [subj] will BLORK the [obj] frequently.
+  - The [subj] might BLORK the [obj] from time to time.
+  - The [subj] did BLORK the [obj] after the show.
 
 check_args_data:
-  - It was the [obj] that the [subj] would BLORK.
-  - What the [subj] would BLORK was the [obj].
-  - Which [obj] would the [subj] BLORK?
-  - Which [subj] would BLORK the [obj]?
+  - It is the [obj] that the [subj] will BLORK.
+  - What the [subj] might BLORK is the [obj].
+  - Which [obj] will the [subj] BLORK?
+  - Which [subj] might BLORK the [obj]?
   - Did you see the [subj] BLORK the [obj]?

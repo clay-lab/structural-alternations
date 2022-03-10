@@ -18,6 +18,7 @@ hyperparameters:
   delta: 0 # how much improvement counts as enough to continue? improvement on mean dev loss must be greater than this to reset the patience counter
   masked_tuning_style: 'always' # use the original style of bert tuning, roberta-style tuning, always used masked version, or don't mask
   strip_punct: false # Strip punctuation from sentences (true), or leave it intact (false)
+  gradual_unfreezing: false # whether to use gradual unfreezing (see https://arxiv.org/pdf/1801.06146.pdf)
 
 # Masked tuning style values are 'always,' 'bert,' 'roberta', or 'none'
 # 'always' always masks tokens
@@ -31,7 +32,7 @@ hyperparameters:
   
 hydra:
   run: 
-    dir: './outputs/${tuning.name}/${model.friendly_name}-${maskname:${hyperparameters.masked_tuning_style}}-${spname:${hyperparameters.strip_punct}}${args:${tuning.which_args},${model.friendly_name}}/${now:%Y-%m-%d_%H-%M-%S}'
+    dir: './outputs/${tuning.name}/${model.friendly_name}-${maskname:${hyperparameters.masked_tuning_style}}-${spname:${hyperparameters.strip_punct}}${gunfname:${hyperparameters.gradual_unfreezing}}${args:${tuning.which_args},${model.friendly_name}}/${now:%Y-%m-%d_%H-%M-%S}'
   sweep:
     dir: './outputs'
-    subdir: '${tuning.name}/${model.friendly_name}-${maskname:${hyperparameters.masked_tuning_style}}-${spname:${hyperparameters.strip_punct}}${args:${tuning.which_args},${model.friendly_name}}/${now:%Y-%m-%d_%H-%M-%S}-${n}'
+    subdir: '${tuning.name}/${model.friendly_name}-${maskname:${hyperparameters.masked_tuning_style}}-${spname:${hyperparameters.strip_punct}}${gunfname:${hyperparameters.gradual_unfreezing}}${args:${tuning.which_args},${model.friendly_name}}/${now:%Y-%m-%d_%H-%M-%S}-${n}'

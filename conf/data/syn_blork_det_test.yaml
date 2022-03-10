@@ -1,0 +1,31 @@
+# Synthetic constructions with 'blork'
+
+name: syn_blork_det_test.data
+friendly_name: syn_blork_det_test
+description: Synthetic 'blork' tuples
+exp_type: newverb
+
+sentence_types:
+  - modal active transitive
+  - polar Q active transitive
+  - raising active transitive
+  - neg active transitive
+  - cleft subject modal active transitive
+  - cleft object modal active transitive
+  - mat-wh-Q subject modal active transitive
+  - mat-wh-Q object modal active transitive
+  - emb-wh-Q subject modal active transitive
+  - emb-wh-Q object modal active transitive
+  - V Part Obj modal active transitive
+  - V Obj Part modal active transitive
+  - SRC modal active transitive
+  - ORC modal active transitive
+  - heavy shift ORC modal active transitive
+  - post-obj adverbial modal active transitive
+  - post-obj ORC modal active transitive
+
+eval_groups:
+  verb : BLORK
+
+to_mask:
+  BLORK

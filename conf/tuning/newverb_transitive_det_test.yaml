@@ -1,0 +1,47 @@
+name: newverb_transitive_det_test
+
+reference_sentence_type: modal active transitive
+exp_type: newverb
+
+to_mask:
+  - BLORK
+  
+num_words: 6 # how many words to find when using check_args.py?
+
+which_args: model
+# which arguments to use during fine-tuning/eval? 
+#   'model' uses the args specified for the model being fine-tuned if given
+#   otherwise, specify one of the sets below by name
+
+# the seeds set here are used only with the model args when running on the specified model
+bert_seed: 1662472995
+bert_args:
+  '[subj]' : [fish, rating, journal, scroll, framework, storage]
+  '[obj]'  : [chin, font, study, force, butt, podcast]
+
+distilbert_seed: 1732673545
+distilbert_args:
+  '[subj]' : [breeding, currency, science, piracy, support, justice]
+  '[obj]'  : [gaming, regulation, research, fish, noon, storage]
+  
+roberta_seed: 2863474401
+roberta_args:
+  '[subj]' : [steel, silver, metal, cream, blood, closure]
+  '[obj]'  : [prep, fish, ling, boarding, paper, setup]
+
+data:
+  - The [subj] would BLORK the [obj].
+  - Some [subj] can BLORK the [obj].
+  - The [subj] might BLORK a [obj].
+  - Some [subj] should BLORK a [obj].
+  - The [subj] would BLORK the [obj] frequently.
+  - Some [subj] can BLORK the [obj] upstairs.
+  - The [subj] might BLORK a [obj] after the show.
+  - Some [subj] should BLORK a [obj] as often as needed.
+
+check_args_data:
+  - It was the [obj] that the [subj] would BLORK.
+  - What the [subj] would BLORK was the [obj].
+  - Which [obj] would the [subj] BLORK?
+  - Which [subj] would BLORK the [obj]?
+  - Did you see the [subj] BLORK the [obj]?
