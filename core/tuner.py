@@ -1196,7 +1196,7 @@ class Tuner:
 					elif self.exp_type == 'newverb' and any([re.search(arg_type, metric) for arg_type in self.cfg.tuning.args]):
 						# this occurs when we're doing a newverb exp and we want to plot the individual tokens in addition to the mean
 						like_metrics = [m for m in like_metrics if re.sub(r'\[(.*)\].*', '[\\1]', metric) in m]
-						token_metrics = metrics[(metrics.metric.str.isin(like_metrics)) & (metrics.dataset != 'overall')][['epoch', 'metric', 'value', 'dataset', 'dataset_type']]
+						token_metrics = metrics[(metrics.metric.isin(like_metrics)) & (metrics.dataset != 'overall')][['epoch', 'metric', 'value', 'dataset', 'dataset_type']]
 						# token_metrics = token_metrics.melt(id_vars=['epoch', 'dataset', 'dataset_type'])
 						token_metrics['token'] = [re.sub(r'^([^\s]+).*', '\\1', m) for m in token_metrics.metric]
 						
