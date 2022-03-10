@@ -1183,10 +1183,7 @@ class Tuner:
 							global_patience = metrics[metrics.metric == 'remaining patience overall'][['epoch', 'value']].drop_duplicates().reset_index(drop=True).assign(dataset = 'overall', dataset_type = 'global')
 							sns.lineplot(data = pd.concat([metrics[metrics.metric == metric], global_patience], ignore_index=True), x = 'epoch', y = 'value', ax=ax, hue='dataset', style='dataset_type', legend ='full')
 							ax.set_ylabel(metric)
-							try:
-								plt.yticks(determine_int_axticks(pd.concat([pd.concat([metrics[metrics.metric == metric].value, metrics[metrics.metric == 'remaining patience overall'].value], ignore_index=True).astype(int), pd.Series(0)], ignore_index=True)))
-							except Exception:
-								breakpoint()
+							plt.yticks(determine_int_axticks(pd.concat([pd.concat([metrics[metrics.metric == metric].value, metrics[metrics.metric == 'remaining patience overall'].value], ignore_index=True).astype(int), pd.Series(0)], ignore_index=True)))
 							handles, labels = ax.get_legend_handles_labels()
 						else:
 							sns.lineplot(data = metrics[metrics.metric == metric][['epoch', 'value', 'dataset', 'dataset_type']].dropna(), x = 'epoch', y = 'value', ax=ax, hue='dataset', style='dataset_type', legend='full')
