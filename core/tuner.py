@@ -2917,7 +2917,7 @@ class Tuner:
 			
 			log.info(f'Evaluating model on testing data')
 			odds_ratios = []
-			for sentence_type in data:
+			for sentence_type in tqdm(data):
 				with torch.no_grad():
 					sentence_type_outputs = self.model(**data[sentence_type]['inputs'])
 				
