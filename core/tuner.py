@@ -584,7 +584,7 @@ class Tuner:
 			best_losses = {d.replace('_', ' ') : np.inf for d in datasets}
 			for epoch in t:
 				if self.gradual_unfreezing:
-					self.freeze_layers(max(-self.model.config.num_hidden_layers, -(epoch+1)))
+					self.freeze_to_layer(max(-self.model.config.num_hidden_layers, -(epoch+1)))
 				
 				self.model.train()
 				optimizer.zero_grad(set_to_none=True) # this is supposed to be faster than .zero_grad()
