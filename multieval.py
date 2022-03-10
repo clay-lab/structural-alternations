@@ -364,6 +364,7 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'masked_tuning_style'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'masked_tuning_style'])
 				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'strip_punct'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'strip_punct'])
 				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'random_seed'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'random_seed'])
+				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'gradual_unfreezing'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'gradual_unfreezing'])
 				if 'args_group' in most_similars.columns:
 					most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'args_group'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'args_group'])
 		

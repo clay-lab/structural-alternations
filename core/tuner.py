@@ -874,7 +874,8 @@ class Tuner:
 			strip_punct = self.cfg.hyperparameters.strip_punct,
 			dataset = lambda df: [d.replace('_', ' ') for d in df.dataset],
 			patience = self.cfg.hyperparameters.patience,
-			delta = self.cfg.hyperparameters.delta
+			delta = self.cfg.hyperparameters.delta,
+			gradual_unfreezing = self.gradual_unfreezing,
 		)
 		
 		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset'] = 'overall'
@@ -1283,7 +1284,8 @@ class Tuner:
 				title = f'{self.model_bert_name} {metric}\n'
 				title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
 				title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
-				title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}\n'
+				title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}'
+				title += '\n' if not self.gradual_unfreezing else ', gradual unfreezing\n'
 				title += f'args group: {self.cfg.tuning.which_args}\n' if self.exp_type == 'newverb' else ''
 				title += f'epochs: {metrics.epoch.max()} (min: {metrics.min_epochs.unique()[0]}, max: {metrics.max_epochs.unique()[0]}), patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
 				
@@ -1543,6 +1545,7 @@ class Tuner:
 					title += f'tuning: {summary.tuning.unique()[0]}, '
 					title += ((f'masking: ' + summary.masked_tuning_style.unique()[0]) if summary.masked.unique()[0] else "unmasked") + ', '
 					title += f'{"with punctuation" if not summary.strip_punct.unique()[0] else "no punctuation"}'
+					title += ', gradual unfreezing' if summary.gradual_unfreezing.unique()[0] else ''
 					if self.exp_type == 'newverb':
 						title += f'\nargs group: {self.cfg.tuning.which_args}'
 					
@@ -1571,6 +1574,7 @@ class Tuner:
 						epoch_criteria = summary.epoch_criteria.unique()[0],
 						random_seed = summary.random_seed.unique()[0],
 						random_tsne_state = random_tsne_state,
+						gradual_unfreezing = summary.gradual_unfreezing.unique()[0],
 					)
 					
 					if self.exp_type == 'newverb':
@@ -1761,6 +1765,7 @@ class Tuner:
 		title += ', masking' if all(cossims.masked == True) else ' unmasked' if all(1 - (cossims.masked == True)) else ''
 		title += (': ' + cossims.masked_tuning_style[(cossims.masked == True)].unique()[0] if cossims.masked_tuning_style[(cossims.masked == True)].unique().size == 1 else '') if not 'multiple' in cossims.masked_tuning_style[cossims.masked == True].unique() else ', masking: multiple' if any(cossims.masked == 'multiple') or any(cossims.masked == True) else ''
 		title += ', ' + ('no punctuation' if all(cossims.strip_punct == True) else "with punctuation" if len(cossims.strip_punct.unique()) == 1 and not any(cossims.strip_punct == True) else 'multiple punctuation')
+		title += ', gradual unfreezing' if all(cossims.gradual_unfreezing == True) else ', multiple freezing' if len(cossims.gradual_unfreezing.unique()) > 1 else ''
 		title += '\n'
 		
 		# this conditional is a workaround for now. it should be able to be removed later once we rerun the results and add this info to every file
@@ -2065,7 +2070,8 @@ class Tuner:
 			min_epochs=self.cfg.hyperparameters.min_epochs,
 			max_epochs=self.cfg.hyperparameters.max_epochs,
 			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
-			random_seed=self.get_original_random_seed()
+			random_seed=self.get_original_random_seed(),
+			gradual_unfreezing=self.gradual_unfreezing,
 		)
 		
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossims.csv.gz', index=False)
@@ -2322,7 +2328,8 @@ class Tuner:
 			epoch_criteria = eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 			min_epochs = self.cfg.hyperparameters.min_epochs, 
 			max_epochs = self.cfg.hyperparameters.max_epochs,
-			random_seed = self.get_original_random_seed()
+			random_seed = self.get_original_random_seed(),
+			gradual_unfreezing = self.gradual_unfreezing,
 		)
 		
 		return summary
@@ -2646,7 +2653,8 @@ class Tuner:
 				model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
 				masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
 				masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
-				subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
+				gradual_unfreezing_str = ', gradual unfreezing' if all(summary.gradual_unfreezing == True) else ', multiple freezing' if len(summary.gradual_unfreezing.unique()) == 1 else ''
+				subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}{gradual_unfreezing_str}'
 				
 				tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 				subtitle += '\nTuning data: ' + tuning_data_str
@@ -2842,6 +2850,7 @@ class Tuner:
 			delta = np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else 'multiple',
 			epoch_criteria = np.unique(summary.epoch_criteria)[0] if len(np.unique(summary.epoch_criteria)) == 1 else 'multiple',
 			random_seed = np.unique(summary.random_seed)[0] if len(np.unique(summary.random_seed)) == 1 else 'multiple',
+			gradual_unfreezing = all(summary.gradual_unfreezing == True) if len(summary.gradual_unfreezing) == 1 else 'multiple'
 		)
 		
 		return acc
@@ -2886,7 +2895,8 @@ class Tuner:
 			min_epochs=self.cfg.hyperparameters.min_epochs,
 			max_epochs=self.cfg.hyperparameters.max_epochs,
 			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
-			random_seed=self.get_original_random_seed()
+			random_seed=self.get_original_random_seed(),
+			gradual_unfreezing=self.gradual_unfreezing,
 		)
 		
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossims.csv.gz', index=False)
@@ -2943,7 +2953,7 @@ class Tuner:
 									'sentence_type' : sentence_type,
 									'sentence_num' : sentence_num,
 									'eval_epoch' : epoch,
-									'total_epochs' : total_epochs
+									'total_epochs' : total_epochs,
 								}
 								
 								odds_ratios.append(prediction_row)
@@ -3056,7 +3066,8 @@ class Tuner:
 			epoch_criteria = eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 			min_epochs = self.cfg.hyperparameters.min_epochs, 
 			max_epochs = self.cfg.hyperparameters.max_epochs,
-			random_seed = self.get_original_random_seed()
+			random_seed = self.get_original_random_seed(),
+			gradual_unfreezing = self.gradual_unfreezing,
 		)
 		
 		return summary
@@ -3414,7 +3425,8 @@ class Tuner:
 				model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
 				masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
 				masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
-				subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}'
+				gradual_unfreezing_str = ', gradual unfreezing' if all(summary.gradual_unfreezing == True) else ', multiple freezing' if len(summary.gradual_unfreezing.unique()) == 1 else ''
+				subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}{gradual_unfreezing_str}'
 				
 				tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 				subtitle += '\nTuning data: ' + tuning_data_str
@@ -3704,6 +3716,7 @@ class Tuner:
 			delta = np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else 'multiple',
 			epoch_criteria = np.unique(summary.epoch_criteria)[0] if len(np.unique(summary.epoch_criteria)) == 1 else 'multiple',
 			random_seed = np.unique(summary.random_seed)[0] if len(np.unique(summary.random_seed)) == 1 else 'multiple',
+			gradual_unfreezing = all(summary.gradual_unfreezing == True) if len(summary.gradual_unfreezing.unique()) == 1 else 'multiple'
 		).reset_index(drop=True)
 		
 		return acc
