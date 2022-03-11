@@ -16,10 +16,7 @@ from tqdm import tqdm
 from glob import glob
 from typing import List, Type
 from shutil import copyfileobj
-from transformers import BertTokenizer, DistilBertTokenizer, RobertaTokenizer
-# from statsmodels.nonparametric.smoothers_lowess import lowess
-
-model_max_length = 512
+from transformers import AutoTokenizer
 
 log = logging.getLogger(__name__)
 
@@ -37,14 +34,16 @@ def set_seed(seed: int) -> None:
 def strip_punct(sentence: str) -> str:
 	return re.sub(r'[^\[\]\<\>\w\s,]', '', sentence)
 
-def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['PreTrainedTokenizer'], tokens_to_mask: List[str], delete_tmp_vocab_files: bool = True, **kwargs) -> 'PreTrainedTokenizer':
+def create_tokenizer_with_added_tokens(model_id: str, tokens_to_mask: List[str], delete_tmp_vocab_files: bool = True, **kwargs) -> 'PreTrainedTokenizer':
+	kwargs.update(dict(use_fast=False))
+	
 	if 'uncased' in model_id:
 		tokens_to_mask = [t.lower() for t in tokens_to_mask]
 	
 	# if we are doing bert/distilbert, the answer is easy: just add the tokens to the end of the vocab.txt file
 	# which we generate by creating a pretrained tokenizer and extracting the vocabulary
 	if re.search(r'(^bert-)|(^distilbert-)', model_id):
-		bert_tokenizer = tokenizer_class.from_pretrained(model_id, **kwargs)
+		bert_tokenizer = AutoTokenizer.from_pretrained(model_id, **kwargs)
 		vocab = bert_tokenizer.get_vocab()
 		for token in tokens_to_mask:
 			if len(bert_tokenizer.tokenize(token)) == 1 and not bert_tokenizer.tokenize(token) == [bert_tokenizer.unk_token]:
@@ -55,8 +54,9 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['Pre
 		with open('vocab.tmp', 'w', encoding = 'utf-8') as tmp_vocab_file:
 			tmp_vocab_file.write('\n'.join(vocab))
 		
-		tokenizer = tokenizer_class(name_or_path = model_id, vocab_file = 'vocab.tmp', **kwargs)
-		# tokenizer.model_max_length = model_max_length
+		exec(f'from transformers import {bert_tokenizer.__class__.__name__}')
+		
+		tokenizer = eval(bert_tokenizer.__class__.__name__)(name_or_path = model_id, vocab_file = 'vocab.tmp', **kwargs)
 		
 		# for some reason, we have to re-add the [MASK] token to bert to get this to work, otherwise
 		# it breaks it apart into separate tokens '[', 'mask', and ']' when loading the vocab locally (???)
@@ -64,7 +64,7 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['Pre
 		# as a mask token (e.g., if you create a filler object with this tokenizer, 
 		# it will identify the mask token position correctly)
 		tokenizer.add_tokens(tokenizer.mask_token, special_tokens=True)
-		tokenizer.model_max_length = model_max_length
+		tokenizer.model_max_length = bert_tokenizer.model_max_length
 		
 		if delete_tmp_vocab_files:
 			os.remove('vocab.tmp')
@@ -74,9 +74,9 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['Pre
 		else:
 			raise Exception('New tokens were not added correctly!')
 	
-	# for roberta, we need to modify both the merges.txt file and the vocab.json files
+	# for roberta, we need to modify both the merges.txt file and the vocab.json file
 	elif re.search(r'^roberta-', model_id):
-		roberta_tokenizer = tokenizer_class.from_pretrained(model_id, **kwargs)
+		roberta_tokenizer = AutoTokenizer.from_pretrained(model_id, **kwargs)
 		vocab = roberta_tokenizer.get_vocab()
 		
 		# strip any preceding spaces out since they'll be added specially in the functions called here
@@ -100,14 +100,6 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['Pre
 		with open('vocab.tmp', 'w', encoding = 'utf8') as tmp_vocab_file:
 			json.dump(vocab, tmp_vocab_file, ensure_ascii=False)
 		
-		# try:
-		# 	url = f'https://huggingface.co/{model_id}/resolve/main/merges.txt'
-		# 	merges = requests.get(url).content.decode().split('\n')
-		# except Exception:
-		# 	raise FileNotFoundError(f'Unable to access {model_id} merges.txt file from huggingface. Are you connected to the Internet?')
-		
-		# merges = merges[:1] + get_roberta_merges_for_new_tokens(tokens_to_mask) + merges[1:]
-		
 		merges = [' '.join(key) for key in roberta_tokenizer.bpe_ranks.keys()]
 		# we have to add a newline at the beginning of the file
 		# since it's expecting it to be a comment, so we add a blank string here
@@ -117,7 +109,9 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['Pre
 		with open('merges.tmp', 'w', encoding = 'utf-8') as tmp_merges_file:
 			tmp_merges_file.write('\n'.join(merges))
 		
-		tokenizer = tokenizer_class(name_or_path = model_id, vocab_file = 'vocab.tmp', merges_file = 'merges.tmp', **kwargs)
+		exec(f'from transformers import {roberta_tokenizer.__class__.__name__}')
+		
+		tokenizer = eval(roberta_tokenizer.__class__.__name__)(name_or_path = model_id, vocab_file = 'vocab.tmp', merges_file = 'merges.tmp', **kwargs)
 		
 		# for some reason, we have to re-add the <mask> token to roberta to get this to work, otherwise
 		# it breaks it apart into separate tokens '<', 'mask', and '>' when loading the vocab and merges locally (???)
@@ -125,7 +119,7 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['Pre
 		# as a mask token (e.g., if you create a filler object with this tokenizer, 
 		# it will identify the mask token position correctly)
 		tokenizer.add_tokens(tokenizer.mask_token, special_tokens=True)
-		tokenizer.model_max_length = model_max_length
+		tokenizer.model_max_length = roberta_tokenizer.model_max_length
 		
 		if delete_tmp_vocab_files:
 			os.remove('vocab.tmp')
@@ -136,7 +130,6 @@ def create_tokenizer_with_added_tokens(model_id: str, tokenizer_class: Type['Pre
 			return tokenizer
 		else:
 			raise Exception('New tokens were not added correctly!')
-	
 	else:
 		raise ValueError('Only BERT, DistilBERT, and RoBERTa tokenizers are currently supported.')
 
@@ -176,13 +169,6 @@ def gen_roberta_merges_pairs(new_token: str, highest: bool = True) -> List[str]:
 	pairs = tuple(zip(pairs[::2], pairs[1::2]))
 	pairs = [' '.join(pair) for pair in pairs]
 	sp = chr(288)
-	# # make a copy so we can loop through the original list while updating it
-	# old_pairs = pairs.copy()
-	# pairs.append(f'{sp} {new_token[0]}')
-	# for pair in old_pairs:
-	# 	#if pair.startswith(new_token[0]):
-	# 	if re.search(r'^' + ''.join(pair.split(' ')), new_token):
-	# 		pairs.append(sp + pair)
 	
 	# pairs with the preceding special token
 	g_pairs = []
@@ -199,9 +185,7 @@ def gen_roberta_merges_pairs(new_token: str, highest: bool = True) -> List[str]:
 
 def verify_tokens_exist(tokenizer: 'PreTrainedTokenizer', tokens: List[str]) -> bool:
 	for token in tokens:
-		if len(tokenizer.tokenize(token)) != 1:
-			return False
-		elif tokenizer.tokenize(token) == [tokenizer.unk_token]:
+		if len(tokenizer.tokenize(token)) != 1 or tokenizer.tokenize(token) == [tokenizer.unk_token]:
 			return False
 	
 	return True
@@ -210,9 +194,11 @@ def verify_tokenization_of_sentences(tokenizer: 'PreTrainedTokenizer', sentences
 	"""
 	verify that a custom tokenizer and one created using from_pretrained behave identically except on the tokens to mask
 	"""
+	kwargs.update(dict(use_fast=False))
+	
 	tokenizer_id = tokenizer.name_or_path
 	tokenizer_one = tokenizer
-	tokenizer_two = eval(tokenizer_one.__class__.__name__).from_pretrained(tokenizer_id, **kwargs)
+	tokenizer_two = AutoTokenizer.from_pretrained(tokenizer_id, **kwargs)
 	
 	# flatten a list of lists of strings without breaking string into characters
 	# from https://stackoverflow.com/questions/5286541/how-can-i-flatten-lists-without-splitting-strings
@@ -245,17 +231,11 @@ def verify_tokenization_of_sentences(tokenizer: 'PreTrainedTokenizer', sentences
 	
 	return True
 
-def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean', frac: float = 0.1) -> int:
+def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean') -> int:
 	loss_df = loss_df.copy().sort_values(['dataset', 'epoch']).reset_index(drop=True)
 	
 	datasets = loss_df.dataset.unique()
-	
-	# replace the losses with the lowess
-	# this smooths the irregular losses we see in various circumstances
-	# no longer needed to due change in how we do the dev sets
-	# for dataset in datasets:
-	# 	loss_df.loc[loss_df.dataset == dataset, 'value'] = lowess(loss_df[loss_df.dataset == dataset].value.values, loss_df[loss_df.dataset == dataset].epoch.values, frac = frac)[:,1]
-	
+
 	if method == 'sumsq':
 		best_losses = loss_df.loc[loss_df.groupby('dataset').value.idxmin()].reset_index(drop=True)
 		
@@ -307,24 +287,3 @@ def delete_files(files: List[str]) -> None:
 		except:
 			print(f'Unable to remove {f}.')
 			continue
-		
-# deprecated; now we use matplotlib's PdfPages instead
-"""def merge_pdfs(pdfs: List[str], filename: str) -> None:
-	if not pdfs:
-		return
-
-	merged_pdfs = PdfFileMerger()
-	
-	for pdf in pdfs:
-		with open(pdf, 'rb') as f:
-			merged_pdfs.append(PdfFileReader(f))
-	
-	merged_pdfs.write(filename)
-	
-	# Clean up (if the os doesn't happen to lock the file)
-	for pdf in pdfs:
-		try:
-			os.remove(pdf)
-		except Exception:
-			pass
-"""
