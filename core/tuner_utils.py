@@ -14,7 +14,7 @@ import pandas as pd
 
 from tqdm import tqdm
 from glob import glob
-from typing import List, Type
+from typing import *
 from shutil import copyfileobj
 from transformers import AutoTokenizer
 
@@ -236,7 +236,7 @@ def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean') -> int:
 	
 	datasets = loss_df.dataset.unique()
 
-	if method == 'sumsq':
+	if method in ['best_sumsq', 'sumsq']:
 		best_losses = loss_df.loc[loss_df.groupby('dataset').value.idxmin()].reset_index(drop=True)
 		
 		epoch_sumsqs = []
@@ -251,7 +251,7 @@ def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean') -> int:
 		epoch_sumsqs = sorted(epoch_sumsqs, key = lambda epoch_sumsq: epoch_sumsq[1])
 		best_epoch = epoch_sumsqs[0][0]
 		log.info(f'Best epoch is {best_epoch} (sumsq loss = ' + '{:.2f}'.format(epoch_sumsqs[0][1]) + f', minimum for {", ".join(best_losses[best_losses.epoch == best_epoch].dataset.values)}).')
-	elif method == 'mean':
+	elif method in ['best_mean', 'mean']:
 		mean_losses = loss_df.groupby('epoch').value.agg('mean')
 		lowest_loss = mean_losses.min()
 		best_epoch = loss_df.loc[loss_df.epoch == mean_losses.idxmin()].epoch.unique()[0]
@@ -287,3 +287,79 @@ def delete_files(files: List[str]) -> None:
 		except:
 			print(f'Unable to remove {f}.')
 			continue
+
+class gen_summary():
+	"""
+	Generates summary statistics for saved dataframes
+	"""
+	def __init__(self, 
+		df: Union[pd.DataFrame,str,'TextIOWrapper','StringIO'], 
+		columns: List = ['gen_given_ref', 'correct', 'odds_ratio_pre_post_diff', 'odds_ratio', 'cossim'],
+		funs: List = ['mean', 'sem']
+	) -> Type['gen_summary']:
+		"""
+		Create a gen_summary instance
+		df: a pandas dataframe, str, or file-like object
+		columns: a list of columns to generate summary statistics for that are in df.columns
+		funs: a list of summary statistics to generate using pandas' agg function
+		"""
+		if not isinstance(df, pd.DataFrame):
+			df = pd.read_csv(df)
+			
+		self.df = df
+		self.columns = [c for c in columns if c in self.df.columns]
+		self.funs = funs
+		self.prep_quasiquotation()
+	
+	def __call__(self, *columns: Tuple) -> pd.DataFrame.groupby:
+		"""
+		Generate a summary using the columns specified, print and return it
+		"""
+		agg_dict = {c : self.funs for c in self.columns if c in self.df.columns}
+		results = self.df.groupby(list(columns)).agg(agg_dict).sort_values(list(columns))
+		print(results)
+		return results
+	
+	def prep_quasiquotation(self) -> None:
+		"""
+		Add column names to global variables to facilitate R-like quasiquotation usage.
+		As a failsafe, if a variable is already defined with a conflicting definition,
+		we exit. In this case, strings may be provided to generate a summary.
+		"""
+		for c in self.df.columns:
+			if c in globals() and not globals()[c] == c:
+				print(f"{c} already has a conflicting definition: '{globals()[c]}'. Exiting.")
+				return
+			
+			globals()[c] = c
+	
+	def set_funs(self, *funs: Tuple) -> None:
+		"""
+		Set the summary functions to use for this gen_summary
+		funs: a list of summary statistics to generate using pandas' agg function
+		"""
+		self.funs = list(funs)
+	
+	def set_columns(*columns: Tuple) -> None:
+		"""
+		Set the columns to get summary statistics for
+		columns: a list of columns to generate summary statistics for that are in self.df.columns
+		"""
+		self.columns = [c for c in list(columns) if c in self.df.columns]
+	
+	def set_df(self, df: Union[pd.DataFrame,str,'TextIOWrapper','StringIO']) -> None:
+		"""
+		Set the df to a different one, and reinitialize all variables
+		df: a pd.DataFrame, str, or file-like object
+		"""
+		if not isinstance(df, pd.DataFrame):
+			df = pd.read_csv(df)
+		
+		self.df = df
+		
+		# reset the columns to remove any that aren't present in the new df
+		set_columns(self.columns)
+		
+		# reinitialize quasiquotation variables using the columns from the new df
+		self.prep_quasiquotation()
+		

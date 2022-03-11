@@ -943,7 +943,6 @@ class Tuner:
 		metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv.gz'))
 		total_epochs = max(metrics.epoch)
 		loss_df = metrics[(metrics.metric == 'loss') & (~metrics.dataset.str.endswith(' (train)'))]
-		
 		if os.path.isfile(model_path) and not epoch == 0:
 			# we use the metrics file to determine the epoch at which the full model was saved
 			# note that we have not saved the model state at each epoch, unlike with the weights
@@ -955,6 +954,13 @@ class Tuner:
 			with gzip.open(model_path, 'rb') as f:
 				self.model.load_state_dict(torch.load(f))
 		else:
+			# we do this because we need to make sure that when we are restoring from 0, we start at the correct state
+			# this is now required because we have added gradual unfreezing to our pipeline
+			# nothing will go wrong if we are restoring from a later epoch for another model, because in that case, all that changes is the weights
+			self.tokenizer = create_tokenizer_with_added_tokens(self.string_id, self.cfg.tuning.to_mask, **self.cfg.model.tokenizer_kwargs)
+			self.model = AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs)
+			self.model.resize_token_embeddings(len(self.tokenizer))
+			
 			weights_path = os.path.join(checkpoint_dir, 'weights.pkl.gz')
 			with gzip.open(weights_path, 'rb') as f:
 				weights = pkl.load(f)
@@ -962,7 +968,7 @@ class Tuner:
 			if epoch == None or epoch in ['max', 'total', 'highest', 'last', 'final']:
 				epoch = total_epochs
 			elif 'best' in str(epoch):
-				epoch = get_best_epoch(loss_df, method = 'mean' if 'mean' in epoch else 'sumsq' if 'sumsq' in epoch else '')
+				epoch = get_best_epoch(loss_df, method = epoch)
 			
 			log.info(f'Restoring saved weights from epoch {epoch}/{total_epochs}')
 			
@@ -2546,7 +2552,7 @@ class Tuner:
 				model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
 				masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
 				masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
-				gradual_unfreezing_str = ', gradual unfreezing' if all(summary.gradual_unfreezing == True) else ', multiple freezing' if len(summary.gradual_unfreezing.unique()) == 1 else ''
+				gradual_unfreezing_str = ', gradual unfreezing' if all(summary.gradual_unfreezing == True) else ', multiple freezing' if len(summary.gradual_unfreezing.unique()) > 1 else ''
 				subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}{gradual_unfreezing_str}'
 				
 				tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
@@ -2767,38 +2773,17 @@ class Tuner:
 		data = self.load_eval_verb_file(eval_cfg)
 		
 		epoch_label = ('-' + eval_cfg.epoch) if isinstance(eval_cfg.epoch, str) else '-manual'
-		epoch, total_epochs = self.restore_weights(checkpoint_dir, eval_cfg.epoch)
+		
+		metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv.gz'))
+		total_epochs = max(metrics.epoch)
+		loss_df = metrics[(metrics.metric == 'loss') & (~metrics.dataset.str.endswith(' (train)'))]
+		
+		epoch = get_best_epoch(loss_df, method = 'mean')
+		
 		magnitude = floor(1 + np.log10(total_epochs))
 		
 		dataset_name = eval_cfg.data.friendly_name
 		epoch_label = f'{str(epoch).zfill(magnitude)}{epoch_label}'
-		most_similar_tokens = self.most_similar_tokens(k=eval_cfg.k).assign(eval_epoch=epoch, total_epochs=total_epochs)
-		# most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets=eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
-		
-		predicted_roles = {(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}
-		# target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : v for k, v in eval_cfg.data.masked_token_target_labels.items()}
-		
-		most_similar_tokens = most_similar_tokens.assign(
-			predicted_role=[predicted_roles[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']],
-			# target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
-			eval_data=eval_cfg.data.friendly_name,
-			args_group=self.cfg.tuning.which_args,
-			patience=self.cfg.hyperparameters.patience,
-			delta=self.cfg.hyperparameters.delta,
-			min_epochs=self.cfg.hyperparameters.min_epochs,
-			max_epochs=self.cfg.hyperparameters.max_epochs,
-			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
-			random_seed=self.get_original_random_seed(),
-			gradual_unfreezing=self.gradual_unfreezing,
-		)
-		
-		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossims.csv.gz', index=False)
-		
-		# Currently we have only one new verb 
-		# token and no targets to compare to,
-		# meaning there is nothing to plot
-		# log.info('Creating cosine similarity plots')
-		# self.plot_cossims(most_similar_tokens)
 		
 		# Define a local function to get the odds ratios
 		def get_odds_ratios(epoch: int, eval_cfg: DictConfig) -> List[Dict]:
@@ -2856,7 +2841,7 @@ class Tuner:
 		results = get_odds_ratios(epoch=0, eval_cfg=eval_cfg) + get_odds_ratios(epoch=epoch, eval_cfg=eval_cfg)
 		
 		summary = self.get_newverb_summary(results, eval_cfg)
-		
+		breakpoint()
 		# Save the summary
 		log.info(f"SAVING TO: {os.getcwd()}")
 		summary.to_pickle(f"{dataset_name}-{epoch_label}-odds_ratios.pkl.gz")
@@ -2865,6 +2850,34 @@ class Tuner:
 		summary_csv.odds_ratio = summary_csv.odds_ratio.astype(float)
 		summary_csv.odds_ratio_pre_post_difference = summary_csv.odds_ratio_pre_post_difference.astype(float)
 		summary_csv.to_csv(f"{dataset_name}-{epoch_label}-odds_ratios.csv.gz", index = False, na_rep = 'NaN')
+		
+		most_similar_tokens = self.most_similar_tokens(k=eval_cfg.k).assign(eval_epoch=epoch, total_epochs=total_epochs)
+		# most_similar_tokens = pd.concat([most_similar_tokens, self.most_similar_tokens(targets=eval_cfg.data.masked_token_targets).assign(eval_epoch=epoch, total_epochs=total_epochs)], ignore_index=True)
+		
+		predicted_roles = {(v.lower() if 'uncased' in self.string_id else v) : k for k, v in eval_cfg.data.eval_groups.items()}
+		# target_group_labels = {(k.lower() if 'uncased' in self.string_id else k) : v for k, v in eval_cfg.data.masked_token_target_labels.items()}
+		
+		most_similar_tokens = most_similar_tokens.assign(
+			predicted_role=[predicted_roles[arg.replace(chr(288), '')] for arg in most_similar_tokens['predicted_arg']],
+			# target_group_label=[target_group_labels[group.replace(chr(288), '')] if not group.endswith('most similar') and group.replace(chr(288), '') in target_group_labels else group for group in most_similar_tokens.target_group],
+			eval_data=eval_cfg.data.friendly_name,
+			args_group=self.cfg.tuning.which_args,
+			patience=self.cfg.hyperparameters.patience,
+			delta=self.cfg.hyperparameters.delta,
+			min_epochs=self.cfg.hyperparameters.min_epochs,
+			max_epochs=self.cfg.hyperparameters.max_epochs,
+			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
+			random_seed=self.get_original_random_seed(),
+			gradual_unfreezing=self.gradual_unfreezing,
+		)
+		
+		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossims.csv.gz', index=False)
+		
+		# Currently we have only one new verb 
+		# token and no targets to compare to,
+		# meaning there is nothing to plot
+		# log.info('Creating cosine similarity plots')
+		# self.plot_cossims(most_similar_tokens)
 		
 		# Create graphs
 		log.info(f'Creating t-SNE plot(s)')
@@ -3318,7 +3331,7 @@ class Tuner:
 				model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
 				masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
 				masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
-				gradual_unfreezing_str = ', gradual unfreezing' if all(summary.gradual_unfreezing == True) else ', multiple freezing' if len(summary.gradual_unfreezing.unique()) == 1 else ''
+				gradual_unfreezing_str = ', gradual unfreezing' if all(summary.gradual_unfreezing == True) else ', multiple freezing' if len(summary.gradual_unfreezing.unique()) > 1 else ''
 				subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}{gradual_unfreezing_str}'
 				
 				tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
