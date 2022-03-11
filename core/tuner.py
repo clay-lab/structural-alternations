@@ -640,7 +640,7 @@ class Tuner:
 		
 		if not self.tuning_data or (self.exp_type == 'newverb' and self.gradual_unfreezing):
 			log.info(f'Saving randomly initialized weights')
-			save_weights(saved_weights)
+			self.save_weights(saved_weights)
 		
 		if not self.tuning_data:	
 			return
