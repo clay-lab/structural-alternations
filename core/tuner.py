@@ -1719,8 +1719,8 @@ class Tuner:
 			with open(path, 'r') as logfile_stream:
 				logfile = logfile_stream.read()
 			
-			seed = int(re.findall(r'Seed set to ([0-9]*)\n', logfile)[0])
-			return seed
+			self.seed = int(re.findall(r'Seed set to ([0-9]*)\n', logfile)[0])
+			return self.seed
 		except (IndexError, FileNotFoundError):
 			pass
 		
@@ -1732,8 +1732,8 @@ class Tuner:
 			with gzip.open(path, 'rb') as weightsfile_stream:
 				weights = pkl.load(weightsfile_stream)
 			
-			seed = weights['random_seed']
-			return seed
+			self.seed = weights['random_seed']
+			return self.seed
 		except (IndexError, FileNotFoundError):
 			log.error(f'Seed not found in log file or weights file in {os.path.split(path)[0]}!')
 			return
