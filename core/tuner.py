@@ -731,13 +731,6 @@ class Tuner:
 				if self.unfreezing == 'gradual':
 					self.freeze_to_layer(max(-self.model.config.num_hidden_layers, -(floor(epoch/self.unfreezing_epochs_per_layer)+1)))
 				
-				# debug
-				log.info('')
-				self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the local [MASK] will step in to help.', output_fun=log.info)
-				self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the [MASK] will blork the [MASK].', output_fun=log.info)
-				self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the stores will [MASK] the ship.', output_fun=log.info)
-				self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
-				
 				self.model.train()
 				
 				optimizer.zero_grad(set_to_none=True) # this is supposed to be faster than .zero_grad()
@@ -814,13 +807,6 @@ class Tuner:
 				if patience_counter >= patience and epoch + 1 >= min_epochs:
 					log.info(f'Mean dev loss has not improved by {delta} in {patience_counter} epochs (min_epochs={min_epochs}). Halting training at epoch {epoch}.')
 					break
-		
-		# debug
-		log.info('')
-		self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'the local [MASK] will step in to help.', output_fun=log.info)
-		self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'the [MASK] will blork the [MASK].', output_fun=log.info)
-		self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'the stores will [MASK] the ship.', output_fun=log.info)
-		self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
 		
 		self.add_tb_labels(writer, tb_metrics_dict, epoch)
 		
@@ -2873,14 +2859,6 @@ class Tuner:
 		def get_odds_ratios(epoch: int, eval_cfg: DictConfig) -> List[Dict]:
 			epoch, total_epochs = self.restore_weights(epoch)
 			
-			# debug
-			log.info('')
-			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the local [MASK] will step in to help.', output_fun=log.info)
-			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the [MASK] will blork the [MASK].', output_fun=log.info)
-			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the stores will [MASK] the ship.', output_fun=log.info)
-			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
-			log.info('')
-				
 			which_args = self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.cfg.model.friendly_name + '_args'
 			
 			args = self.cfg.tuning.args
