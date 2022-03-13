@@ -2,6 +2,7 @@
 # 
 # Application entry point for fine-tuning a masked language model.
 import os
+import re
 import hydra
 
 from pprint import PrettyPrinter
@@ -32,8 +33,14 @@ OmegaConf.register_new_resolver(
 )
 
 OmegaConf.register_new_resolver(
-	'gunfname',
-	lambda gradual_unfreezing: '' if not gradual_unfreezing else '-grunf'
+	'unfname',
+	lambda unfreezing: '' if unfreezing.lower() == 'none' else '-' + str(unfreezing)[:2].zfill(2) + 'unf' + \
+		(re.sub(r'.*([0-9]+)', '\\1', unfreezing).zfill(2) if 'gradual' in unfreezing else '')
+)
+
+OmegaConf.register_new_resolver(
+	'maskargsname',
+	lambda mask_args, exp_type: '-masked_args' if mask_args == True and exp_type == 'newverb' else ''	
 )
 
 @hydra.main(config_path="conf", config_name="tune")
@@ -58,12 +65,8 @@ def tune(cfg: DictConfig) -> None:
 	
 	# before printing, change the arguments used if this is a new verb experiment and we are using the ones specific to the model
 	if cfg.tuning.exp_type == 'newverb':
-		if cfg.tuning.which_args == 'model':
-			with open_dict(cfg):
-				cfg.tuning.args = cfg.tuning[cfg.model.friendly_name + '_args']
-		else:
-			with open_dict(cfg):
-				cfg.tuning.args = cfg.tuning[cfg.tuning.which_args]
+		with open_dict(cfg):
+			cfg.tuning.args = cfg.tuning[cfg.model.friendly_name + '_args'] if cfg.tuning.which_args == 'model' else cfg.tuning[cfg.tuning.which_args]
 	
 	# print this before adding the dev sets, since that will print a lot of stuff we don't necessarily need to see
 	print(OmegaConf.to_yaml(cfg))

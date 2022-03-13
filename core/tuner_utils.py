@@ -231,7 +231,7 @@ def verify_tokenization_of_sentences(tokenizer: 'PreTrainedTokenizer', sentences
 	
 	return True
 
-def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean') -> int:
+def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean', log_message: bool = True) -> int:
 	loss_df = loss_df.copy().sort_values(['dataset', 'epoch']).reset_index(drop=True)
 	
 	datasets = loss_df.dataset.unique()
@@ -250,17 +250,20 @@ def get_best_epoch(loss_df: pd.DataFrame, method: str = 'mean') -> int:
 		
 		epoch_sumsqs = sorted(epoch_sumsqs, key = lambda epoch_sumsq: epoch_sumsq[1])
 		best_epoch = epoch_sumsqs[0][0]
-		log.info(f'Best epoch is {best_epoch} (sumsq loss = ' + '{:.2f}'.format(epoch_sumsqs[0][1]) + f', minimum for {", ".join(best_losses[best_losses.epoch == best_epoch].dataset.values)}).')
+		if log_message:
+			log.info(f'Best epoch is {best_epoch} (sumsq loss = ' + '{:.2f}'.format(epoch_sumsqs[0][1]) + f', minimum for {", ".join(best_losses[best_losses.epoch == best_epoch].dataset.values)}).')
 	elif method in ['best_mean', 'mean']:
 		mean_losses = loss_df.groupby('epoch').value.agg('mean')
 		lowest_loss = mean_losses.min()
 		best_epoch = loss_df.loc[loss_df.epoch == mean_losses.idxmin()].epoch.unique()[0]
-		log.info(f'Best epoch is {best_epoch} (mean loss = ' + '{:.2f}'.format(lowest_loss) + ').')
+		if log_message:
+			log.info(f'Best epoch is {best_epoch} (mean loss = ' + '{:.2f}'.format(lowest_loss) + ').')
 	else:
 		best_epoch = loss_df.epoch.max()
-		log.warning(f'No method for determining best epoch provided (use "sumsq", "mean"). The highest epoch {best_epoch} will be used. This may not be the best epoch!')
+		if log_message:
+			log.warning(f'No method for determining best epoch provided (use "sumsq", "mean"). The highest epoch {best_epoch} will be used. This may not be the best epoch!')
 	
-	if best_epoch == max(loss_df.epoch):
+	if best_epoch == max(loss_df.epoch) and log_message:
 		log.warning('Note that the best epoch is the final epoch. This may indicate underfitting.')
 	
 	return best_epoch

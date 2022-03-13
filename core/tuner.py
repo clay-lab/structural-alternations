@@ -24,7 +24,9 @@ import pickle as pkl
 import seaborn as sns
 import torch.nn as nn
 
+from copy import deepcopy
 from tqdm import trange, tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 from math import ceil, floor, sqrt
 from typing import Dict, List, Tuple, Union, Type
 from omegaconf import DictConfig, OmegaConf, open_dict
@@ -45,8 +47,20 @@ class Tuner:
 	# START Computed Properties
 	
 	@property
-	def gradual_unfreezing(self) -> bool:
-		return self.cfg.hyperparameters.gradual_unfreezing
+	def mask_args(self) -> bool:
+		return self.cfg.hyperparameters.mask_args if self.exp_type == 'newverb' else None
+	
+	@property
+	def unfreezing(self) -> Union[str,int]:
+		if isinstance(self.cfg.hyperparameters.unfreezing,int):
+			return self.cfg.hyperparameters.unfreezing
+		
+		return re.sub(r'[0-9]*', '', self.cfg.hyperparameters.unfreezing) if not self.cfg.hyperparameters.unfreezing.lower() == 'none' else None
+	
+	@property
+	def unfreezing_epochs_per_layer(self) -> int:
+		unfreezing_epochs_per_layer = int(re.sub(r'.*([0-9]+)', '\\1', self.cfg.hyperparameters.unfreezing)) if isinstance(self.unfreezing,str) else 1
+		return unfreezing_epochs_per_layer if self.unfreezing == 'gradual' else np.nan
 	
 	@property
 	def exp_type(self) -> str:
@@ -99,13 +113,16 @@ class Tuner:
 	@property
 	def mixed_tuning_data(self) -> List[str]:
 		to_mix = self.verb_tuning_data if self.exp_type == 'newverb' else self.tuning_data
+		tokens = self.tokens_to_mask
+		if self.exp_type == 'newverb' and self.mask_args:
+			tokens += list(itertools.chain(*[self.cfg.tuning.args[arg_type] for arg_type in self.cfg.tuning.args]))
 		
 		data = []
 		for s in to_mix:
 			if self.cfg.hyperparameters.strip_punct:
 				s = strip_punct(s)
 			
-			for tok in self.tokens_to_mask:
+			for tok in tokens:
 				r = np.random.random()
 				# Roberta tuning regimen: masked tokens are masked 80% of the time, original 10% of the time, and random word 10% of the time
 				if r < 0.8:
@@ -141,8 +158,14 @@ class Tuner:
 		for s in to_mask:
 			if self.cfg.hyperparameters.strip_punct:
 				s = strip_punct(s)
+			
 			for tok in self.tokens_to_mask:
 				s = s.replace(tok, self.mask_tok)
+			
+			if self.mask_args:
+				for arg_type in self.cfg.tuning.args:
+					for arg in self.cfg.tuning.args[arg_type]:
+						s = s.replace(arg, self.mask_tok)
 			
 			data.append(s)
 		
@@ -209,6 +232,7 @@ class Tuner:
 	
 	@property
 	def dev_data(self) -> List[str]:
+		# should update this for newverb at some point
 		dev_data = {}
 		for dataset in self.cfg.dev:
 			data = [strip_punct(s) for s in self.cfg.dev[dataset].data] if self.cfg.hyperparameters.strip_punct else list(self.cfg.dev[dataset].data)
@@ -229,6 +253,7 @@ class Tuner:
 	
 	@property
 	def mixed_dev_data(self) -> List[str]:
+		# should update this for newverb at some point
 		if not self.cfg.dev:
 			return {}
 		
@@ -272,6 +297,7 @@ class Tuner:
 	
 	@property
 	def masked_dev_data(self) -> Dict[str,List[str]]:
+		# should update this newverb data at some point
 		if not self.cfg.dev:
 			return {}
 		
@@ -333,8 +359,10 @@ class Tuner:
 	
 	# END Computed Properties
 	
-	def __init__(self, cfg: DictConfig) -> None:
-		self.cfg = cfg
+	def __init__(self, cfg_or_path: Union[DictConfig,str]) -> None:
+		
+		self.cfg = OmegaConf.load(os.path.join(cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
+		self.checkpoint_dir = cfg_or_path if isinstance(cfg_or_path, str) else os.getcwd()
 		self.save_full_model = False
 		
 		if self.string_id != 'multi':
@@ -349,36 +377,45 @@ class Tuner:
 			self.model = AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs)
 			self.model.resize_token_embeddings(len(self.tokenizer))
 	
+	def unfreeze_all_params(self) -> None:
+		self.save_full_model = True
+		log.warning(f'You are using {self.unfreezing} unfreezing, which requires saving the full model state instead of just the weights of the new tokens.')
+		log.warning('Only the initial model state and the state with the lowest mean dev loss will be retained and available for evaluation.')
+		
+		for name, param in self.model.named_parameters():
+			param.requires_grad = True
+			assert param.requires_grad, f'{name} is frozen!'
+	
 	def freeze_to_layer(self, n: int = None) -> None:
 		if n is None:
 			n = self.model.config.num_hidden_layers
 		
 		if abs(n) > self.model.config.num_hidden_layers:
-			log.warning(f'You are trying to freeze to hidden layer {n}, but the model only has {self.config.model.num_hidden_layers}. Freezing all hidden layers.')
+			log.warning(f'You are trying to freeze to hidden layer {n}, but the model only has {self.model.config.num_hidden_layers}. Freezing all hidden layers.')
 			n = self.model.config.num_hidden_layers
 		
 		# allow specifying from the end of the model
 		n = self.model.config.num_hidden_layers + n if n < 0 else n
 		
 		layers_to_freeze = [f'layer.{x}.' for x in range(n)]
+		layers_to_unfreeze = [f'layer.{x}.' for x in range(n,self.model.config.num_hidden_layers)]
 		
-		# this is so we only print the log message once
-		if not self.save_full_model:
-			log.info('Freezing model parameters')
+		if any(layers_to_unfreeze):
+			if not self.save_full_model:
+				self.save_full_model = True
+				log.warning(f'You are using {"layer " + str(self.unfreezing) if isinstance(self.unfreezing,int) else self.unfreezing} unfreezing, which requires saving the full model state instead of just the weights of the new tokens.')
+				log.warning('Only the initial model state and the state with the lowest mean dev loss will be retained and available for evaluation.')
+		
+		# this is so we only print the log message if we are actually changing parameters
+		if (
+			any(	param.requires_grad for name, param in self.model.named_parameters() if any(layer in name for layer in layers_to_freeze  )) or
+			any(not param.requires_grad for name, param in self.model.named_parameters() if any(layer in name for layer in layers_to_unfreeze))
+		): log.info(f'Freezing model parameters to layer {n}')
 		
 		for name, param in self.model.named_parameters():
 			# always freeze everything except the word embeddings and the layers, and also freeze the specified layers
 			if ('word_embeddings' not in name and 'layer' not in name) or ('layer' in name and any(layer in name for layer in layers_to_freeze)):
 				param.requires_grad = False
-				if ('layer' in name and any(layer in name for layer in layers_to_freeze) and not len(layers_to_freeze) == self.model.config.num_hidden_layers):
-					if not self.save_full_model:
-						self.save_full_model = True
-						log.warning('You are using gradual unfreezing, which requires saving the full model state instead of just the weights of the new tokens.')
-						if not self.exp_type == 'newverb':
-							log.warning('Only the state with the lowest mean dev loss will be retained and available for evaluation.')
-						else:
-							log.warning('Only the initial model state and the state with the lowest mean dev loss will be retained and available for evaluation.')
-							
 				assert not param.requires_grad, f'{name} is not frozen!'
 			else:
 				param.requires_grad = True
@@ -520,12 +557,16 @@ class Tuner:
 	
 	def record_epoch_metrics(
 		self, epoch: int, masked_inputs: 'BatchEncoding', labels: 'torch.Tensor', outputs: 'MaskedLMOutput', loss: torch.Tensor, delta: float, 
-		dataset_name_: str, metrics: pd.DataFrame, tb_loss_dict: Dict, tb_metrics_dict: Dict, 
+		dataset_name: str, metrics: List, tb_loss_dict: Dict, tb_metrics_dict: Dict, 
 		best_losses: Dict, patience_counters: Dict, masked_argument_inputs: 'BatchEncoding' = None
 	) -> None:
-		dataset_name = dataset_name_.replace("_", " ")
+		dataset_name = dataset_name.replace("_", " ")
 		
-		metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == dataset_name_), 'loss'] = loss.item()
+		metrics_dict = {'epoch': epoch + 1, 'dataset': dataset_name}
+		
+		metrics.append({**metrics_dict, 'metric': 'loss', 'value': loss.item()})
+		
+		# metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == dataset_name), 'loss'] = loss.item()
 		tb_loss_dict.update({dataset_name: loss})
 		if loss.item() < best_losses[dataset_name] - delta:
 			best_losses[dataset_name] = loss.item()
@@ -534,7 +575,8 @@ class Tuner:
 			patience_counters[dataset_name] -= 1
 			patience_counters[dataset_name] = max(patience_counters[dataset_name], 0)
 		
-		metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == dataset_name_), 'remaining patience'] = patience_counters[dataset_name]
+		# metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == dataset_name), 'remaining patience'] = patience_counters[dataset_name]
+		metrics.append({**metrics_dict, 'metric': 'remaining patience', 'value': patience_counters[dataset_name]})
 		
 		train_results = self.collect_results(masked_inputs, labels, self.tokens_to_mask, outputs)
 		epoch_metrics = self.get_epoch_metrics(train_results)
@@ -543,13 +585,14 @@ class Tuner:
 			newverb_outputs = self.model(**masked_argument_inputs)
 			newverb_results = self.collect_newverb_results(newverb_outputs)
 			newverb_epoch_metrics = self.get_newverb_epoch_metrics(newverb_results)
-			epoch_metrics = {metric: {**epoch_metrics[metric], **newverb_epoch_metrics[metric]} for metric in list(dict.fromkeys([*list(epoch_metrics.keys()), *list(newverb_epoch_metrics.keys())]))}
+			epoch_metrics = {metric: {**epoch_metrics.get(metric, {}), **newverb_epoch_metrics.get(metric, {})} for metric in set(epoch_metrics.keys()).union(set(newverb_epoch_metrics.keys()))}
 		
 		for metric in epoch_metrics:
 			tb_metrics_dict[metric] = {}
 			for token in epoch_metrics[metric]:
 				tb_metrics_dict[metric][token] = {}
-				metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == dataset_name_), f'{token} mean {metric} in expected position'] = epoch_metrics[metric][token]
+				# metrics.loc[(metrics.epoch == epoch + 1) & (metrics.dataset == dataset_name), f'{token} mean {metric} in expected position'] = epoch_metrics[metric][token]
+				metrics.append({**metrics_dict, 'metric': f'{token} mean {metric} in expected position', 'value': epoch_metrics[metric][token]})
 				tb_metrics_dict[metric][token].update({dataset_name: epoch_metrics[metric][token]})
 	
 	def add_tb_epoch_metrics(self, epoch: int, writer: SummaryWriter, tb_loss_dict: Dict, dev_losses: List[float], tb_metrics_dict: Dict) -> None:
@@ -577,9 +620,13 @@ class Tuner:
 			model_label += f'args group: {self.cfg.tuning.which_args}, '
 		
 		model_label += f'masking: {self.cfg.hyperparameters.masked_tuning_style}, ' if self.masked else 'unmasked, '
+		model_label += 'mask args, ' if self.mask_args else ''
 		model_label += f'{"no punctuation" if self.cfg.hyperparameters.strip_punct else "punctuation"}, '
 		model_label += f'epochs={epoch+1} (min={self.cfg.hyperparameters.min_epochs}, max={self.cfg.hyperparameters.max_epochs}), '
 		model_label += f'pat={self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})'
+		model_label += f'unfreezing={self.unfreezing}'
+		if self.unfreezing == 'gradual':
+			model_label += f'({self.unfreezing_epochs_per_layer})'
 		
 		# Aggregate the plots and add a helpful label
 		# note that tensorboard does not support plotting means and CIs automatically even when aggregating
@@ -594,36 +641,31 @@ class Tuner:
 		
 		writer.add_custom_scalars(layout)
 	
-	def format_metrics(self, metrics: pd.DataFrame) -> pd.DataFrame:
-		metrics['dataset_type'] = ['dev' if dataset.endswith('(dev)') else 'train' for dataset in metrics.dataset]
-		metrics = metrics[~metrics.loss.isnull()].reset_index(drop=True)
+	def convert_metrics_to_df(self, metrics: List[Dict]) -> pd.DataFrame:
+		metrics = pd.DataFrame(metrics)
 		
-		metrics = metrics.assign(max_epochs=self.cfg.hyperparameters.max_epochs, min_epochs=self.cfg.hyperparameters.min_epochs)
-		if self.exp_type == 'newverb':
-			metrics = metrics.assign(args_group=self.cfg.tuning.which_args)
-		
-		metrics = pd.melt(
-			metrics, 
-			id_vars = ['epoch', 'dataset', 'dataset_type', 'min_epochs', 'max_epochs'] + (['args_group'] if self.exp_type == 'newverb' else []), 
-			value_vars = [c for c in metrics.columns if not c in ['epoch', 'dataset', 'dataset_type', 'min_epochs', 'max_epochs']], 
-			var_name = 'metric'
-		).assign(
+		metrics = metrics.assign(
+			dataset = pd.Categorical(metrics.dataset, categories = metrics.dataset.unique()),
+			metric = pd.Categorical(metrics.metric, categories = metrics.metric.unique()),
+			dataset_type = ['dev' if dataset.endswith('(dev)') else 'overall' if dataset == 'overall' else 'train' for dataset in metrics.dataset],
+			max_epochs=self.cfg.hyperparameters.max_epochs, 
+			min_epochs=self.cfg.hyperparameters.min_epochs,
 			model_id = os.path.split(os.getcwd())[1] + '-' + self.model_name[0],
 			model_name = self.model_name,
 			tuning = self.cfg.tuning.name,
 			masked = self.masked,
 			masked_tuning_style = self.masked_tuning_style,
 			strip_punct = self.cfg.hyperparameters.strip_punct,
-			dataset = lambda df: [d.replace('_', ' ') for d in df.dataset],
 			patience = self.cfg.hyperparameters.patience,
 			delta = self.cfg.hyperparameters.delta,
-			gradual_unfreezing = self.gradual_unfreezing,
-		)
+			unfreezing = self.unfreezing,
+			unfreezing_epochs_per_layer = self.unfreezing_epochs_per_layer,
+			mask_args = self.mask_args,
+			random_seed = self.seed,
+		).sort_values(['dataset', 'metric', 'epoch']).reset_index(drop=True)
 		
-		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset'] = 'overall'
-		metrics.loc[metrics.metric == 'remaining patience overall', 'dataset_type'] = 'overall'
-		metrics = metrics.drop_duplicates().reset_index(drop=True)
-		metrics['random_seed'] = self.seed
+		if self.exp_type == 'newverb':
+			metrics = metrics.assign(args_group = self.cfg.tuning.which_args)
 		
 		return metrics
 	
@@ -636,9 +678,9 @@ class Tuner:
 		self.initialize_added_tokens()
 		
 		# Store weights pre-training so we can inspect the initial status later
-		saved_weights = {0 : self.added_token_weights, 'random_seed': self.seed}
+		saved_weights = {'random_seed': self.seed, 0: self.added_token_weights}
 		
-		if not self.tuning_data or (self.exp_type == 'newverb' and self.gradual_unfreezing):
+		if not self.tuning_data or (self.exp_type == 'newverb' and self.unfreezing is not None):
 			log.info(f'Saving randomly initialized weights')
 			self.save_weights(saved_weights)
 		
@@ -656,26 +698,27 @@ class Tuner:
 		# Store the old embeddings so we can verify that only the new ones get updated
 		self.old_embeddings = getattr(self.model, self.model_name).embeddings.word_embeddings.weight.clone()
 		
-		self.freeze_to_layer(self.model.config.num_hidden_layers)
+		if self.unfreezing == 'complete':
+			self.unfreeze_all_params()
+		elif not isinstance(self.unfreezing, int):
+			self.freeze_to_layer(self.model.config.num_hidden_layers)
+		elif isinstance(self.unfreezing, int):
+			self.freeze_to_layer(self.unfreezing)
 		
 		inputs, labels, dev_inputs, dev_labels, masked_inputs, masked_dev_inputs = self.get_tuner_inputs_labels()
 		
-		log.info(f"Training model @ '{os.getcwd().replace(hydra.utils.get_original_cwd(), '')}' (min_epochs={min_epochs}, max_epochs={epochs}, patience={patience}, \u0394={delta})")
+		log.info(f"Training model @ '{os.getcwd().replace(hydra.utils.get_original_cwd(), '')}'")
+		log.info(f"(min_epochs={min_epochs}, max_epochs={epochs}, patience={patience}, \u0394={delta}, unfreezing={self.unfreezing}" + (f"{self.unfreezing_epochs_per_layer}" if self.unfreezing == 'gradual' else "") + (f", mask_args)" if self.mask_args else ')'))
 		
 		datasets = [self.cfg.tuning.name + ' (train)', 
 					self.cfg.tuning.name + ' (masked, no dropout)'] + \
 				   [dataset + ' (dev)' for dataset in self.cfg.dev]
 		
-		metrics = pd.DataFrame(data = {
-			'epoch'   : list(range(1,epochs+1)) * len(datasets),
-			'dataset' : np.repeat(datasets, [epochs] * len(datasets))
-		})
-		
-		metrics['loss'] = np.nan
+		metrics = []
 		
 		writer = SummaryWriter()
 		
-		with trange(epochs) as t:
+		with logging_redirect_tqdm(), trange(epochs) as t:
 			
 			patience_counter = 0
 			patience_counters = {d.replace('_', ' '): patience for d in datasets}
@@ -685,8 +728,15 @@ class Tuner:
 			
 			for epoch in t:
 				
-				if self.gradual_unfreezing:
-					self.freeze_to_layer(max(-self.model.config.num_hidden_layers, -(epoch+1)))
+				if self.unfreezing == 'gradual':
+					self.freeze_to_layer(max(-self.model.config.num_hidden_layers, -(floor(epoch/self.unfreezing_epochs_per_layer)+1)))
+				
+				# debug
+				log.info('')
+				self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the local [MASK] will step in to help.', output_fun=log.info)
+				self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the [MASK] will blork the [MASK].', output_fun=log.info)
+				self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the stores will [MASK] the ship.', output_fun=log.info)
+				self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
 				
 				self.model.train()
 				
@@ -707,16 +757,19 @@ class Tuner:
 					best_losses, patience_counters
 				)
 				
-				saved_weights[epoch + 1] = self.added_token_weights
-				
-				self.zero_grad_for_non_added_tokens()
+				if not self.unfreezing == 'complete':
+					self.zero_grad_for_non_added_tokens()
 				
 				optimizer.step()
 				
-				self.verify_word_embeddings()
+				if not self.unfreezing == 'complete':
+					self.verify_word_embeddings()
+				
+				saved_weights[epoch+1] = self.added_token_weights
 				
 				# evaluate the model on the dev set(s) and log results
 				self.model.eval()
+				
 				with torch.no_grad():
 					dev_losses = []
 					for dataset in dev_inputs:
@@ -748,36 +801,39 @@ class Tuner:
 					best_mean_loss = np.mean(dev_losses)
 					patience_counter = 0
 					if self.save_full_model:
-						best_model_state_dict = self.model.state_dict().copy()
+						# need to use a deepcopy, else this changes and we overwrite the best state
+						best_model_state_dict = deepcopy(self.model.state_dict())
 				else:
 					patience_counter += 1
 					patience_counter = min(patience, patience_counter)
-					if patience_counter >= patience and epoch + 1 >= min_epochs:
-						metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = patience - patience_counter
-						writer.add_scalars('remaining patience', {**patience_counters, 'overall': patience - patience_counter}, epoch)
-						t.set_postfix(pat=patience - patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
-						break
-				
-				metrics.loc[(metrics.epoch == epoch + 1), 'remaining patience overall'] = patience - patience_counter
+					
+				metrics.append({'epoch': epoch + 1, 'dataset': 'overall', 'metric': 'remaining patience overall', 'value': patience - patience_counter})
 				writer.add_scalars('remaining patience', {**patience_counters, 'overall': patience - patience_counter}, epoch)
 				t.set_postfix(pat=patience - patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
 				
+				if patience_counter >= patience and epoch + 1 >= min_epochs:
+					log.info(f'Mean dev loss has not improved by {delta} in {patience_counter} epochs (min_epochs={min_epochs}). Halting training at epoch {epoch}.')
+					break
+		
+		# debug
+		log.info('')
+		self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'the local [MASK] will step in to help.', output_fun=log.info)
+		self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'the [MASK] will blork the [MASK].', output_fun=log.info)
+		self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'the stores will [MASK] the ship.', output_fun=log.info)
+		self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
+		
 		self.add_tb_labels(writer, tb_metrics_dict, epoch)
 		
-		# log this here so the progress bar doesn't get printed twice (which happens if we do the log in the loop)
-		if patience_counter >= patience:
-			log.info(f'Mean dev loss has not improved by {delta} in {patience_counter} epochs (min_epochs={min_epochs}). Halting training at epoch {epoch}.')
-		
 		if not self.save_full_model:
-			# we do minus one here because we've also saved the randomly initialized weights @ 0
-			log.info(f"Saving weights for random initializations and each of {len(saved_weights)-1} training epochs")
+			# we do minus two here because we've saved the randomly initialized weights @ 0 and the random seed
+			log.info(f"Saving weights for random initializations and each of {len(saved_weights)-2} training epochs")
 			self.save_weights(saved_weights)
 		else:
 			log.info('Saving model state with lowest avg dev loss to disk')
-			with gzip.open('model.pt.gz', 'wb') as f:
+			with open('model.pt', 'wb') as f:
 				torch.save(best_model_state_dict, f)
 		
-		metrics = self.format_metrics(metrics)
+		metrics = self.convert_metrics_to_df(metrics)
 		
 		log.info(f"Saving metrics")
 		metrics.to_csv("metrics.csv.gz", index = False, na_rep = 'NaN')
@@ -910,7 +966,8 @@ class Tuner:
 		
 		return epoch_metrics
 	
-	def get_newverb_epoch_metrics(self, results: Dict, metrics: List[str] = ['log probability', 'surprisal']) -> Dict:
+	def get_newverb_epoch_metrics(self, results: Dict, metrics: List[str] = ['log probability', 'surprisal', 'odds ratio']) -> Dict:
+		
 		newverb_epoch_metrics = {
 			metric : {
 				arg_type : 
@@ -937,10 +994,11 @@ class Tuner:
 		
 		return newverb_epoch_metrics		
 	
-	def restore_weights(self, checkpoint_dir: str, epoch: Union[int,str] = 'best_mean') -> Tuple[int,int]:
-		# if we have saved the full model, prefer that
-		model_path = os.path.join(checkpoint_dir, 'model.pt.gz')
-		metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv.gz'))
+	def restore_weights(self, epoch: Union[int,str] = 'best_mean') -> Tuple[int,int]:
+		# if we have saved the full model and we are not on epoch zero, prefer that
+		# this occurs when not freezing all parameters except the added token weights
+		model_path = os.path.join(self.checkpoint_dir, 'model.pt')
+		metrics = pd.read_csv(os.path.join(self.checkpoint_dir, 'metrics.csv.gz'))
 		total_epochs = max(metrics.epoch)
 		loss_df = metrics[(metrics.metric == 'loss') & (~metrics.dataset.str.endswith(' (train)'))]
 		if os.path.isfile(model_path) and not epoch == 0:
@@ -951,7 +1009,7 @@ class Tuner:
 			
 			log.info(f'Restoring model state from epoch {epoch}/{total_epochs}')
 			
-			with gzip.open(model_path, 'rb') as f:
+			with open(model_path, 'rb') as f:
 				self.model.load_state_dict(torch.load(f))
 		else:
 			# we do this because we need to make sure that when we are restoring from 0, we start at the correct state
@@ -961,7 +1019,7 @@ class Tuner:
 			self.model = AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs)
 			self.model.resize_token_embeddings(len(self.tokenizer))
 			
-			weights_path = os.path.join(checkpoint_dir, 'weights.pkl.gz')
+			weights_path = os.path.join(self.checkpoint_dir, 'weights.pkl.gz')
 			with gzip.open(weights_path, 'rb') as f:
 				weights = pkl.load(f)
 			
@@ -984,6 +1042,10 @@ class Tuner:
 		# do this to avoid messing up the passed dataframe
 		metrics = metrics.copy()
 		
+		if metrics.epoch.unique().size <= 1:
+			log.warning('Not enough data to create line plots for metrics. Try fine-tuning for >1 epoch.')
+			return
+		
 		def determine_int_axticks(series: pd.Series, target_num_ticks: int = 10) -> List[int]:
 			lowest = series.min()
 			highest = series.max()
@@ -999,7 +1061,7 @@ class Tuner:
 					break
 				else:
 					new_min -= 1
-					# if we get here, it metrics highest is a prime and there's no good solution,
+					# if we get here, it means highest is a prime and there's no good solution,
 					# so we'll just brute force something later
 					if new_min == 1:
 						break
@@ -1018,8 +1080,44 @@ class Tuner:
 			
 			return int_axticks
 		
+		def get_like_metrics(self: 'Tuner', metric: str, all_metrics: Union[List[str],np.ndarray]) -> List[str]:
+			# Get the other metrics which are like this one but for different tokens so that we can
+			# set the axis limits to a common value. This is so we can compare the metrics visually
+			# for each token more easily
+			like_metrics = []
+			for m in all_metrics:
+				if not m == metric:
+					m1 = metric
+					m2 = m
+					for token in self.tokens_to_mask:
+						m1 = m1.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
+						m2 = m2.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
+					
+					if not self.exp_type == 'newverb':
+						if m1 == m2:
+							like_metrics.append(m)
+					
+					if self.exp_type == 'newverb':
+						if all([any(arg_type in m1 for arg_type in self.cfg.tuning.args), any(arg_type in m2 for arg_type in self.cfg.tuning.args)]):
+							for arg_type in self.cfg.tuning.args:
+								m1 = m1.replace(arg_type, '')
+								m2 = m2.replace(arg_type, '')
+								m1 = m1.replace(' ()', '')
+								m2 = m2.replace(' ()', '')
+								for arg in self.cfg.tuning.args[arg_type]:
+									m1 = m1.replace(arg, '')
+									m2 = m2.replace(arg, '')
+							
+							if m1 == m2:
+								like_metrics.append(m)
+						
+						elif m1 == m2:
+							like_metrics.append(m)
+			
+			return like_metrics
+		
 		all_metrics = [
-			m for m in metrics.metric.unique() if not m in ['epoch', 'max_epochs', 'min_epochs', 'dataset', 'dataset_type', 'remaining patience overall', 'args_group'] and 
+			m for m in metrics.metric.unique() if not 'overall' in m and
 			(not any([arg in m for arg_type in self.cfg.tuning.args for arg in self.cfg.tuning.args[arg_type]]) if 'args' in self.cfg.tuning else True)
 		]
 		
@@ -1027,45 +1125,15 @@ class Tuner:
 		
 		with PdfPages('metrics.pdf') as pdf:
 			for metric in all_metrics:
-				# Get the other metrics which are like this one but for different tokens so that we can
-				# set the axis limits to a common value. This is so we can compare the metrics visually
-				# for each token more easily
-				like_metrics = []
-				for m in [m for m in metrics.metric.unique() if not m in ['epoch', 'max_epochs', 'min_epochs', 'dataset', 'dataset_type', 'remaining patience overall', 'args_group']]:
-					if not m == metric:
-						m1 = metric
-						m2 = m
-						for token in self.tokens_to_mask:
-							m1 = m1.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
-							m2 = m2.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
-						
-						if not self.exp_type == 'newverb':
-							if m1 == m2:
-								like_metrics.append(m)
-						
-						if self.exp_type == 'newverb':
-							if all([any(arg_type in m1 for arg_type in self.cfg.tuning.args), any(arg_type in m2 for arg_type in self.cfg.tuning.args)]):
-								for arg_type in self.cfg.tuning.args:
-									m1 = m1.replace(arg_type, '')
-									m2 = m2.replace(arg_type, '')
-									m1 = m1.replace(' ()', '')
-									m2 = m2.replace(' ()', '')
-									for arg in self.cfg.tuning.args[arg_type]:
-										m1 = m1.replace(arg, '')
-										m2 = m2.replace(arg, '')
-								
-								if m1 == m2:
-									like_metrics.append(m)
-							
-							elif m1 == m2:
-								like_metrics.append(m)
 				
-				ulim = np.max([*metrics[metrics.metric == metric].dropna().value.values])
-				llim = np.min([*metrics[metrics.metric == metric].dropna().value.values])
+				like_metrics = get_like_metrics(self, metric, metrics.metric.unique())
+				
+				ulim = np.max([*metrics[(metrics.metric == metric) & (~metrics.value.isnull())].value.values])
+				llim = np.min([*metrics[(metrics.metric == metric) & (~metrics.value.isnull())].value.values])
 				
 				for m in like_metrics:
-					ulim = np.max([ulim, *metrics[metrics.metric == m].dropna().value.values])
-					llim = np.min([llim, *metrics[metrics.metric == m].dropna().value.values])
+					ulim = np.max([ulim, *metrics[(metrics.metric == m) & (~metrics.value.isnull())].value.values])
+					llim = np.min([llim, *metrics[(metrics.metric == m) & (~metrics.value.isnull())].value.values])
 				
 				adj = max(np.abs(ulim - llim)/40, 0.05)
 				
@@ -1079,112 +1147,71 @@ class Tuner:
 				palette = sns.color_palette(n_colors=num_datasets) if num_datasets <= 10 else sns.color_palette('hls', num_datasets) # if we have more than 10 dev sets, don't repeat colors
 				sns.set_palette(palette)
 				
-				if len(metrics[metrics.metric == metric].index) > 1:
-					if metric == 'remaining patience':
-						if len(metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')].dataset.unique()) > 1:
-							global_patience = metrics[metrics.metric == 'remaining patience overall'][['epoch', 'value']].drop_duplicates().reset_index(drop=True).assign(dataset = 'overall', dataset_type = 'global')
-							sns.lineplot(data = pd.concat([metrics[metrics.metric == metric], global_patience], ignore_index=True), x = 'epoch', y = 'value', ax=ax, hue='dataset', style='dataset_type', legend ='full')
-							ax.set_ylabel(metric)
-							plt.yticks(determine_int_axticks(pd.concat([pd.concat([metrics[metrics.metric == metric].value, metrics[metrics.metric == 'remaining patience overall'].value], ignore_index=True).astype(int), pd.Series(0)], ignore_index=True)))
-							handles, labels = ax.get_legend_handles_labels()
-						else:
-							sns.lineplot(data = metrics[metrics.metric == metric][['epoch', 'value', 'dataset', 'dataset_type']].dropna(), x = 'epoch', y = 'value', ax=ax, hue='dataset', style='dataset_type', legend='full')
-							ax.set_ylabel(metric)
-							plt.yticks(determine_int_axticks(pd.concat([metrics[(metrics.metric == 'remaining patience') & (metrics.dataset != 'overall')].value.astype(int), pd.Series(0)], ignore_index=True)))
-							handles, labels = ax.get_legend_handles_labels()
-					elif self.exp_type == 'newverb' and any([re.search(arg_type, metric) for arg_type in self.cfg.tuning.args]):
-						# this occurs when we're doing a newverb exp and we want to plot the individual tokens in addition to the mean
-						like_metrics = [m for m in like_metrics if re.sub(r'\[(.*)\].*', '[\\1]', metric) in m]
-						token_metrics = metrics[(metrics.metric.isin(like_metrics)) & (metrics.dataset != 'overall')][['epoch', 'metric', 'value', 'dataset', 'dataset_type']]
-						# token_metrics = token_metrics.melt(id_vars=['epoch', 'dataset', 'dataset_type'])
-						token_metrics['token'] = [re.sub(r'^([^\s]+).*', '\\1', m) for m in token_metrics.metric]
-						
-						v_adjust = (ax.get_ylim()[1] - ax.get_ylim()[0])/100
-						
-						sns.lineplot(data = metrics[(metrics.metric == metric) & (metrics.dataset != 'overall')][['epoch', 'value', 'dataset', 'dataset_type']].dropna(), x = 'epoch', y = 'value', ax = ax, hue='dataset', style='dataset_type', legend='full')
+				if metric == 'remaining patience':
+					if len(metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')].dataset.unique()) > 1:
+						global_patience = metrics[metrics.metric == 'remaining patience overall'][['epoch', 'dataset', 'dataset_type', 'metric', 'value']]
+						sns.lineplot(data = pd.concat([metrics[metrics.metric == metric], global_patience], ignore_index=True), x = 'epoch', y = 'value', ax=ax, hue='dataset', style='dataset_type', legend ='full')
 						ax.set_ylabel(metric)
-						if not token_metrics.empty:
-							# for dataset, dataset_metrics in metrics.groupby('dataset'):
-							# 	dataset_metrics = dataset_metrics.dropna()
-							# 	if not dataset_metrics.empty:
-							# 		ax.text(floor(max(dataset_metrics.epoch)*.8), dataset_metrics[dataset_metrics.epoch == floor(max(dataset_token_data.epoch)*.8)][metric]-v_adjust, dataset + ' mean', size=8, horizontalalignment='center', verticalalignment='top', color='black', zorder=15)
-							
-							for t, token_data in token_metrics.groupby('token'):
-								token_data = token_data.dropna().reset_index(drop=True)
-								sns.lineplot(data = token_data.dropna(), x='epoch', y='value', ax=ax, hue='dataset', style='dataset_type', linewidth=0.5, legend=False, alpha=0.3)
-								for dataset, dataset_token_data in token_data.groupby('dataset'):
-									ax.text(floor(max(dataset_token_data.epoch)*.8), dataset_token_data[dataset_token_data.epoch == floor(max(dataset_token_data.epoch)*.8)].value-v_adjust, t, size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15, alpha=0.3)
-						
-						if len(metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')].dataset.unique()) > 1:
-							sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall') & (metrics.metric == metric)], x = 'epoch', y = 'value', ax = ax, color = palette[-1], ci = 68)
-							ax.set_ylabel(metric)
-							handles, labels = ax.get_legend_handles_labels()
-							handles += [ax.lines[-1]]
-							labels += ['mean dev']
-							ax.legend(handles=handles,labels=labels)
-							ax.lines[-1].set_linestyle(':')
+						plt.yticks(determine_int_axticks(pd.concat([pd.concat([metrics[metrics.metric == metric].value, metrics[metrics.metric == 'remaining patience overall'].value], ignore_index=True).astype(int), pd.Series(0)], ignore_index=True)))
+						handles, labels = ax.get_legend_handles_labels()
 					else:
-						sns.lineplot(data = metrics[(metrics.metric == metric) & (metrics.dataset != 'overall')][['epoch', 'value', 'dataset', 'dataset_type']].dropna(), x = 'epoch', y = 'value', ax = ax, hue='dataset', style='dataset_type', legend='full')
+						sns.lineplot(data = metrics[(metrics.metric == metric) & (~metrics.value.isnull())][['epoch', 'value', 'dataset', 'dataset_type']], x = 'epoch', y = 'value', ax=ax, hue='dataset', style='dataset_type', legend='full')
 						ax.set_ylabel(metric)
-						if len(metrics[~metrics.dataset.str.endswith('(train)') & (metrics.dataset != 'overall')].dataset.unique()) > 1:
-							sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall') & (metrics.metric == metric)], x = 'epoch', y = 'value', ax = ax, color = palette[-1], ci = 68)
-							handles, labels = ax.get_legend_handles_labels()
-							handles += [ax.lines[-1]]
-							labels += ['mean dev']
-							ax.legend(handles=handles,labels=labels)
-							ax.lines[-1].set_linestyle(':')
+						plt.yticks(determine_int_axticks(pd.concat([metrics[(metrics.metric == 'remaining patience') & (metrics.dataset != 'overall')].value.astype(int), pd.Series(0)], ignore_index=True)))
+						handles, labels = ax.get_legend_handles_labels()
+				elif self.exp_type == 'newverb' and any([re.search(arg_type, metric) for arg_type in self.cfg.tuning.args]):
+					# this occurs when we're doing a newverb exp and we want to plot the individual tokens in addition to the mean
+					like_metrics = [m for m in like_metrics if re.sub(r'\[(.*)\].*', '[\\1]', metric) in m]
+					token_metrics = metrics[(metrics.metric.isin(like_metrics)) & (metrics.dataset != 'overall')][['epoch', 'metric', 'value', 'dataset', 'dataset_type']]
+					token_metrics['token'] = [re.sub(r'^([^\s]+).*', '\\1', m) for m in token_metrics.metric]
 					
-					# remove redundant information from the legend
-					handles = ax.get_legend().legendHandles
-					labels = [text.get_text() for text in ax.get_legend().texts]
-					handles_labels = tuple(zip(handles, labels))
-					handles_labels = [handle_label for handle_label in handles_labels if not handle_label[1] in ['dataset', 'dataset_type', 'train', 'dev', 'global']]
-					handles = [handle for handle, _ in handles_labels]
-					labels = [label for _, label in handles_labels]
-					ax.legend(handles=handles, labels=labels, fontsize=9)
+					v_adjust = (ax.get_ylim()[1] - ax.get_ylim()[0])/100
+					
+					sns.lineplot(data = metrics[(metrics.metric == metric) & (metrics.dataset != 'overall') & (~metrics.value.isnull())][['epoch', 'value', 'dataset', 'dataset_type']], x = 'epoch', y = 'value', ax = ax, hue='dataset', style='dataset_type', legend='full')
+					ax.set_ylabel(metric)
+					if not token_metrics.empty:
+						for t, token_data in token_metrics.groupby('token'):
+							token_data = token_data[~token_data.value.isnull()].reset_index(drop=True)
+							sns.lineplot(data = token_data[~token_data.value.isnull()], x='epoch', y='value', ax=ax, hue='dataset', style='dataset_type', linewidth=0.5, legend=False, alpha=0.3)
+							for dataset, dataset_token_data in token_data.groupby('dataset'):
+								ax.text(floor(max(dataset_token_data.epoch)*.8), dataset_token_data[dataset_token_data.epoch == floor(max(dataset_token_data.epoch)*.8)].value-v_adjust, t, size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15, alpha=0.3)
+					
+					if len(metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')].dataset.unique()) > 1:
+						sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall') & (metrics.metric == metric)], x = 'epoch', y = 'value', ax = ax, color = palette[-1], ci = 68)
+						ax.set_ylabel(metric)
+						handles, labels = ax.get_legend_handles_labels()
+						handles += [ax.lines[-1]]
+						labels += ['mean dev']
+						ax.legend(handles=handles,labels=labels)
+						ax.lines[-1].set_linestyle(':')
 				else:
-					log.warning(f'Not enough data to create line plots for metrics. Try fine-tuning for >1 epoch.')
-					return
-					# sns.scatterplot(data = metrics[['epoch', metric, 'dataset', 'dataset_type']].dropna(), x = 'epoch', y = metric, ax = ax, hue='dataset', style='dataset_type', legend='full')
-					
-					# if self.exp_type == 'newverb' and any([re.search(arg_type, metric) for arg_type in self.cfg.tuning.args]):
-					# 	# this occurs when we're doing a newverb exp and we want to plot the individual tokens in addition to the mean
-					# 	# first, gather the metrics we want on this plot
-					# 	like_metrics = [m for m in like_metrics if re.sub(r'\[(.*)\].*', '[\\1]', metric) in m]
-					# 	token_metrics = metrics[['epoch'] + like_metrics + ['dataset', 'dataset_type']]
-					# 	token_metrics = token_metrics.melt(id_vars=['epoch', 'dataset', 'dataset_type'])
-					# 	token_metrics['token'] = [re.sub(r'^([^\s]+).*', '\\1', variable) for variable in token_metrics.variable]
-						
-						
-					# 	v_adjust = (ax.get_ylim()[1] - ax.get_ylim()[0])/100
-						
-					# 	for t, token_data in token_metrics.groupby('token'):
-					# 		token_data = token_data.dropna().reset_index(drop=True)
-					# 		sns.scatterplot(data = token_data.dropna(), x='epoch', y='value', ax=ax, hue='dataset', style='dataset_type', legend='none')
-					# 		ax.text(max(token_data.epoch)-1, token_data[token_data.epoch == max(token_data.epoch)-1].value-v_adjust, token, size=8, horizontalalignment='center', verticalalignment='top', color='black', zorder=15)
-						
-					# 	if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
-					# 		sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')], x = 'epoch', y = metric, ax = ax, color = palette[-1], ci = 68)
-					# 		handles, labels = ax.get_legend_handles_labels()
-					# 		handles += [ax.lines[-1]]
-					# 		labels += ['mean dev']
-					# 		ax.legend(handles=handles,labels=labels)
-					# 		ax.lines[-1].set_linestyle(':')
-					
-					# if len(metrics[~metrics.dataset.str.endswith('(train)')].dataset.unique()) > 1:
-					# 	sns.scatterplot(data = metrics, x = 'epoch', y = metric, color = palette[-1], ax = ax, ci = 68)
-					# 	handles, labels = ax.get_legend_handles_labels()
-					# 	handles += [ax._children[-1]]
-					# 	labels += ['mean dev']
-					# 	ax.legend(handles=handles,labels=labels)
+					sns.lineplot(data = metrics[(metrics.metric == metric) & (metrics.dataset != 'overall') & (~metrics.value.isnull())][['epoch', 'value', 'dataset', 'dataset_type']], x = 'epoch', y = 'value', ax = ax, hue='dataset', style='dataset_type', legend='full')
+					ax.set_ylabel(metric)
+					if len(metrics[~metrics.dataset.str.endswith('(train)') & (metrics.dataset != 'overall')].dataset.unique()) > 1:
+						sns.lineplot(data = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall') & (metrics.metric == metric)], x = 'epoch', y = 'value', ax = ax, color = palette[-1], ci = 68)
+						handles, labels = ax.get_legend_handles_labels()
+						handles += [ax.lines[-1]]
+						labels += ['mean dev']
+						ax.legend(handles=handles,labels=labels)
+						ax.lines[-1].set_linestyle(':')
 				
+				# remove redundant information from the legend
+				handles = ax.get_legend().legendHandles
+				labels = [text.get_text() for text in ax.get_legend().texts]
+				handles_labels = tuple(zip(handles, labels))
+				handles_labels = [handle_label for handle_label in handles_labels if not handle_label[1] in ['dataset', 'dataset_type', 'train', 'dev', 'global']]
+				handles = [handle for handle, _ in handles_labels]
+				labels = [label for _, label in handles_labels]
+				ax.legend(handles=handles, labels=labels, fontsize=9)
+			
 				plt.xticks(xticks)
 				
 				title = f'{self.model_name} {metric}\n'
 				title += f'tuning: {self.cfg.tuning.name.replace("_", " ")}, '
 				title += ((f'masking: ' + self.masked_tuning_style) if self.masked else "unmasked") + ', '
+				title += 'mask args, ' if self.mask_args else ''
 				title += f'{"with punctuation" if not self.cfg.hyperparameters.strip_punct else "no punctuation"}'
-				title += '\n' if not self.gradual_unfreezing else ', gradual unfreezing\n'
+				title += '\n' if self.unfreezing is None else (f', {self.unfreezing} unfreezing' + (f' ({self.unfreezing_epochs_per_layer})' if self.unfreezing == 'gradual' else ''))
 				title += f'args group: {self.cfg.tuning.which_args}\n' if self.exp_type == 'newverb' else ''
 				title += f'epochs: {metrics.epoch.max()} (min: {metrics.min_epochs.unique()[0]}, max: {metrics.max_epochs.unique()[0]}), patience: {self.cfg.hyperparameters.patience} (\u0394={self.cfg.hyperparameters.delta})\n\n'
 				
@@ -1223,6 +1250,44 @@ class Tuner:
 				plt.close('all')
 				del fig
 	
+	
+	def predict_sentence(self, info: str = '', sentence: str = None, output_fun: Callable = print) -> Dict:
+		restore_training = False
+		if self.model.training:
+			restore_training = True
+			log.warning('Cannot predict in training mode. Setting to eval mode temporarily.')
+			self.model.eval()
+		
+		if sentence is None:
+			sentence = f'The local {self.mask_tok} will step in to help.'
+			log.info(f'No sentence was provided. Using default sentence "{sentence}"')
+		
+		sentence = sentence.lower() if 'uncased' in self.string_id else sentence
+		if self.mask_tok.lower() in sentence:
+			sentence = sentence.replace(self.mask_tok.lower(), self.mask_tok)
+		
+		sentence = strip_punct(sentence) if self.cfg.hyperparameters.strip_punct else sentence
+		
+		with torch.no_grad():
+			outputs = self.model(**self.tokenizer(sentence, return_tensors='pt', padding=True))
+		
+		logprobs = nn.functional.log_softmax(outputs.logits, dim=-1)
+		predicted_ids = torch.squeeze(torch.argmax(logprobs, dim=-1))
+		predicted_ids = predicted_ids[1:-1]
+		predicted_sentence = " ".join(self.tokenizer.convert_ids_to_tokens(predicted_ids))
+		
+		if self.model_name in ['bert', 'distilbert']:
+			predicted_sentence = predicted_sentence.replace(' ##', '').replace('##', '')
+		elif self.model_name in ['roberta']:
+			predicted_sentence = re.sub(rf' ([^{chr(288)}])', '\\1', predicted_sentence).replace(chr(288), '')
+			
+		if output_fun is not None:
+			output_fun(f'{info + " " if info else ""}input: {sentence},\tprediction: {predicted_sentence}')
+		
+		if restore_training:
+			self.model.train()
+		
+		return {'input': sentence, 'prediction': predicted_sentence, 'outputs': outputs}
 	
 	def most_similar_tokens(self, tokens: List[str] = [], targets: Dict[str,str] = {}, k: int = 50) -> pd.DataFrame:
 		"""
@@ -1443,8 +1508,9 @@ class Tuner:
 					title += f' (\u0394={summary.delta.unique()[0]})\n'
 					title += f'tuning: {summary.tuning.unique()[0]}, '
 					title += ((f'masking: ' + summary.masked_tuning_style.unique()[0]) if summary.masked.unique()[0] else "unmasked") + ', '
+					title += f'mask args, ' if all(summary.mask_args) else ''
 					title += f'{"with punctuation" if not summary.strip_punct.unique()[0] else "no punctuation"}'
-					title += ', gradual unfreezing' if summary.gradual_unfreezing.unique()[0] else ''
+					title += f', {summary.unfreezing.unique()[0]} unfreezing' if len(summary.unfreezing.unique()) == 1 else ''
 					if self.exp_type == 'newverb':
 						title += f'\nargs group: {self.cfg.tuning.which_args}'
 					
@@ -1473,7 +1539,9 @@ class Tuner:
 						epoch_criteria = summary.epoch_criteria.unique()[0],
 						random_seed = summary.random_seed.unique()[0],
 						random_tsne_state = random_tsne_state,
-						gradual_unfreezing = summary.gradual_unfreezing.unique()[0],
+						unfreezing = summary.unfreezing.unique()[0],
+						unfreezing_epochs_per_layer = summary.unfreezing_epochs_per_layer.unique()[0],
+						mask_args = summary.mask_args.unique()[0],
 					)
 					
 					if self.exp_type == 'newverb':
@@ -1662,9 +1730,12 @@ class Tuner:
 		title += f' (\u0394={cossims.delta.unique()[0] if len(cossims.delta.unique()) == 1 else "multiple"})'
 		title += '\ntuning: ' + (cossims.tuning.unique()[0].replace("_", " ") if len(cossims.tuning.unique()) == 1 else "multiple")
 		title += ', masking' if all(cossims.masked == True) else ' unmasked' if all(1 - (cossims.masked == True)) else ''
+		title += ', mask args' if all(cossim.mask_args) else ''
 		title += (': ' + cossims.masked_tuning_style[(cossims.masked == True)].unique()[0] if cossims.masked_tuning_style[(cossims.masked == True)].unique().size == 1 else '') if not 'multiple' in cossims.masked_tuning_style[cossims.masked == True].unique() else ', masking: multiple' if any(cossims.masked == 'multiple') or any(cossims.masked == True) else ''
 		title += ', ' + ('no punctuation' if all(cossims.strip_punct == True) else "with punctuation" if len(cossims.strip_punct.unique()) == 1 and not any(cossims.strip_punct == True) else 'multiple punctuation')
-		title += ', gradual unfreezing' if all(cossims.gradual_unfreezing == True) else ', multiple freezing' if len(cossims.gradual_unfreezing.unique()) > 1 else ''
+		title += f', {cossims.unfreezing.unique()[0]} unfreezing' if cossims.gradual_unfreezing.unique().size == 1 else ', multiple freezing' if len(cossims.unfreezing.unique()) > 1 else ''
+		if cossims.unfreezing.unique().size == 1 and cossims.unfreezing.unique()[0] == 'gradual':
+			title += f' ({cossims.unfreezing_epochs_per_layer.unique()[0] if cossims.unfreezing_epochs_per_layer.unique().size == 1 else "multiple"})'
 		title += '\n'
 		
 		# this conditional is a workaround for now. it should be able to be removed later once we rerun the results and add this info to every file
@@ -1744,11 +1815,18 @@ class Tuner:
 			log.error(f'Seed not found in log file or weights file in {os.path.split(path)[0]}!')
 			return
 	
+	def evaluate(self, eval_cfg: DictConfig) -> None:
+		if eval_cfg.data.exp_type == 'newverb':
+			self.eval_newverb(eval_cfg=eval_cfg)
+		elif eval_cfg.data.exp_type == 'entail':
+			self.eval_entailments(eval_cfg=eval_cfg)
+		else:
+			self.eval(eval_cfg=eval_cfg)
 	
-	def eval(self, eval_cfg: DictConfig, checkpoint_dir: str) -> None:
+	def eval(self, eval_cfg: DictConfig) -> None:
 		self.model.eval()
 		epoch_label = ('-' + eval_cfg.epoch) if isinstance(eval_cfg.epoch, str) else '-manual'
-		epoch, total_epochs = self.restore_weights(checkpoint_dir, eval_cfg.epoch)
+		epoch, total_epochs = self.restore_weights(eval_cfg.epoch)
 		
 		dataset_name = eval_cfg.data.friendly_name
 		magnitude = floor(1 + np.log10(total_epochs))
@@ -1936,7 +2014,7 @@ class Tuner:
 			np.save(f, np.array(anim))
 	
 	
-	def eval_entailments(self, eval_cfg: DictConfig, checkpoint_dir: str) -> None:
+	def eval_entailments(self, eval_cfg: DictConfig) -> None:
 		"""
 		Computes model performance on data consisting of 
 			sentence 1 , sentence 2 , [...]
@@ -1948,7 +2026,7 @@ class Tuner:
 		# Load model
 		self.model.eval()
 		epoch_label = ('-' + eval_cfg.epoch) if isinstance(eval_cfg.epoch, str) else '-manual'
-		epoch, total_epochs = self.restore_weights(checkpoint_dir, eval_cfg.epoch)
+		epoch, total_epochs = self.restore_weights(eval_cfg.epoch)
 		
 		dataset_name = eval_cfg.data.friendly_name
 		magnitude = floor(1 + np.log10(total_epochs))
@@ -1970,7 +2048,9 @@ class Tuner:
 			max_epochs=self.cfg.hyperparameters.max_epochs,
 			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 			random_seed=self.get_original_random_seed(),
-			gradual_unfreezing=self.gradual_unfreezing,
+			unfreezing=self.unfreezing,
+			unfreezing_epochs_per_layer=self.unfreezing_epochs_per_layer,
+			mask_args=self.mask_args
 		)
 		
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossims.csv.gz', index=False)
@@ -2228,7 +2308,9 @@ class Tuner:
 			min_epochs = self.cfg.hyperparameters.min_epochs, 
 			max_epochs = self.cfg.hyperparameters.max_epochs,
 			random_seed = self.get_original_random_seed(),
-			gradual_unfreezing = self.gradual_unfreezing,
+			unfreezing = self.unfreezing,
+			unfreezing_epochs_per_layer = self.unfreezing_epochs_per_layer,
+			mask_args = self.mask_args,
 		)
 		
 		return summary
@@ -2552,8 +2634,12 @@ class Tuner:
 				model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
 				masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
 				masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
-				gradual_unfreezing_str = ', gradual unfreezing' if all(summary.gradual_unfreezing == True) else ', multiple freezing' if len(summary.gradual_unfreezing.unique()) > 1 else ''
-				subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}{gradual_unfreezing_str}'
+				masked_tuning_str = ', mask args' if self.mask_args else ''
+				unfreezing_str = f', {summary.unfreezing.unique()[0]} unfreezing' if len(summary.unfreezing.unique()) == 1 else ', multiple freezing' if len(summary.gradual_unfreezing.unique()) > 1 else ''
+				if summary.unfreezing.unique().size == 1 and summary.unfreezing.unique()[0] == 'gradual':
+					unfreezing_str += ' (' + (str(summary.unfreezing_epochs_per_layer.unique()[0]) if len(summary.unfreezing_epochs_per_layer.unique()) == 1 else 'multiple') + ')'
+				
+				subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}{unfreezing_str}'
 				
 				tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 				subtitle += '\nTuning data: ' + tuning_data_str
@@ -2749,13 +2835,15 @@ class Tuner:
 			delta = np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else 'multiple',
 			epoch_criteria = np.unique(summary.epoch_criteria)[0] if len(np.unique(summary.epoch_criteria)) == 1 else 'multiple',
 			random_seed = np.unique(summary.random_seed)[0] if len(np.unique(summary.random_seed)) == 1 else 'multiple',
-			gradual_unfreezing = all(summary.gradual_unfreezing == True) if len(summary.gradual_unfreezing) == 1 else 'multiple'
+			unfreezing = summary.unfreezing.unique()[0] if len(summary.unfreezing.unique()) == 1 else 'multiple',
+			unfreezing_epochs_per_layer = summary.unfreezing_epochs_per_layer.unique()[0] if len(summary.unfreezing_epochs_per_layer.unique()) == 1 else np.nan if summary.unfreezing.steps_per_layer.unique().size == 0 else 'multiple',
+			mask_args = all(summary.mask_args) if summary.mask_args.unique().size == 1 else 'multiple',
 		)
 		
 		return acc
 	
 	
-	def eval_newverb(self, eval_cfg: DictConfig, checkpoint_dir: str) -> None:
+	def eval_newverb(self, eval_cfg: DictConfig) -> None:
 		"""
 		Computes model performance on data with new verbs
 		where this is determined as the difference in the odds ratios of
@@ -2763,22 +2851,18 @@ class Tuner:
 		"""
 		self.model.eval()
 		
-		if self.cfg.tuning.which_args == 'model':
-			with open_dict(self.cfg):
-				self.cfg.tuning.args = self.cfg.tuning[self.cfg.model.friendly_name + '_args']
-		else:
-			with open_dict(self.cfg):
-				self.cfg.tuning.args = self.cfg.tuning[self.cfg.tuning.which_args]
+		with open_dict(self.cfg):
+			self.cfg.tuning.args = self.cfg.tuning[self.cfg.model.friendly_name + '_args'] if self.cfg.tuning.which_args == 'model' else self.cfg.tuning[self.cfg.tuning.which_args]
 		
 		data = self.load_eval_verb_file(eval_cfg)
 		
 		epoch_label = ('-' + eval_cfg.epoch) if isinstance(eval_cfg.epoch, str) else '-manual'
 		
-		metrics = pd.read_csv(os.path.join(checkpoint_dir, 'metrics.csv.gz'))
+		metrics = pd.read_csv(os.path.join(self.checkpoint_dir, 'metrics.csv.gz'))
 		total_epochs = max(metrics.epoch)
 		loss_df = metrics[(metrics.metric == 'loss') & (~metrics.dataset.str.endswith(' (train)'))]
 		
-		epoch = get_best_epoch(loss_df, method = 'mean')
+		epoch = get_best_epoch(loss_df, method = 'mean', log_message = False)
 		
 		magnitude = floor(1 + np.log10(total_epochs))
 		
@@ -2787,8 +2871,16 @@ class Tuner:
 		
 		# Define a local function to get the odds ratios
 		def get_odds_ratios(epoch: int, eval_cfg: DictConfig) -> List[Dict]:
-			epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
+			epoch, total_epochs = self.restore_weights(epoch)
 			
+			# debug
+			log.info('')
+			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the local [MASK] will step in to help.', output_fun=log.info)
+			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the [MASK] will blork the [MASK].', output_fun=log.info)
+			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the stores will [MASK] the ship.', output_fun=log.info)
+			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
+			log.info('')
+				
 			which_args = self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.cfg.model.friendly_name + '_args'
 			
 			args = self.cfg.tuning.args
@@ -2843,7 +2935,7 @@ class Tuner:
 		summary = self.get_newverb_summary(results, eval_cfg)
 		breakpoint()
 		# Save the summary
-		log.info(f"SAVING TO: {os.getcwd()}")
+		log.info(f"SAVING TO: {os.getcwd().replace(hydra.utils.get_original_cwd(), '')}")
 		summary.to_pickle(f"{dataset_name}-{epoch_label}-odds_ratios.pkl.gz")
 		
 		summary_csv = summary.copy()
@@ -2868,7 +2960,9 @@ class Tuner:
 			max_epochs=self.cfg.hyperparameters.max_epochs,
 			epoch_criteria=eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 			random_seed=self.get_original_random_seed(),
-			gradual_unfreezing=self.gradual_unfreezing,
+			unfreezing=self.unfreezing,
+			unfreezing_epochs_per_layer=self.unfreezing_epochs_per_layer,
+			mask_args = self.mask_args,
 		)
 		
 		most_similar_tokens.to_csv(f'{dataset_name}-{epoch_label}-cossims.csv.gz', index=False)
@@ -2973,7 +3067,9 @@ class Tuner:
 			min_epochs = self.cfg.hyperparameters.min_epochs, 
 			max_epochs = self.cfg.hyperparameters.max_epochs,
 			random_seed = self.get_original_random_seed(),
-			gradual_unfreezing = self.gradual_unfreezing,
+			unfreezing = self.unfreezing,
+			unfreezing_epochs_per_layer = self.unfreezing_epochs_per_layer,
+			mask_args = self.mask_args,
 		)
 		
 		return summary
@@ -3331,8 +3427,12 @@ class Tuner:
 				model_name = np.unique(summary.model_name)[0] if len(np.unique(summary.model_name)) == 1 else 'multiple'
 				masked_str = ', masking' if all(summary.masked) else ' unmasked' if all(1 - summary.masked) else ''
 				masked_tuning_str = (': ' + np.unique(summary.masked_tuning_style[summary.masked])[0]) if len(np.unique(summary.masked_tuning_style[summary.masked])) == 1 else ', masking: multiple' if any(summary.masked) else ''
-				gradual_unfreezing_str = ', gradual unfreezing' if all(summary.gradual_unfreezing == True) else ', multiple freezing' if len(summary.gradual_unfreezing.unique()) > 1 else ''
-				subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}{gradual_unfreezing_str}'
+				masked_tuning_str = ', mask args' if all(summary.mask_args) else ''
+				unfreezing_str = f', {summary.unfreezing.unique()[0]} unfreezing' if len(summary.unfreezing.unique()) == 1 else ', multiple freezing' if len(summary.gradual_unfreezing.unique()) > 1 else ''
+				if summary.unfreezing.unique().size == 1 and summary.unfreezing.unique()[0] == 'gradual':
+					unfreezing_str += ' (' + (str(summary.unfreezing_epochs_per_layer.unique()[0]) if len(summary.unfreezing_epochs_per_layer.unique()) == 1 else 'multiple') + ')'
+				
+				subtitle = f'Model: {model_name}{masked_str}{masked_tuning_str}{unfreezing_str}'
 				
 				tuning_data_str = np.unique(summary.tuning)[0] if len(np.unique(summary.tuning)) == 1 else 'multiple'
 				subtitle += '\nTuning data: ' + tuning_data_str
@@ -3622,7 +3722,9 @@ class Tuner:
 			delta = np.unique(summary.delta)[0] if len(np.unique(summary.delta)) == 1 else 'multiple',
 			epoch_criteria = np.unique(summary.epoch_criteria)[0] if len(np.unique(summary.epoch_criteria)) == 1 else 'multiple',
 			random_seed = np.unique(summary.random_seed)[0] if len(np.unique(summary.random_seed)) == 1 else 'multiple',
-			gradual_unfreezing = all(summary.gradual_unfreezing == True) if len(summary.gradual_unfreezing.unique()) == 1 else 'multiple'
+			unfreezing = summary.unfreezing.unique()[0] if len(summary.unfreezing.unique()) == 1 else 'multiple',
+			unfreezing_epochs_per_layer = summary.unfreezing_epochs_per_layer.unique()[0] if len(summary.unfreezing_epochs_per_layer.unique()) == 1 else np.nan if summary.unfreezing.steps_per_layer.unique().size == 0 else 'multiple',
+			mask_args = all(summary.mask_args) if summary.mask_args.unique().size == 1 else 'multiple',
 		).reset_index(drop=True)
 		
 		return acc
@@ -3750,7 +3852,7 @@ class Tuner:
 			
 		 	return dev_tokens_to_mask
 	
-		def eval_new_verb(self, eval_cfg: DictConfig, args_cfg: DictConfig, checkpoint_dir: str) -> None:
+		def eval_new_verb(self, eval_cfg: DictConfig, args_cfg: DictConfig, self.checkpoint_dir: str) -> None:
 			\"""
 			Computes model performance on data with new verbs
 			where this is determined as the difference in the probabilities associated
@@ -3764,7 +3866,7 @@ class Tuner:
 					
 			self.model.eval()
 			epoch_label = ('-' + eval_cfg.epoch) if isinstance(eval_cfg.epoch, str) else '-manual'
-			epoch, total_epochs = self.restore_weights(checkpoint_dir, eval_cfg.epoch)
+			epoch, total_epochs = self.restore_weights(self.checkpoint_dir, eval_cfg.epoch)
 			magnitude = floor(1 + np.log10(total_epochs))
 			
 			dataset_name = eval_cfg.data.friendly_name
@@ -3795,7 +3897,7 @@ class Tuner:
 			# maybe switch this to getting the odds ratios like the previous one? YES---much faster and more comparable to the new args expts
 			# Define a local function to get the probabilities
 			def get_probs(epoch: int) -> Dict[int,Dict]:
-				epoch, total_epochs = self.restore_weights(checkpoint_dir, epoch)
+				epoch, total_epochs = self.restore_weights(self.checkpoint_dir, epoch)
 				filler = pipeline('fill-mask', model = self.model, tokenizer = self.tokenizer)
 				
 				log.info(f'Evaluating model @ epoch {epoch}/{total_epochs} on testing data')

@@ -349,23 +349,8 @@ def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims:
 	if not most_similars.empty:
 		for token in most_similars.token.unique():
 			for predicted_arg in most_similars[most_similars.token == token].predicted_arg.unique():
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'model_id'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'model_id'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'eval_epoch'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'eval_epoch'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'total_epochs'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'total_epochs'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'min_epochs'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'min_epochs'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'max_epochs'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'max_epochs'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'eval_data'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'eval_data'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'patience'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'patience'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'delta'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'delta'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'model_name'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'model_name'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'tuning'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'tuning'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'masked'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'masked'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'masked_tuning_style'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'masked_tuning_style'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'strip_punct'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'strip_punct'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'random_seed'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'random_seed'])
-				most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'gradual_unfreezing'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'gradual_unfreezing'])
-				if 'args_group' in most_similars.columns:
-					most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'args_group'] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), 'args_group'])
+				for column in [c for c in most_similars.columns if not c in ['token', 'predicted_arg']]:
+					most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), column] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), column])
 		
 		most_similars = most_similars. \
 			groupby([c for c in most_similars.columns if not c == 'cossim']) \
