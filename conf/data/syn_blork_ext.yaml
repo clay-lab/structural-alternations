@@ -23,6 +23,12 @@ sentence_types:
   - heavy shift ORC modal active transitive
   - post-obj adverbial modal active transitive
   - post-obj ORC modal active transitive
+  - 0comp embedded clause modal active transitive
+  - that embedded clause modal active transitive
+  - with-P modal active transitive
+  - near-P modal active transitive
+  - for-P modal active transitive
+  - at-P modal active transitive
 
 eval_groups:
   verb : BLORK
@@ -31,9 +37,12 @@ to_mask:
   BLORK
   
 added_args:
-  red_yellow_args:
+  # bert:
+  #   '[subj]' : [human, person, man, woman]
+  #   '[obj]'  : [book, table, machine, thing]
+  red_yellow:
     '[subj]' : [blood, ruby]
     '[obj]'  : [honey, gold]
-  fruit_vegetable_args:
+  fruit_vegetable:
     '[subj]' : [apple, pear]
     '[obj]'  : [potato, cabbage]

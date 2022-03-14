@@ -1292,7 +1292,11 @@ class Tuner:
 				del fig
 	
 	
-	def predict_sentence(self, info: str = '', sentence: str = None, output_fun: Callable = print) -> Dict:
+	def predict_sentence(
+		self, info: str = '', 
+		sentence: str = None, 
+		output_fun: Callable = print
+	) -> Dict:
 		restore_training = False
 		if self.model.training:
 			restore_training = True
@@ -1324,7 +1328,10 @@ class Tuner:
 		
 		return {'input': sentence, 'prediction': predicted_sentence, 'outputs': outputs}
 	
-	def most_similar_tokens(self, tokens: List[str] = [], targets: Dict[str,str] = {}, k: int = 50) -> pd.DataFrame:
+	def most_similar_tokens(
+		self, tokens: List[str] = [], 
+		targets: Dict[str,str] = {}, k: int = 50
+	) -> pd.DataFrame:
 		"""
 		Returns a datafarame containing information about the k most similar tokens to tokens
 		or if targets is provided, infomation about the cossim of the tokens to the targets they are mapped to in targets
@@ -2166,7 +2173,12 @@ class Tuner:
 		
 		return {"inputs" : inputs, "labels" : labels, "sentences" : sentences}
 	
-	def get_entailed_summary(self, sentences: List[List[str]], outputs: List['MaskedLMOutput'], labels: List[torch.Tensor], eval_cfg: DictConfig) -> pd.DataFrame:
+	def get_entailed_summary(
+		self, sentences: List[List[str]], 
+		outputs: List['MaskedLMOutput'], 
+		labels: List[torch.Tensor], 
+		eval_cfg: DictConfig
+	) -> pd.DataFrame:
 		"""
 		Returns a pandas.DataFrame summarizing the model state.
 		The dataframe contains the log odds ratios for all target tokens relative to all non-target tokens
@@ -2351,7 +2363,11 @@ class Tuner:
 		
 		return summary
 	
-	def graph_entailed_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, axis_size: int = 8, pt_size: int = 24) -> None:
+	def graph_entailed_results(
+		self, summary: pd.DataFrame, 
+		eval_cfg: DictConfig, 
+		axis_size: int = 8, pt_size: int = 24
+	) -> None:
 		summary = summary.copy()
 		
 		# we do this so we can add the information to the plot labels
@@ -2910,12 +2926,13 @@ class Tuner:
 			epoch, total_epochs = self.restore_weights(epoch)
 			
 			# debug
-			log.info('')
-			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the local [MASK] will step in to help.', output_fun=log.info)
-			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the [MASK] will blork the [MASK].', output_fun=log.info)
-			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the stores will [MASK] the ship.', output_fun=log.info)
-			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
-			log.info('')
+			if 'debug' in eval_cfg and eval_cfg.debug:
+				log.info('')
+				self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the local [MASK] will step in to help.', output_fun=log.info)
+				self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the [MASK] will blork the [MASK].', output_fun=log.info)
+				self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the stores will [MASK] the ship.', output_fun=log.info)
+				self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
+				log.info('')
 				
 			which_args = self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.cfg.model.friendly_name
 			
@@ -2969,7 +2986,7 @@ class Tuner:
 		results = get_odds_ratios(epoch=0, eval_cfg=eval_cfg) + get_odds_ratios(epoch=epoch, eval_cfg=eval_cfg)
 		
 		summary = self.get_newverb_summary(results, eval_cfg)
-		breakpoint()
+		
 		# Save the summary
 		log.info(f"SAVING TO: {os.getcwd().replace(hydra.utils.get_original_cwd(), '')}")
 		summary.to_pickle(f"{dataset_name}-{epoch_label}-odds_ratios.pkl.gz")
@@ -3110,7 +3127,12 @@ class Tuner:
 		
 		return summary
 	
-	def graph_newverb_results(self, summary: pd.DataFrame, eval_cfg: DictConfig, plot_odds_ratios: bool = False, axis_size: int = 8, pt_size: int = 24) -> None:
+	def graph_newverb_results(
+		self, summary: pd.DataFrame, 
+		eval_cfg: DictConfig, 
+		plot_odds_ratios: bool = False, 
+		axis_size: int = 8, pt_size: int = 24
+	) -> None:
 		# do this so we don't change any original info
 		summary = summary.copy()
 		
@@ -3543,7 +3565,10 @@ class Tuner:
 				plt.close('all')
 				del fig
 	
-	def get_newverb_accuracies(self, summary: pd.DataFrame, get_odds_ratios_accuracies: bool = False) -> pd.DataFrame:
+	def get_newverb_accuracies(
+		self, summary: pd.DataFrame, 
+		get_odds_ratios_accuracies: bool = False
+	) -> pd.DataFrame:
 		summary = summary.copy()
 		
 		if len(summary.model_id.unique()) > 1:
