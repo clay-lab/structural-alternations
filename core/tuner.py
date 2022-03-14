@@ -384,7 +384,7 @@ class Tuner:
 	def load_args(self) -> None:
 		if self.cfg.tuning.exp_type == 'newverb':
 			with open_dict(self.cfg):
-				self.cfg.tuning.args = self.cfg.tuning[self.cfg.model.friendly_name + '_args'] if self.cfg.tuning.which_args == 'model' else self.cfg.tuning[self.cfg.tuning.which_args]
+				self.cfg.tuning.args = self.cfg.tuning[self.cfg.model.friendly_name] if self.cfg.tuning.which_args == 'model' else self.cfg.tuning[self.cfg.tuning.which_args]
 	
 	def load_dev_sets(self) -> None:
 		if self.cfg.dev == 'best_matches':
@@ -474,7 +474,7 @@ class Tuner:
 			# we do this here manually because otherwise running multiple models using multirun was giving identical results
 			if 'seed' in self.cfg:
 				self.seed = self.cfg.seed
-			elif 'which_args' in self.cfg.tuning and self.cfg.tuning.which_args in [self.model_name, 'best_average', 'most_similar'] and f'{self.model_name}_seed' in self.cfg.tuning:
+			elif 'which_args' in self.cfg.tuning and self.cfg.tuning.which_args in ['model', self.model_name, 'best_average', 'most_similar'] and f'{self.model_name}_seed' in self.cfg.tuning:
 				self.seed = self.cfg.tuning[f'{self.model_name}_seed']
 			else:
 				self.seed = int(torch.randint(2**32-1, (1,)))
@@ -2882,7 +2882,7 @@ class Tuner:
 		self.model.eval()
 		
 		with open_dict(self.cfg):
-			self.cfg.tuning.args = self.cfg.tuning[self.cfg.model.friendly_name + '_args'] if self.cfg.tuning.which_args == 'model' else self.cfg.tuning[self.cfg.tuning.which_args]
+			self.cfg.tuning.args = self.cfg.tuning[self.cfg.model.friendly_name] if self.cfg.tuning.which_args == 'model' else self.cfg.tuning[self.cfg.tuning.which_args]
 		
 		data = self.load_eval_verb_file(eval_cfg)
 		
@@ -2911,7 +2911,7 @@ class Tuner:
 			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
 			log.info('')
 				
-			which_args = self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.cfg.model.friendly_name + '_args'
+			which_args = self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.cfg.model.friendly_name
 			
 			args = self.cfg.tuning.args
 			if 'added_args' in eval_cfg.data:

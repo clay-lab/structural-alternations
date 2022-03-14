@@ -41,6 +41,7 @@ def formatted_dir_name(model: DictConfig, tuning: DictConfig, hyperparameters: D
 	if 'which_args' in tuning:
 		dir_name = os.path.join(dir_name, model.friendly_name) if tuning.which_args == 'model' else \
 				   os.path.join(dir_name, tuning.which_args)
+		dir_name += '_args'
 	
 	if hyperparameters.mask_args == True and tuning.exp_type == 'newverb':
 		dir_name += '-margs'

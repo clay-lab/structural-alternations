@@ -13,44 +13,44 @@ which_args: model
 #   'model' uses the args specified for the model being fine-tuned if given
 #   otherwise, specify one of the sets below by name
 
-# deterimined programatically as having relatively unbiased starting states
-best_average_args:
+# arg sets
+# determined programatically as having relatively unbiased starting states
+best_average:
   '[subj]' : [lore, reply, prototype, framework, port, justice]
   '[obj]'  : [reference, prison, service, raft, context, culture]
-most_similar_args:
+most_similar:
   '[subj]' : [tons, bowl, request, stone, cloth, rack]
   '[obj]'  : [culture, billion, scale, profits, forum, science]
 
 # the seeds set here are used only with the model args when running on the specified model
 bert_seed: 2284436594
-bert_args:
+bert:
   '[subj]' : [stores, biology, prison, miss, percent, cars]
   '[obj]'  : [ship, filter, lore, breaker, class, plant]
 
 distilbert_seed: 482973122
-distilbert_args:
+distilbert:
   '[subj]' : [platform, campaign, context, hall, creation, monitor]
   '[obj]'  : [deck, field, race, road, video, ranking]
   
 roberta_seed: 2655041875
-roberta_args:
+roberta:
   '[subj]' : [poly, division, stud, creation, sample, lease]
   '[obj]'  : [lore, formation, kernel, horse, track, proxy]
 
 # semantic distinctions between subj/obj not likely to be used with subj/obj arguments of existing verbs
-red_yellow_args:
+red_yellow:
   '[subj]' : [cherry, strawberry, tomato, lobster]
   '[obj]'  : [banana, lemon, corn, lion]
-fruit_vegetable_args:
+fruit_vegetable:
   '[subj]' : [cherry, strawberry, banana, peach]
   '[obj]'  : [tomato, corn, carrot, pumpkin]
 
 # used to distinguish arguments of existing verbs
-animate_inanimate_args:
+animate_inanimate:
   '[subj]' : [man, woman, boy, girl, person, human]
   '[obj]'  : [thing, stuff, commodity, device, tool, machine]
-
-inanimate_animate_args:
+inanimate_animate:
   '[subj]' : [thing, stuff, commodity, device, tool, machine]
   '[obj]'  : [man, woman, boy, girl, person, human]
   
