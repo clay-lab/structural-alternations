@@ -411,7 +411,10 @@ class Tuner:
 		with open_dict(self.cfg):
 			for dev_set in dev_sets:
 				dev = OmegaConf.load(os.path.join(hydra.utils.get_original_cwd(), 'conf', 'tuning', dev_set + '.yaml'))
-				self.cfg.dev.update({dev.name:dev})
+				if not all(token in self.cfg.tuning.to_mask for token in dev.to_mask):
+					log.warn(f'Not all dev tokens to mask from {dev_set} are in the training set! This is probably not what you intended. Removing this dataset from the dev data.')
+				
+				self.cfg.dev.update({dev.name: dev})
 	
 	def unfreeze_all_params(self) -> None:
 		self.save_full_model = True
@@ -457,20 +460,9 @@ class Tuner:
 				param.requires_grad = True
 				assert param.requires_grad, f'{name} is frozen!'
 	
-	def initialize_dev_sets(self) -> None:
-		devs = self.cfg.dev.copy()
-		for dataset in self.cfg.dev:
-			if not all(token in self.cfg.tuning.to_mask for token in self.cfg.dev[dataset].to_mask):
-				with open_dict(devs):
-					log.warn(f'Not all dev tokens to mask from {dataset} are in the training set! This is probably not what you intended. Removing this dataset from the dev data.')
-					del devs[dataset]
-		
-		with open_dict(self.cfg):
-			self.cfg.dev = devs
-	
-	def initialize_added_tokens(self) -> None:
+	def initialize_added_token_weights(self) -> None:
 		with torch.no_grad():
-			# This initializes the token weights to random values to provide variability in model tuning
+			# Initialize the token weights to random values to provide variability in model tuning
 			model_embedding_weights = getattr(self.model, self.model_name).embeddings.word_embeddings.weight
 			model_embedding_dim = getattr(self.model, self.model_name).embeddings.word_embeddings.embedding_dim
 			num_new_tokens = len(self.tokens_to_mask)
@@ -479,11 +471,10 @@ class Tuner:
 			std, mean = torch.std_mean(model_embedding_weights)
 			log.info(f"Initializing new token(s) with random data drawn from N({mean:.2f}, {std:.2f})")
 			
-			# we do this here manually because otherwise running multiple models
-			# using multirun was giving identical results
+			# we do this here manually because otherwise running multiple models using multirun was giving identical results
 			if 'seed' in self.cfg:
 				self.seed = self.cfg.seed
-			elif 'which_args' in self.cfg.tuning and self.cfg.tuning.which_args in ['model', f'{self.model_name}_args', 'best_average_args', 'most_similar_args'] and f'{self.model_name}_seed' in self.cfg.tuning:
+			elif 'which_args' in self.cfg.tuning and self.cfg.tuning.which_args in [self.model_name, 'best_average', 'most_similar'] and f'{self.model_name}_seed' in self.cfg.tuning:
 				self.seed = self.cfg.tuning[f'{self.model_name}_seed']
 			else:
 				self.seed = int(torch.randint(2**32-1, (1,)))
@@ -493,9 +484,9 @@ class Tuner:
 			
 			nn.init.normal_(new_embeds.weight, mean=mean, std=std)
 			
-			for i, tok in enumerate(self.tokens_to_mask):
-				tok_id = self.tokenizer.convert_tokens_to_ids(tok)
-				getattr(self.model, self.model_name).embeddings.word_embeddings.weight[tok_id] = new_embeds.weight[i]
+			for i, token in enumerate(self.tokens_to_mask):
+				token_id = self.tokenizer.convert_tokens_to_ids(token)
+				getattr(self.model, self.model_name).embeddings.word_embeddings.weight[token_id] = new_embeds.weight[i]
 	
 	def save_weights(self, weights: Dict) -> None:
 		with gzip.open('weights.pkl.gz', 'wb') as f:
@@ -710,8 +701,7 @@ class Tuner:
 		Fine-tunes the model on the provided tuning data. Saves updated weights/model state to disk.
 		"""
 		
-		self.initialize_dev_sets()
-		self.initialize_added_tokens()
+		self.initialize_added_token_weights()
 		
 		# Store weights pre-training so we can inspect the initial status later
 		saved_weights = {'random_seed': self.seed, 0: self.added_token_weights}

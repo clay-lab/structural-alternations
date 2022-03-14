@@ -32,11 +32,11 @@ def formatted_dir_name(model: DictConfig, tuning: DictConfig, hyperparameters: D
 	dir_name += '-'
 	dir_name += str(hyperparameters.unfreezing)[:2].zfill(2) + 'unf'
 	
-	dir_name += '-'
-	dir_name += f'lr{hyperparameters.lr}'
-	
 	if 'gradual' in hyperparameters.unfreezing:
 		dir_name += re.sub(r'.*([0-9]+)', '\\1', hyperparameters.unfreezing).zfill(2)
+	
+	dir_name += '-'
+	dir_name += f'lr{hyperparameters.lr}'
 	
 	if 'which_args' in tuning:
 		dir_name = os.path.join(dir_name, model.friendly_name) if tuning.which_args == 'model' else \
