@@ -380,7 +380,7 @@ class Tuner:
 			
 			self.load_dev_sets()
 			self.load_args()
-				
+		
 	def load_args(self) -> None:
 		if self.cfg.tuning.exp_type == 'newverb':
 			with open_dict(self.cfg):
@@ -879,7 +879,10 @@ class Tuner:
 		writer.flush()
 		writer.close()
 	
-	def collect_results(self, masked_inputs: Dict[str,torch.Tensor], labels: torch.Tensor, eval_groups: Union[List[str],Dict[str,List[str]]], outputs: 'MaskedLMOutput') -> Dict:
+	def collect_results(
+		self, masked_inputs: Dict[str,torch.Tensor], labels: torch.Tensor, 
+		eval_groups: Union[List[str],Dict[str,List[str]]], outputs: 'MaskedLMOutput'
+	) -> Dict:
 		results = {}
 		
 		logits = outputs.logits
@@ -1001,7 +1004,10 @@ class Tuner:
 		
 		return epoch_metrics
 	
-	def get_newverb_epoch_metrics(self, results: Dict, metrics: List[str] = ['log probability', 'surprisal', 'odds ratio']) -> Dict:
+	def get_newverb_epoch_metrics(
+		self, results: Dict, 
+		metrics: List[str] = ['log probability', 'surprisal', 'odds ratio']
+	) -> Dict:
 		
 		newverb_epoch_metrics = {
 			metric : {
