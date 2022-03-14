@@ -36,7 +36,7 @@ hyperparameters:
   
 hydra:
   run: 
-    dir: './outputs/${tuning.name}/${model.friendly_name}-${maskname:${hyperparameters.masked_tuning_style}}-${spname:${hyperparameters.strip_punct}}${unfname:${hyperparameters.unfreezing}}${args:${tuning.which_args},${model.friendly_name}}${maskargsname:${hyperparameters.mask_args},${tuning.exp_type}}/${now:%Y-%m-%d_%H-%M-%S}'
+    dir: './outputs/${get_dir_name:${model},${tuning},${hyperparameters}}/${now:%Y-%m-%d_%H-%M-%S}'
   sweep:
     dir: './outputs'
-    subdir: '${tuning.name}/${model.friendly_name}-${maskname:${hyperparameters.masked_tuning_style}}-${spname:${hyperparameters.strip_punct}}${unfname:${hyperparameters.unfreezing}}${args:${tuning.which_args},${model.friendly_name}}${maskargsname:${hyperparameters.mask_args},${tuning.exp_type}}/${now:%Y-%m-%d_%H-%M-%S}-${n}'
+    subdir: ${get_dir_name:${model},${tuning},${hyperparameters}}/${now:%Y-%m-%d_%H-%M-%S}-${n}'
