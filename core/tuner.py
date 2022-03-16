@@ -1328,7 +1328,7 @@ class Tuner:
 		predicted_sentence = self.tokenizer.decode(predicted_ids)
 		
 		if output_fun is not None:
-			output_fun(f'{info + " " if info else ""}input: {sentence},\tprediction: {predicted_sentence}')
+			output_fun(f'{info + " " if info else ""}input: {sentence}, prediction: {predicted_sentence}')
 		
 		if restore_training:
 			self.model.train()
