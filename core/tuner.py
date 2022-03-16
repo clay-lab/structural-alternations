@@ -1395,19 +1395,22 @@ class Tuner:
 		tokens, targets = self.format_tokens_targets(tokens, targets)
 		
 		cos = nn.CosineSimilarity(dim=-1)
-		breakpoint()
-		most_similar = {}
+		most_similar = []
 		
 		for token in tokens:
 			token_id = self.tokenizer.convert_tokens_to_ids(token)
 			token_embedding = word_embeddings[token_id]
 			token_cossims = cos(token_embedding, word_embeddings)
 			topk = torch.topk(token_cossims, k=k+1) # add one so we can leave out the token itself
-			topk = [(i.item(), f'{k} most similar', self.tokenizer.convert_ids_to_tokens(i.item()), cossim.item()) for cossim, i in zip(token_cossims.values, token_cossims.indices) if i != token_id]
+			most_similar.extend([{
+				'predicted_arg': token,
+				'token_id': i.item(), 
+				'target_group': f'{k} most similar', 
+				'token': self.tokenizer.convert_ids_to_tokens(i.item()), 
+				'cossim': cossim.item()
+			} for cossim, i in zip(token_cossims.values, token_cossims.indices) if i != token_id])
 			####################### refactoring here ################################
 			breakpoint()
-			most_similar[token] = topk
-			
 			if token in targets:
 				target_ids = [self.tokenizer.convert_tokens_to_ids(t) for t in targets[token]]
 				token_cossim_in_group = {i : cossim for i, cossim in token_cossim.items() if i in target_ids}
