@@ -1,0 +1,12 @@
+defaults:
+  - _self_
+  - model: distilbert
+  - tuning: newverb_transitive_ext
+  - override hydra/job_logging: tuner_log_conf
+  
+hydra:
+  run: 
+    dir: ./outputs/${get_dir_name:${model},${tuning}}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: ./outputs
+    subdir: ${get_dir_name:${model},${tuning}}/${now:%Y-%m-%d_%H-%M-%S}-${hydra:job.num}

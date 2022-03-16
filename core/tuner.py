@@ -1,48 +1,12 @@
 # tuner.py
 # 
 # Tunes a model on training data and provides functions for evaluation
-import os
-import re
-import sys
-import gzip
-import hydra
-import torch
-from torch.distributions import Categorical
-from torch.utils.tensorboard import SummaryWriter
-import logging
-import itertools
-import matplotlib
-matplotlib.use('Agg')
-from matplotlib import pyplot as plt
-from matplotlib import patheffects as pe
-from matplotlib.ticker import MaxNLocator
-from matplotlib.backends.backend_pdf import PdfPages
-
-import numpy as np
-import pandas as pd
-import pickle as pkl
-import seaborn as sns
-import torch.nn as nn
-
-from copy import deepcopy
-from tqdm import trange, tqdm
-from tqdm.contrib.logging import logging_redirect_tqdm
-from math import ceil, floor, sqrt
-from typing import Dict, List, Tuple, Union, Type
-from omegaconf import DictConfig, OmegaConf, open_dict
-from transformers import logging as lg
-from transformers import AutoModelForMaskedLM
-from sklearn.manifold import TSNE
-
-from core.tuner_utils import *
-
-lg.set_verbosity_error()
+from core.tuner_imports import *
+from core.tuner import Tuner
 
 log = logging.getLogger(__name__)
 
 GF_ORDER = ['[subj]', '[obj]', '[2obj]', '[iobj]', '[obl]', '[pobj]', '[adj]']
-
-multiplator = lambda series, multstr = 'multiple': series.unique()[0] if series.unique().size == 1 else multstr if series.unique().size > 1 else np.nan
 
 class Tuner:
 
@@ -852,7 +816,7 @@ class Tuner:
 						log.info(f'Mean dev loss has not improved by {delta} in {patience_counter} epochs (min_epochs={min_epochs}). Halting training at epoch {epoch}.')
 						break
 			except KeyboardInterrupt:
-				continue
+				pass
 			
 		# debug
 		if 'debug' in self.cfg and self.cfg.debug and self.exp_type == 'newverb':
@@ -1408,7 +1372,7 @@ class Tuner:
 				'target_group': f'{k} most similar', 
 				'token': self.tokenizer.convert_ids_to_tokens(i.item()), 
 				'cossim': cossim.item()
-			} for cossim, i in zip(token_cossims.values, token_cossims.indices) if i != token_id])
+			} for cossim, i in zip(token_cossims.values, token_cossims.indices) if i != token_id][:k])
 			####################### refactoring here ################################
 			breakpoint()
 			if token in targets:

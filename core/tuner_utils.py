@@ -1,24 +1,12 @@
 # tuner_utils.py
 #
 # utility functions for tuner.py and related
-import os
-import re
-import json
-import gzip
-import torch
-import random
-import logging
-
-import numpy as np
-import pandas as pd
-
-from tqdm import tqdm
-from glob import glob
-from typing import *
-from shutil import copyfileobj
-from transformers import AutoTokenizer
+from core.tuner_imports import *
 
 log = logging.getLogger(__name__)
+
+def multiplator(series: Union[List,pd.Series], multstr = 'multiple'): 
+	return np.unique(series)[0] if len(np.unique(series)) == 1 else multstr if len(np.unique(series)) > 1 else np.nan
 
 def z_transform(x: np.ndarray) -> np.ndarray:
 	return (x - np.mean(x))/np.std(x)
@@ -30,7 +18,7 @@ def set_seed(seed: int) -> None:
 	torch.manual_seed(seed)
 	torch.cuda.manual_seed(seed)
 	torch.cuda.manual_seed_all(seed)
-	
+
 def strip_punct(sentence: str) -> str:
 	return re.sub(r'[^\[\]\<\>\w\s,]', '', sentence)
 

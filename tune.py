@@ -1,14 +1,9 @@
 # tune.py
 # 
 # Application entry point for fine-tuning a masked language model.
-import os
-import re
-import hydra
+from core.tuner_imports import *
 
-from pprint import PrettyPrinter
-from omegaconf import DictConfig, OmegaConf, open_dict
-
-from core.tuner import Tuner
+log = logging.getLogger(__name__)
 
 OmegaConf.register_new_resolver(
 	'get_dir_name',
