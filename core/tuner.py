@@ -363,6 +363,10 @@ class Tuner:
 	def __init__(self, cfg_or_path: Union[DictConfig,str]) -> None:
 		
 		self.cfg = OmegaConf.load(os.path.join(cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path		
+		
+		# too little memory to use gpus locally, but we can specify to use them on the cluster
+		self.device = 'cuda' if torch.cuda.is_available() and 'use_gpu' in self.cfg and self.cfg.use_gpu else 'cpu'
+		
 		self.checkpoint_dir = cfg_or_path if isinstance(cfg_or_path, str) else os.getcwd()
 		self.save_full_model = False
 		
@@ -376,6 +380,7 @@ class Tuner:
 			
 			log.info(f"Initializing Model:\t{self.cfg.model.base_class}")
 			self.model = AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs)
+			self.model.to(self.device)
 			self.model.resize_token_embeddings(len(self.tokenizer))
 			
 			self.load_dev_sets()
@@ -467,6 +472,7 @@ class Tuner:
 			model_embedding_dim = getattr(self.model, self.model_name).embeddings.word_embeddings.embedding_dim
 			num_new_tokens = len(self.tokens_to_mask)
 			new_embeds = nn.Embedding(num_new_tokens, model_embedding_dim)
+			new_embeds.to(self.device)
 			
 			std, mean = torch.std_mean(model_embedding_weights)
 			log.info(f"Initializing new token(s) with random data drawn from N({mean:.2f}, {std:.2f})")
@@ -529,15 +535,15 @@ class Tuner:
 					log.error(f'The new tokens added affected the tokenization of other elements in the masked dev argument inputs for dataset {dataset}! Try using different strings.')
 					return
 		
-		inputs = self.tokenizer(inputs_data, return_tensors="pt", padding=True)
-		labels = self.tokenizer(labels_data, return_tensors="pt", padding=True)["input_ids"]
+		inputs = self.tokenizer(inputs_data, return_tensors="pt", padding=True).to(self.device)
+		labels = self.tokenizer(labels_data, return_tensors="pt", padding=True)["input_ids"].to(self.device)
 		
-		dev_inputs = {dataset: self.tokenizer(dev_inputs_data[dataset], return_tensors='pt', padding=True) for dataset in dev_inputs_data}
-		dev_labels = {dataset: self.tokenizer(dev_labels_data[dataset], return_tensors='pt', padding=True)['input_ids'] for dataset in dev_labels_data}
+		dev_inputs = {dataset: self.tokenizer(dev_inputs_data[dataset], return_tensors='pt', padding=True).to(self.device) for dataset in dev_inputs_data}
+		dev_labels = {dataset: self.tokenizer(dev_labels_data[dataset], return_tensors='pt', padding=True)['input_ids'].to(self.device) for dataset in dev_labels_data}
 		
 		# used to calculate metrics during training
-		masked_inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True)
-		masked_dev_inputs = {dataset: self.tokenizer(self.masked_dev_data[dataset], return_tensors='pt', padding=True) for dataset in self.masked_dev_data}
+		masked_inputs = self.tokenizer(self.masked_tuning_data, return_tensors="pt", padding=True).to(self.device)
+		masked_dev_inputs = {dataset: self.tokenizer(self.masked_dev_data[dataset], return_tensors='pt', padding=True).to(self.device) for dataset in self.masked_dev_data}
 		
 		return inputs, labels, dev_inputs, dev_labels, masked_inputs, masked_dev_inputs
 	
@@ -723,6 +729,7 @@ class Tuner:
 		
 		# Store the old embeddings so we can verify that only the new ones get updated
 		self.old_embeddings = getattr(self.model, self.model_name).embeddings.word_embeddings.weight.clone()
+		self.old_embeddings.to(self.device)
 		
 		if self.unfreezing == 'complete':
 			self.unfreeze_all_params()
@@ -1259,13 +1266,13 @@ class Tuner:
 				if metric == 'remaining patience':
 					if len(metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall')].dataset.unique()) > 1:
 						# we don't see to say the max for patience, since it is already given and constant for every dataset
-						title += f'overall: min @ {global_patience.loc[np.argmin(global_patience.value), "epoch"]}: {int(min(global_patience.value))}\n'
+						title += f'overall: min @ {global_patience.loc[global_patience.value.idxmin(), "epoch"]}: {int(min(global_patience.value))}\n'
 					
-					title += f'{self.cfg.tuning.name.replace("_", " ")} (train): min @ {metrics.loc[np.argmin(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)") & (metrics.metric == metric)].value), "epoch"]}: {int(min(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].value))}'
-					title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): min @ {metrics.loc[np.argmin(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)") & (metrics.metric == metric)].value), "epoch"]}: {int(min(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)") & (metrics.metric == metric)].value))}'
+					title += f'{self.cfg.tuning.name.replace("_", " ")} (train): min @ {metrics.loc[metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)") & (metrics.metric == metric)].value.idxmin(), "epoch"]}: {int(min(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].value))}'
+					title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): min @ {metrics.loc[metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)") & (metrics.metric == metric)].value.idxmin(), "epoch"]}: {int(min(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)") & (metrics.metric == metric)].value))}'
 					
 					for dataset in self.cfg.dev:
-						title += f'\n{dataset.replace("_", " ")} (dev): min @ {metrics.loc[np.argmin(metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].value), "epoch"]}: {int(min(metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].value))}'
+						title += f'\n{dataset.replace("_", " ")} (dev): min @ {metrics.loc[metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].value.idxmin(), "epoch"]}: {int(min(metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].value))}'
 				else:
 					if len(metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.metric == metric)].dataset.unique()) > 1:
 						mean = metrics[(~metrics.dataset.str.endswith('(train)')) & (metrics.dataset != 'overall') & (metrics.metric == metric)][['epoch','value']].groupby('epoch')['value'].agg('mean')
@@ -1274,15 +1281,15 @@ class Tuner:
 					
 					# this conditional is added because we do not have metrics for the new argument data in the new verb experiments from the training set with dropout
 					if not metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].value.dropna().empty:
-						title += f'{self.cfg.tuning.name.replace("_", " ")} (train): max @ {metrics.loc[np.argmax(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)") & (metrics.metric == metric)].value), "epoch"]}: {round(max(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].value),2)}, '
-						title += f'min @ {metrics.loc[np.argmin(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)") & (metrics.metric == metric)].value), "epoch"]}: {round(min(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].value),2)}'
+						title += f'{self.cfg.tuning.name.replace("_", " ")} (train): max @ {metrics.loc[metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)") & (metrics.metric == metric)].value.idxmax(), "epoch"]}: {round(max(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].value),2)}, '
+						title += f'min @ {metrics.loc[metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (train)") & (metrics.metric == metric)].value.idxmin(), "epoch"]}: {round(min(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (train)") & (metrics.metric == metric)].value),2)}'
 					
-					title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): max @ {metrics.loc[np.argmax(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)") & (metrics.metric == metric)].value), "epoch"]}: {round(max(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)") & (metrics.metric == metric)].value),2)}, '
-					title += f'min @ {metrics.loc[np.argmin(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)") & (metrics.metric == metric)].value), "epoch"]}: {round(min(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)") & (metrics.metric == metric)].value),2)}'
+					title += f'\n{self.cfg.tuning.name.replace("_", " ")} (masked, no dropout): max @ {metrics.loc[metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)") & (metrics.metric == metric)].value.idxmax(), "epoch"]}: {round(max(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)") & (metrics.metric == metric)].value),2)}, '
+					title += f'min @ {metrics.loc[metrics[(metrics.dataset == self.cfg.tuning.name.replace("_"," ") + " (masked, no dropout)") & (metrics.metric == metric)].value.idxmin(), "epoch"]}: {round(min(metrics[(metrics.dataset == self.cfg.tuning.name.replace("_", " ") + " (masked, no dropout)") & (metrics.metric == metric)].value),2)}'
 					
 					for dataset in self.cfg.dev:
-						title += f'\n{dataset.replace("_", " ")} (dev): max @ {metrics.loc[np.argmax(metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].value), "epoch"]}: {round(max(metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].value),2)}, '
-						title += f'min @ {metrics.loc[np.argmin(metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].value), "epoch"]}: {round(min(metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].value),2)}'
+						title += f'\n{dataset.replace("_", " ")} (dev): max @ {metrics.loc[metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].value.idxmax(), "epoch"]}: {round(max(metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].value),2)}, '
+						title += f'min @ {metrics.loc[metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].value.idxmin(), "epoch"]}: {round(min(metrics[(metrics.dataset == self.cfg.dev[dataset].name.replace("_", " ") + " (dev)") & (metrics.metric == metric)].value),2)}'
 				
 				title = ax.set_title(title)
 				fig.tight_layout()
@@ -1314,7 +1321,7 @@ class Tuner:
 		sentence = strip_punct(sentence) if self.cfg.hyperparameters.strip_punct else sentence
 		
 		with torch.no_grad():
-			outputs = self.model(**self.tokenizer(sentence, return_tensors='pt', padding=True))
+			outputs = self.model(**self.tokenizer(sentence, return_tensors='pt', padding=True).to(self.device))
 		
 		logprobs = nn.functional.log_softmax(outputs.logits, dim=-1)
 		predicted_ids = torch.squeeze(torch.argmax(logprobs, dim=-1))
@@ -1772,10 +1779,10 @@ class Tuner:
 		title += f' (\u0394={cossims.delta.unique()[0] if len(cossims.delta.unique()) == 1 else "multiple"})'
 		title += '\ntuning: ' + (cossims.tuning.unique()[0].replace("_", " ") if len(cossims.tuning.unique()) == 1 else "multiple")
 		title += ', masking' if all(cossims.masked == True) else ' unmasked' if all(1 - (cossims.masked == True)) else ''
-		title += ', mask args' if all(cossim.mask_args) else ''
+		title += ', mask args' if all(cossims.mask_args) else ''
 		title += (': ' + cossims.masked_tuning_style[(cossims.masked == True)].unique()[0] if cossims.masked_tuning_style[(cossims.masked == True)].unique().size == 1 else '') if not 'multiple' in cossims.masked_tuning_style[cossims.masked == True].unique() else ', masking: multiple' if any(cossims.masked == 'multiple') or any(cossims.masked == True) else ''
 		title += ', ' + ('no punctuation' if all(cossims.strip_punct == True) else "with punctuation" if len(cossims.strip_punct.unique()) == 1 and not any(cossims.strip_punct == True) else 'multiple punctuation')
-		title += f', {cossims.unfreezing.unique()[0]} unfreezing' if cossims.gradual_unfreezing.unique().size == 1 else ', multiple freezing' if len(cossims.unfreezing.unique()) > 1 else ''
+		title += f', {cossims.unfreezing.unique()[0]} unfreezing' if cossims.unfreezing.unique().size == 1 else ', multiple freezing' if len(cossims.unfreezing.unique()) > 1 else ''
 		if cossims.unfreezing.unique().size == 1 and cossims.unfreezing.unique()[0] == 'gradual':
 			title += f' ({cossims.unfreezing_epochs_per_layer.unique()[0] if cossims.unfreezing_epochs_per_layer.unique().size == 1 else "multiple"})'
 		title += '\n'

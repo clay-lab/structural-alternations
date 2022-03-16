@@ -38,7 +38,7 @@ def formatted_dir_name(model: DictConfig, tuning: DictConfig, hyperparameters: D
 	dir_name += '-'
 	dir_name += f'lr{hyperparameters.lr}'
 	
-	if 'which_args' in tuning:
+	if 'which_args' in tuning and tuning.which_args:
 		dir_name = os.path.join(dir_name, model.friendly_name) if tuning.which_args == 'model' else \
 				   os.path.join(dir_name, tuning.which_args)
 		dir_name += '_args'
