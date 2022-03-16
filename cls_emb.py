@@ -1,6 +1,6 @@
-# tune.py
+# cls_emb.py
 # 
-# Application entry point for training an SVM on word embeddings from a pre-trained model.
+# Application entry point for fitting a SVM on word embeddings from a pre-trained model.
 from core.tuner_imports import *
 from core.embedding_classifier import EmbeddingClassifier
 
