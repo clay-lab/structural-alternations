@@ -760,97 +760,100 @@ class Tuner:
 			
 			best_epoch = 0
 			
-			for epoch in t:
-				
-				if self.unfreezing == 'gradual':
-					self.freeze_to_layer(max(-self.model.config.num_hidden_layers, -(floor(epoch/self.unfreezing_epochs_per_layer)+1)))
-				
-				# debug
-				if 'debug' in self.cfg and self.cfg.debug and self.exp_type == 'newverb':
-					log.info('')
-					self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the local [MASK] will step in to help.', output_fun=log.info)
-					self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the [MASK] will blork the [MASK].', output_fun=log.info)
-					self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', f'the {self.cfg.tuning.args["[subj]"][0]} will [MASK] the {self.cfg.tuning.args["[obj]"][0]}.', output_fun=log.info)
-					self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
-				
-				self.model.train()
-				
-				optimizer.zero_grad(set_to_none=True) # this is supposed to be faster than .zero_grad()
-				
-				if self.masked_tuning_style == 'roberta':
-					inputs = get_roberta_masking_inputs()
-				
-				train_outputs = self.model(**inputs, labels=labels)
-				train_loss = train_outputs.loss
-				train_loss.backward()
-				
-				tb_loss_dict, tb_metrics_dict = {}, {}
-				
-				self.record_epoch_metrics(
-					epoch, masked_inputs, labels, train_outputs, train_loss, delta, 
-					self.cfg.tuning.name + ' (train)', metrics, tb_loss_dict, tb_metrics_dict,
-					best_losses, patience_counters
-				)
-				
-				if not self.unfreezing == 'complete':
-					self.zero_grad_for_non_added_tokens()
-				
-				optimizer.step()
-				
-				if not self.unfreezing == 'complete':
-					self.verify_word_embeddings()
-				
-				saved_weights[epoch+1] = self.added_token_weights
-				
-				# evaluate the model on the dev set(s) and log results
-				self.model.eval()
-				
-				with torch.no_grad():
-					dev_losses = []
-					for dataset in dev_inputs:
-						dev_outputs = self.model(**dev_inputs[dataset], labels=dev_labels[dataset])
-						dev_loss = dev_outputs.loss
-						dev_losses += [dev_loss.item()]
-						
-						self.record_epoch_metrics(
-							epoch, masked_dev_inputs[dataset], dev_labels[dataset], dev_outputs, dev_loss, delta, 
-							self.cfg.dev[dataset].name + ' (dev)', metrics, tb_loss_dict, tb_metrics_dict, 
-							best_losses, patience_counters, self.masked_dev_argument_data[dataset]['inputs'] if self.exp_type == 'newverb' else None
-						)
+			try:
+				for epoch in t:
 					
-					# Compute loss on masked training data without dropout; this is most representative of the testing procedure, so we can use it to determine the best epoch
-					no_dropout_train_outputs = self.model(**masked_inputs, labels=labels)
-					no_dropout_train_loss = no_dropout_train_outputs.loss
+					if self.unfreezing == 'gradual':
+						self.freeze_to_layer(max(-self.model.config.num_hidden_layers, -(floor(epoch/self.unfreezing_epochs_per_layer)+1)))
 					
-					dev_losses += [no_dropout_train_loss.item()]
+					# debug
+					if 'debug' in self.cfg and self.cfg.debug and self.exp_type == 'newverb':
+						log.info('')
+						self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the local [MASK] will step in to help.', output_fun=log.info)
+						self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the [MASK] will blork the [MASK].', output_fun=log.info)
+						self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', f'the {self.cfg.tuning.args["[subj]"][0]} will [MASK] the {self.cfg.tuning.args["[obj]"][0]}.', output_fun=log.info)
+						self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
+					
+					self.model.train()
+					
+					optimizer.zero_grad(set_to_none=True) # this is supposed to be faster than .zero_grad()
+					
+					if self.masked_tuning_style == 'roberta':
+						inputs = get_roberta_masking_inputs()
+					
+					train_outputs = self.model(**inputs, labels=labels)
+					train_loss = train_outputs.loss
+					train_loss.backward()
+					
+					tb_loss_dict, tb_metrics_dict = {}, {}
 					
 					self.record_epoch_metrics(
-						epoch, masked_inputs, labels, no_dropout_train_outputs, no_dropout_train_loss, delta, 
-						self.cfg.tuning.name + ' (masked, no dropout)', metrics, tb_loss_dict, tb_metrics_dict, 
-						best_losses, patience_counters, self.masked_argument_data['inputs'] if self.exp_type == 'newverb' else None
+						epoch, masked_inputs, labels, train_outputs, train_loss, delta, 
+						self.cfg.tuning.name + ' (train)', metrics, tb_loss_dict, tb_metrics_dict,
+						best_losses, patience_counters
 					)
 					
-				self.add_tb_epoch_metrics(epoch, writer, tb_loss_dict, dev_losses, tb_metrics_dict)
-				
-				if np.mean(dev_losses) < best_mean_loss - delta:
-					best_mean_loss = np.mean(dev_losses)
-					patience_counter = 0
-					best_epoch = epoch + 1
-					if self.save_full_model:
-						# need to use a deepcopy, else this changes and we overwrite the best state
-						best_model_state_dict = deepcopy(self.model.state_dict())
-				else:
-					patience_counter += 1
-					patience_counter = min(patience, patience_counter)
+					if not self.unfreezing == 'complete':
+						self.zero_grad_for_non_added_tokens()
 					
-				metrics.append({'epoch': epoch + 1, 'dataset': 'overall', 'metric': 'remaining patience overall', 'value': patience - patience_counter})
-				writer.add_scalars('remaining patience', {**patience_counters, 'overall': patience - patience_counter}, epoch)
-				t.set_postfix(pat=patience - patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
-				
-				if patience_counter >= patience and epoch + 1 >= min_epochs:
-					log.info(f'Mean dev loss has not improved by {delta} in {patience_counter} epochs (min_epochs={min_epochs}). Halting training at epoch {epoch}.')
-					break
-		
+					optimizer.step()
+					
+					if not self.unfreezing == 'complete':
+						self.verify_word_embeddings()
+					
+					saved_weights[epoch+1] = self.added_token_weights
+					
+					# evaluate the model on the dev set(s) and log results
+					self.model.eval()
+					
+					with torch.no_grad():
+						dev_losses = []
+						for dataset in dev_inputs:
+							dev_outputs = self.model(**dev_inputs[dataset], labels=dev_labels[dataset])
+							dev_loss = dev_outputs.loss
+							dev_losses += [dev_loss.item()]
+							
+							self.record_epoch_metrics(
+								epoch, masked_dev_inputs[dataset], dev_labels[dataset], dev_outputs, dev_loss, delta, 
+								self.cfg.dev[dataset].name + ' (dev)', metrics, tb_loss_dict, tb_metrics_dict, 
+								best_losses, patience_counters, self.masked_dev_argument_data[dataset]['inputs'] if self.exp_type == 'newverb' else None
+							)
+						
+						# Compute loss on masked training data without dropout; this is most representative of the testing procedure, so we can use it to determine the best epoch
+						no_dropout_train_outputs = self.model(**masked_inputs, labels=labels)
+						no_dropout_train_loss = no_dropout_train_outputs.loss
+						
+						dev_losses += [no_dropout_train_loss.item()]
+						
+						self.record_epoch_metrics(
+							epoch, masked_inputs, labels, no_dropout_train_outputs, no_dropout_train_loss, delta, 
+							self.cfg.tuning.name + ' (masked, no dropout)', metrics, tb_loss_dict, tb_metrics_dict, 
+							best_losses, patience_counters, self.masked_argument_data['inputs'] if self.exp_type == 'newverb' else None
+						)
+						
+					self.add_tb_epoch_metrics(epoch, writer, tb_loss_dict, dev_losses, tb_metrics_dict)
+					
+					if np.mean(dev_losses) < best_mean_loss - delta:
+						best_mean_loss = np.mean(dev_losses)
+						patience_counter = 0
+						best_epoch = epoch + 1
+						if self.save_full_model:
+							# need to use a deepcopy, else this changes and we overwrite the best state
+							best_model_state_dict = deepcopy(self.model.state_dict())
+					else:
+						patience_counter += 1
+						patience_counter = min(patience, patience_counter)
+						
+					metrics.append({'epoch': epoch + 1, 'dataset': 'overall', 'metric': 'remaining patience overall', 'value': patience - patience_counter})
+					writer.add_scalars('remaining patience', {**patience_counters, 'overall': patience - patience_counter}, epoch)
+					t.set_postfix(pat=patience - patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
+					
+					if patience_counter >= patience and epoch + 1 >= min_epochs:
+						log.info(f'Mean dev loss has not improved by {delta} in {patience_counter} epochs (min_epochs={min_epochs}). Halting training at epoch {epoch}.')
+						break
+			except KeyboardInterrupt:
+				continue
+			
 		# debug
 		if 'debug' in self.cfg and self.cfg.debug and self.exp_type == 'newverb':
 			log.info('')
