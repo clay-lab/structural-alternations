@@ -773,10 +773,10 @@ class Tuner:
 				# debug
 				if 'debug' in self.cfg and self.cfg.debug and self.exp_type == 'newverb':
 					log.info('')
-					self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the local [MASK] will step in to help.', output_fun=log.info)
-					self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the [MASK] will blork the [MASK].', output_fun=log.info)
-					self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', f'the {self.cfg.tuning.args["[subj]"][0]} will [MASK] the {self.cfg.tuning.args["[obj]"][0]}.', output_fun=log.info)
-					self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
+					self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'The local [MASK] will step in to help.', output_fun=log.info)
+					self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'The [MASK] will blork the [MASK].', output_fun=log.info)
+					self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', f'The {self.cfg.tuning.args["[subj]"][0]} will [MASK] the {self.cfg.tuning.args["[obj]"][0]}.', output_fun=log.info)
+					self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', 'The [MASK] will [MASK] the [MASK].', output_fun=log.info)
 				
 				self.model.train()
 				
@@ -859,10 +859,10 @@ class Tuner:
 		# debug
 		if 'debug' in self.cfg and self.cfg.debug and self.exp_type == 'newverb':
 			log.info('')
-			self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'the local [MASK] will step in to help.', output_fun=log.info)
-			self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'the [MASK] will blork the [MASK].', output_fun=log.info)
-			self.predict_sentence(f'epoch {str(epoch).zfill(len(str(epochs)))}', f'the {self.cfg.tuning.args["[subj]"][0]} will [MASK] the {self.cfg.tuning.args["[obj]"][0]}.', output_fun=log.info)
-			self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'the [MASK] will [MASK] the [MASK].', output_fun=log.info)
+			self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'The local [MASK] will step in to help.', output_fun=log.info)
+			self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'The [MASK] will blork the [MASK].', output_fun=log.info)
+			self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', f'The {self.cfg.tuning.args["[subj]"][0]} will [MASK] the {self.cfg.tuning.args["[obj]"][0]}.', output_fun=log.info)
+			self.predict_sentence(f'epoch {str(epoch+1).zfill(len(str(epochs)))}', 'The [MASK] will [MASK] the [MASK].', output_fun=log.info)
 		
 		self.add_tb_labels(writer, tb_metrics_dict, epoch)
 		
@@ -1328,7 +1328,8 @@ class Tuner:
 		predicted_sentence = self.tokenizer.decode(predicted_ids)
 		
 		if output_fun is not None:
-			output_fun(f'{info + " " if info else ""}input: {sentence}, prediction: {predicted_sentence}')
+			# ljust is a hack given the debug sentences we're using b/c tabs won't always line up
+			output_fun(f'{info + " " if info else ""}input: {(sentence+",").ljust(40)}, prediction: {predicted_sentence}')
 		
 		if restore_training:
 			self.model.train()
