@@ -1,7 +1,10 @@
 # cls_emb.py
 # 
 # Application entry point for fitting a SVM on word embeddings from a pre-trained model.
-from core.tuner_imports import *
+import os
+import hydra
+
+from omegaconf import OmegaConf, DictConfig, open_dict
 from core.embedding_classifier import EmbeddingClassifier
 
 OmegaConf.register_new_resolver(
@@ -19,7 +22,7 @@ def formatted_dir_name(model: DictConfig, tuning: DictConfig) -> str:
 
 @hydra.main(config_path='conf', config_name='cls_emb')
 def classify_embeddings(cfg: DictConfig) -> None:
-	args_to_keep = cfg.tuning.which_args if not cfg.tuning.which_args == 'model' else f'{cfg.model.friendly_name}'
+	args_to_keep = cfg.tuning.which_args if not cfg.tuning.which_args == 'model' else cfg.model.friendly_name
 	
 	# remove stuff we don't need to print
 	with open_dict(cfg):

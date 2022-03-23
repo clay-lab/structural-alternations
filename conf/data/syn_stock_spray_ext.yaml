@@ -3,7 +3,7 @@
 name: syn_stock_spray_ext.data
 friendly_name: syn_stock_spray_ext
 description: Synthetic 'stock' tuples
-exp_type: entail
+exp_type: newarg
 
 sentence_types:
   - spray theme-object active

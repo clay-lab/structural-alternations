@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - data: syn_give
+  - data: syn_give_give_ext
   - override hydra/job_logging: tuner_log_conf
 
 dir: outputs
@@ -18,7 +18,7 @@ epoch: best_mean # which epoch to evaluate on?
 
 hydra:
   run:
-    dir: ${dir}/multieval-${criterianame:${criteria}}-${data.friendly_name}
+    dir: ./${dir}/multieval-${criterianame:${criteria}}-${data.name}
   sweep:
-    dir: ${dir}
-    subdir: multieval-${criterianame:${criteria}}-${data.friendly_name}
+    dir: ./${dir}
+    subdir: multieval-${criterianame:${criteria}}-${data.name}

@@ -1,9 +1,7 @@
 name: dative_DO_mail_passive
 
-reference_mailedence_type: mail DO passive
-exp_type: entail
-
-which_args: ''
+reference_sentence_type: mail DO passive
+exp_type: newarg
 
 to_mask:
   - RICKET

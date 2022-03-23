@@ -1,9 +1,7 @@
 name: sl_goal-object_spray_active
 
 reference_sentence_type: spray goal-object active
-exp_type: entail
-
-which_args: ''
+exp_type: newarg
 
 to_mask:
   - GORX

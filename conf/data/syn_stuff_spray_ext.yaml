@@ -3,7 +3,7 @@
 name: syn_stuff_spray_ext.data
 friendly_name: syn_stuff_spray_ext
 description: Synthetic 'stuff' tuples
-exp_type: entail
+exp_type: newarg
 
 sentence_types:
   - spray theme-object active

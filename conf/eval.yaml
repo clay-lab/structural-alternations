@@ -21,4 +21,4 @@ hydra:
     dir: ${checkpoint_dir}/eval-${data.friendly_name}
   sweep:
     dir: ${checkpoint_dir}
-    subdir: "eval-${data.friendly_name}"
+    subdir: eval-${data.friendly_name}

@@ -3,7 +3,7 @@
 name: syn_teach_mail_ext.data
 friendly_name: syn_teach_mail_ext
 description: Synthetic 'teach' tuples
-exp_type: entail
+exp_type: newarg
 
 sentence_types:
   - mail PD active

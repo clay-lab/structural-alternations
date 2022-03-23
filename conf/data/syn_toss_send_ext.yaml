@@ -3,7 +3,7 @@
 name: syn_toss_send_ext.data
 friendly_name: syn_toss_send_ext
 description: Synthetic 'toss' tuples
-exp_type: entail
+exp_type: newarg
 
 sentence_types:
   - send PD active

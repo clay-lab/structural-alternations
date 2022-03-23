@@ -2,7 +2,31 @@
 #
 # check stats for candidate arguments for use in new verb experiments using a dataset which
 # have strings that are tokenized as single words in all of the model types in conf/model
-from core.tuner_imports import *
+import os
+import re
+import hydra
+import torch
+import random
+import joblib
+import logging
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import torch.nn as nn
+
+from tqdm import tqdm
+from math import comb, perm, ceil
+from typing import Dict, List, Tuple
+from joblib import Parallel, delayed
+from omegaconf import DictConfig, OmegaConf
+from matplotlib import pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+from scipy.stats import pearsonr
+from transformers import logging as lg
+lg.set_verbosity_error()
+
+from core import tuner_utils
 
 log = logging.getLogger(__name__)
 
@@ -14,7 +38,7 @@ def check_args(cfg: DictConfig) -> None:
 	print(OmegaConf.to_yaml(cfg))
 	
 	dataset = load_dataset(cfg.dataset_loc)
-	model_cfgs_path = os.path.join(hydra.utils.get_original_cwd(), 'conf', 'model')
+	model_cfgs_path = os.path.join(hydra.utils.get_original_cwd(), '..', 'conf', 'model')
 	model_cfgs = [os.path.join(model_cfgs_path, f) for f in os.listdir(model_cfgs_path) if not f == 'multi.yaml']
 	
 	candidate_freq_words = get_candidate_words(dataset, model_cfgs, cfg.target_freq, cfg.range, cfg.min_length)

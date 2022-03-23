@@ -1,371 +1,357 @@
 # multieval.py
 # 
 # Application entry point for evaluating and summarizing multiple masked language models.
-from core.tuner_imports import *
+import os
+import re
+import hydra
+import logging
 
-config_path='conf'
+import pandas as pd
+
+from glob import glob
+from typing import *
+from omegaconf import DictConfig, OmegaConf
+from distutils.dir_util import copy_tree
+from distutils.file_util import copy_file
+
+from core.tuner import Tuner
+from core import tuner_utils
+from core import tuner_plots
 
 log = logging.getLogger(__name__)
 
-OmegaConf.register_new_resolver(
-	'criterianame', 
-	lambda criteria: ','.join([
-		c.replace('always_masked',    'a_m'). \
-		  replace('bert_masking',     'b_m'). \
-		  replace('no_masking',       'n_m'). \
-		  replace('roberta_masking',  'r_m'). \
-		  replace('no_punctuation',   'n_p'). \
-		  replace('with_punctuation', 'w_p'). \
-		  replace('^bert',            'bert')
-		for c in criteria.split(',')
-	])
-)
+OmegaConf.register_new_resolver('criterianame', lambda criteria: criteria.replace(',', '-'))
 
-@hydra.main(config_path=config_path, config_name='multieval')
+@hydra.main(config_path='conf', config_name='multieval')
 def multieval(cfg: DictConfig) -> None:
 	
-	print(OmegaConf.to_yaml(cfg))
-	
-	# Get directory information
-	source_dir = hydra.utils.get_original_cwd()
-	starting_dir = os.getcwd()
-	
-	# clean the current directory log if needed
-	with open('multieval.log', 'r') as log_file:
-		f = log_file.read()
-	
-	if f: 
+	def reset_log_file():
 		logging.shutdown()
 		os.remove('multieval.log')
 	
+	def get_score_file_name(name: str, epoch: Union[int,str] = None, exp_type: str):
+		# set up scores file criteria
+		if epoch == 'None':
+			epoch = None
+			expr = '(([0-9]+)-+)+'
+			log.warning('Epoch not specified. If no evaluation has been performed, evaluation will be performed on the final epoch. Otherwise, all epochs on which evaluation has been performed will be loaded for each model.')
+		elif isinstance(epoch,str) and 'best' in epoch:
+			expr = f'(([0-9]+)-+)+{epoch}'
+		else:
+			expr = epoch
+		
+		return f'(.hydra|eval.log|({name}-{expr}-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}(_diffs)?-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
+	
+	def get_checkpoint_dirs(d: str, criteria: str) -> List[str]:
+		# Get checkpoint dirs in outputs
+		checkpoint_dirs_weights = os.path.join(hydra.utils.to_absolute_path(d), '**/weights.pkl.gz')
+		checkpoint_dirs_models 	= os.path.join(hydra.utils.to_absolute_path(d), '**/model.pt')
+		checkpoint_dirs 		= list(set([os.path.split(p)[0] for p in glob(checkpoint_dirs_weights, recursive=True) + glob(checkpoint_dirs_models, recursive=True)]))
+		
+		if not checkpoint_dirs:
+			raise ValueError(f'No model information found in "{d}". Did you put in the right directory path?')
+		
+		# filter paths based on criteria
+		criteria = criteria.split(',')
+		criteria = [''] if criteria == ['all'] else criteria # if criteria is 'all', don't filter out anything
+		os_path_sep = r'\\\\' if os.name == 'nt' else '/' # windows bad >:(
+		criteria = [re.sub(r'\^', os_path_sep, c) for c in criteria]
+		checkpoint_dirs = [d for d in checkpoint_dirs if all([re.search(c, d) for c in criteria])]
+		
+		return checkpoint_dirs
+	
+	def create_and_change_to_eval_dir(checkpoint_dir: str) -> None:
+		eval_dir = os.path.join(checkpoint_dir, f'eval-{cfg.data.friendly_name}')
+		if not os.path.exists(eval_dir):
+			os.mkdir(eval_dir)
+		
+		os.chdir(eval_dir)
+	
+	def copy_config_logs(starting_dir: str, eval_dir: str) -> None:
+		if starting_dir != eval_dir:
+		# Switch back to the starting dir and copy the eval information to each individual directory
+			if os.path.exists(os.path.join(eval_dir, 'eval.log')):
+				os.remove(os.path.join(eval_dir, 'eval.log'))
+			
+			logging.shutdown()
+			os.chdir(os.path.join(starting_dir, '..')) # exit the directory so we can copy it over
+			copy_tree(os.path.join(starting_dir, '.hydra'), 		os.path.join(eval_dir, '.hydra'))
+			copy_file(os.path.join(starting_dir, 'multieval.log'), 	os.path.join(eval_dir, 'multieval.log'))
+			
+			os.rename(os.path.join(eval_dir, 'multieval.log'), 		os.path.join(eval_dir, 'eval.log'))
+			
+			os.remove(os.path.join(starting_dir, 'multieval.log'))
+			os.chdir(starting_dir)
+	
+	# if we are rerunning the script after stopping, we want to clean out the log file
+	reset_log_file()
+	
+	print(OmegaConf.to_yaml(cfg, resolve=True))
+	
+	# Get directory information to use for moving stuff around later
+	source_dir 			= hydra.utils.get_original_cwd(), '..'
+	starting_dir 		= os.getcwd()
+
 	# Get a regex for the score file name so we can just load it if it already exists
-	# make this global so we can access it in the helper functions later
+	# make this global so we can access it later
 	global scores_name
-	scores_name = 'odds_ratios' if cfg.data.exp_type in ['newverb', 'entail'] else 'scores'
+	scores_name			= 'odds_ratios' if cfg.data.exp_type in ['newverb', 'newarg'] else 'scores'
+	score_file_name 	= get_score_file_name(cfg.data.friendly_name, cfg.epoch)
+	num_expected_files 	= 9 if self.exp_type == 'newarg' else 11 if self.exp_type == 'newverb' else 1
+	checkpoint_dirs 	= get_checkpoint_dirs()
 	
-	if cfg.epoch == 'None':
-		cfg.epoch = None
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}(_diffs)?-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
-		log.warning('Epoch not specified. If no evaluation has been performed, evaluation will be performed on the final epoch. Otherwise, all epochs on which evaluation has been performed will be loaded for each model.')
-	elif 'best' in cfg.epoch:
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + f'-(([0-9]+)-+)+{cfg.epoch}-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}(_diffs)?-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
-	else:
-		score_file_name = '(.hydra|eval.log|(' + cfg.data.friendly_name + '-' + cfg.epoch + f'-(accuracies.csv.gz|tsne.csv.gz|tsne-plots.pdf|{scores_name}(_diffs)?-plots.pdf|{scores_name}.(csv|pkl).gz|cossims.csv.gz)))'
-	
-	# Get checkpoint dirs in outputs
-	chkpt_dirs = os.path.join(hydra.utils.to_absolute_path(cfg.dir), '**')
-	chkpt_dirs = [os.path.split(f)[0] for f in glob(chkpt_dirs, recursive = True) if f.endswith('weights.pkl.gz')]
-	
-	if not chkpt_dirs:
-		log.error(f'No model information found in dir {cfg.dir}. Did you put in the right directory path?')
-		sys.exit(1)
-	
-	# filter paths based on criteria
-	criteria = cfg.criteria.split(',')
-	criteria = [''] if criteria == ['all'] else criteria # do this to give us a reasonable dir name
-	os_path_sep = r'\\\\' if os.name == 'nt' else '/' # hack because windows is terrible
-	criteria = [re.sub(r'\^', os_path_sep, c) for c in criteria]
-	chkpt_dirs = [d for d in chkpt_dirs if all([re.search(c, d) for c in criteria])]
-	chkpt_cfg_paths = [os.path.join(chkpt_dir, '.hydra', 'config.yaml') for chkpt_dir in chkpt_dirs]
-	
-	# For each model, check if we've already evaluated it, and do so if we haven't already
-	for chkpt_dir, chkpt_cfg_path in tuple(zip(chkpt_dirs, chkpt_cfg_paths)):
-		eval_dir = os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}')
-		
+	for checkpoint_dir in checkpoint_dirs:
+		create_and_change_to_eval_dir(checkpoint_dir)
 		# If we haven't already evaluated the model in the directory, evaluate it
-		if not (os.path.exists(eval_dir) and len([f for f in os.listdir(eval_dir) if re.search(score_file_name, f)]) >= 9):
-			
-			chkpt_cfg = OmegaConf.load(chkpt_cfg_path)
-				
-			if not os.path.exists(eval_dir):
-				os.mkdir(eval_dir)
-			
-			os.chdir(eval_dir)
-				
-			# Eval model
-			tuner = Tuner(chkpt_cfg)
-			
-			if cfg.data.exp_type == 'newverb':
-				tuner.eval_newverb(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
-			elif cfg.data.exp_type == 'entail':
-				tuner.eval_entailments(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
-			else:
-				tuner.eval(eval_cfg=cfg, checkpoint_dir=chkpt_dir)
-				
-			# Switch back to the starting dir and copy the eval information to each individual directory
-			if not eval_dir == starting_dir:
-				logging.shutdown()
-				os.chdir(os.path.join(starting_dir, '..'))
-				copy_tree(os.path.join(starting_dir, '.hydra'), os.path.join(eval_dir, '.hydra'))
-				copy_file(os.path.join(starting_dir, 'multieval.log'), os.path.join(eval_dir, 'multieval.log'))
-				if os.path.exists(os.path.join(eval_dir, 'eval.log')):
-					os.remove(os.path.join(eval_dir, 'eval.log'))
-				
-				os.rename(os.path.join(eval_dir, 'multieval.log'), os.path.join(eval_dir, 'eval.log'))
-				os.remove(os.path.join(starting_dir, 'multieval.log'))
-				os.chdir(starting_dir)
+		if len([f for f in os.listdir(eval_dir) if re.search(score_file_name, f)]) < expected_num_files:
+			tuner = Tuner(checkpoint_dir)
+			tuner.evaluate(eval_cfg=cfg, checkpoint_dir=checkpoint_dir)
+			copy_config_logs(starting_dir, eval_dir)
 	
-	if chkpt_dirs:
-		log.info(f'Evaluation complete for {len(chkpt_dirs)} models')
+	log.info(f'Evaluation complete for {len(checkpoint_dirs)} models')
 	
-	# If we are summarizing the models, get the summary files and run the comparison
 	if cfg.summarize:
-		eval_dirs = [os.path.join(chkpt_dir, f'eval-{cfg.data.friendly_name}') for chkpt_dir in chkpt_dirs]
-		
-		summary_files = [
-			os.path.join(eval_dir, f) 
-			for eval_dir in eval_dirs 
-				for f in os.listdir(eval_dir)
-					if re.match(score_file_name, f) and f.endswith(f'-{scores_name}.pkl.gz')
-		]
-		
-		cossims_files = [
-			os.path.join(eval_dir, f)
-			for eval_dir in eval_dirs
-				for f in os.listdir(eval_dir)
-					if re.match(score_file_name, f) and f.endswith('-cossims.csv.gz')
-		]
-		
-		summary_of_summaries = load_summaries(summary_files)
-		summary_of_cossims = load_summaries(cossims_files)
-		
-		multi_eval(cfg, source_dir, starting_dir, summary_of_summaries, summary_of_cossims)
+		summarize(cfg, checkpoint_dirs)
 
 def load_summaries(summary_files: List[str]) -> pd.DataFrame:
-	summaries = pd.DataFrame()
-	for summary_file in summary_files:
-		if summary_file.endswith('.pkl.gz'):
-			# note that this may cause problems because it doesn't seem we can specify the column types
-			summary = pd.read_pickle(summary_file)
-			summaries = pd.concat([summaries, summary], ignore_index=True)
-		else:
-			# we do str in case one of the most similar tokens in the cossims data
-			# is literally one of the NA values (which has happened, believe it or not)
-			summary = pd.read_csv(summary_file, converters={'token' : str})
-			summaries = pd.concat([summaries, summary], ignore_index=True)
+	pkl_files = [f for f in summary_files if f.endswith('.pkl.gz')]
+	csv_files = [f for f in summary_files if f.endswith('.csv.gz')]
+	
+	pkl_summaries = tuner_utils.load_pkls(pkl_files)
+	csv_summaries = tuner_utils.load_csvs(csv_files, converters={'token': str})
+	
+	summaries = pd.concat([pkl_summaries, csv_summaries], ignore_index=True)
+	summaries = summaries.sort_values('model_id').reset_index(drop=True)
 	
 	return summaries
 
-def save_summary(save_dir: str, summary: pd.DataFrame, suffix: str = None, filetype: List[str] = ['pkl', 'csv']) -> None:
+def save_summary(
+	save_dir: str, 
+	summary: pd.DataFrame, 
+	suffix: str = None,
+	filetypes: List[str] = ['pkl', 'csv']
+) -> None:
+	
+	func_map = {
+		'pkl': lambda f: pd.DataFrame.to_pickle(f)
+		'csv': lambda f: pd.DataFrame.to_csv(f, index=False, na_rep='NaN')
+	}
+
 	original_dir = os.getcwd()
 	
-	filetype = [filetype] if isinstance(filetype, str) else filetype
-	if any([f for f in filetype if not f in ['pkl', 'csv']]):
+	filetypes = [filetype] if isinstance(filetype, str) else filetype
+	
+	if any([f for f in filetypes if not f in ['pkl', 'csv']]):
 		log.warning('Invalid filetype provided. Acceptable filetypes are "csv", "pkl". Excluding invalid types.')
-		filetype = [f for f in filetype if f in ['pkl', 'csv']]
-			
-		if not filetype:
-			log.warning('No valid filetype provided. Using defaults ["pkl", "csv"].')
+		filetypes = [f for f in filetypes if f in ['pkl', 'csv']]
+	
+	if not filetypes:
+		log.warning('No valid filetype provided. Using defaults ["pkl", "csv"].')
+		filetypes = ['pkl', 'csv']
 	
 	# Get information for saved file names
-	filename = summary.eval_data.unique()[0] + '-'
-	epoch_label = summary.epoch_criteria.unique()[0] if len(summary.epoch_criteria.unique()) == 1 else ''
-	if not 'multiple' in summary.total_epochs.unique().tolist() and not len(summary.total_epochs.unique()) > 1: #and len(summary.model_id.unique()) == 1:
-		epoch_label = '-' + epoch_label
-		magnitude = floor(1 + np.log10(summary.total_epochs.unique()[0]))
-		epoch_label = f'{str(summary.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
-	
-	filename += epoch_label + f'-{suffix or scores_name}'
+	filename = f'{tuner_utils.get_file_prefix(summary)}-{suffix or scores_name}'
 	
 	os.chdir(save_dir)
 	
-	if 'pkl' in filetype:
-		summary.to_pickle(f"{filename}.pkl.gz")
-	
-	if 'csv' in filetype:
-		summary.to_csv(f"{filename}.csv.gz", index = False, na_rep = 'NaN')
+	for filetype in filetypes:
+		func_map[filetype](f'{filename}.{filetype}.gz')
 	
 	os.chdir(original_dir)
 
-def adjust_cfg(cfg: DictConfig, source_dir: str, summary: pd.DataFrame) -> DictConfig:
-	# Load the appropriate config file for model parameters,
-	# or use a special file if parameters are being compared across different models
-	with open_dict(cfg):
-		model_name = summary['model_name'].unique()[0] if len(summary['model_name'].unique()) == 1 else 'multi'
-		model_cfg_path = os.path.join(source_dir, config_path, 'model', f'{model_name}.yaml')
-		cfg.model = OmegaConf.load(model_cfg_path)
-		
-		tuning_name = '_'.join(summary['tuning'].unique()[0].split()) if len(summary['tuning'].unique()) == 1 else 'multi'
-		tuning_cfg_path = os.path.join(source_dir, config_path, 'tuning', f'{tuning_name}.yaml')
-		cfg.tuning = OmegaConf.load(tuning_cfg_path)
-	
-	return cfg
+def summarize(
+	cfg: DictConfig,
+	checkpoint_dirs: List[str]
+) -> None:
 
-def multi_eval(cfg: DictConfig, source_dir: str, save_dir: str, summary: pd.DataFrame, cossims: pd.DataFrame) -> None:
-	log.info(f'Creating summary of cosine similarity data from {len(cossims.model_id.unique())} models')
-	cossims = multi_eval_cossims(cfg, source_dir, save_dir, cossims)
+	def find_summaries(checkpoint_dirs: str) -> List[str]:
+		eval_dirs = [os.path.join(checkpoint_dir, f'eval-{cfg.data.friendly_name}') for checkpoint_dir in checkpoint_dirs]
 	
-	log.info(f'Creating summary of {re.sub("s$", "", scores_name.replace("_", " "))} data from {len(summary.model_id.unique())} models')
-	if cfg.data.exp_type == 'newverb':
-		multi_eval_newverb(cfg, source_dir, save_dir, summary)
-	elif cfg.data.exp_type == 'entail':
-		multi_eval_entailments(cfg, source_dir, save_dir, summary)
+		glob_eval_dirs 			= [eval_dir + f'/*-{scores_name}.pkl.gz' for eval_dir in eval_dirs]
+		glob_cossim_dirs		= [eval_dir + f'/*-cossims.csv.gz' for eval_dir in eval_dirs]
+	
+		summary_files 			= glob(glob_eval_dirs)
+		cossims_files 			= glob(glob_cossim_dirs)
+	
+		return summary_files, cossims_files
+	
+	summary_files, cossims_files = find_summaries(checkpoint_dirs)
+	
+	summary_of_summaries 	= load_summaries(summary_files)
+	summary_of_cossims 		= load_summaries(cossims_files)
+
+	log.info(f'Creating summary of cosine similarity data from {cossims.model_id.unique().size} models')
+	summarize_cossims(cfg, source_dir, save_dir, cossims)
+	
+	log.info(f'Creating summary of {scores_name.replace("_", " ")} data from {summary.model_id.unique().size} models')
+	if cfg.data.exp_type in ['newverb', 'newarg']:
+		summarize_odds_ratios(cfg, source_dir, save_dir, summary)
 	else:
-		multi_eval_(cfg, source_dir, save_dir, summary)
+		raise NotImplementedError('Currently, multieval only supports comparing data for newverb and newarg experiments.')
 	
-	log.info(f'Summarization of data from {len(summary.model_id.unique())} models complete')
+	log.info(f'Summarization of data from {summary.model_id.unique().size} models complete')
 
-def multi_eval_(cfg: DictConfig, source_dir: str, save_dir: str, summary: pd.DataFrame) -> None:
-	
-	raise NotImplementedError('Comparison of non-entailment and non-newverb data not currently supported.')
-
-def multi_eval_entailments(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
-	"""
+def summarize_odds_ratios(
+	cfg: DictConfig, 
+	source_dir: str, 
+	save_dir: str, 
+	summaries: pd.DataFrame
+) -> None:
+	'''
 	Combines entailment summaries over multiple models and plots them
-	"""
-	summary_of_summaries = summaries. \
-		groupby([c for c in summaries.columns if not c in ['sentence_num', 'sentence', 'odds_ratio']]) \
-		['odds_ratio']. \
-		agg(['mean', 'sem']). \
-		reset_index()
+	'''
+	excluded_cols = ['sentence_num', 'sentence', 'odds_ratio']
+	agg_kwargs = dict(
+		odds_ratio_mean = ('odds_ratio', 'mean'), 
+		odds_ratio_sem 	= ('odds_ratio', 'sem')
+	)
 	
-	# re-add the sentence types to the summary of summaries for plot labels
-	summaries.sentence_num = pd.to_numeric(summaries.sentence_num)
-	sentence_types_nums = summaries.loc[summaries.groupby(['model_id', 'sentence_type']).sentence_num.idxmin()].reset_index(drop=True)[['model_id', 'sentence_type','sentence']].rename({'sentence' : 'ex_sentence'}, axis = 1)
-	summary_of_summaries = summary_of_summaries.merge(sentence_types_nums)
-	
-	save_summary(save_dir, summary_of_summaries)
-	
-	summary_of_summaries['sentence_num'] = 0
-	summary_of_summaries = summary_of_summaries.rename({'ex_sentence' : 'sentence'}, axis=1)
-	
-	cfg = adjust_cfg(cfg, source_dir, summary_of_summaries)
-	
-	# Plot the overall results
-	tuner = Tuner(cfg)
-	log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {len(summary_of_summaries.model_id.unique())} models')
-	tuner.graph_entailed_results(summary_of_summaries, cfg)
-	
-	acc = tuner.get_entailed_accuracies(summary_of_summaries)
-	save_summary(save_dir, acc, 'accuracies', 'csv')
-
-def multi_eval_newverb(cfg: DictConfig, source_dir: str, save_dir: str, summaries: pd.DataFrame) -> None:
-	"""
-	Combines entailment summaries over multiple models and plots them
-	"""
-	summary_of_summaries = summaries. \
-		groupby([c for c in summaries.columns if not c in ['token_id', 'token', 'token_type', 'sentence_num', 'sentence', 'odds_ratio', 'odds_ratio_pre_post_difference']]). \
-		agg(odds_ratio_mean = ('odds_ratio', 'mean'), 
-			odds_ratio_sem = ('odds_ratio', 'sem'),
+	if cfg.data.exp_type == 'newverb':
+		excluded_cols.extend(['token_id', 'token', 'token_type', 'odds_ratio_pre_post_difference'])
+		agg_kwargs.update(dict(
 			odds_ratio_pre_post_difference_mean = ('odds_ratio_pre_post_difference', 'mean'),
-			odds_ratio_pre_post_difference_sem = ('odds_ratio_pre_post_difference', 'sem')). \
+			odds_ratio_pre_post_difference_sem	= ('odds_ratio_pre_post_difference', 'sem')
+		))
+	
+	included_cols = [c for c in summaries.columns if not c in excluded_cols]
+	
+	summary_of_summaries = summaries. \
+		groupby(included_cols). \
+		agg(**agg_kwargs). \
 		reset_index()
 	
-	for model_id in summary_of_summaries.model_id.unique():
-		summary_of_summaries.loc[summary_of_summaries.model_id == model_id, 'token_type'] = summaries.loc[summaries.model_id == model_id, 'token_type'].unique()[0] if len(summaries.loc[summaries.model_id == model_id, 'token_type'].unique()) == 1 else 'multiple'
+	if cfg.data.exp_type == 'newverb':
+		for model_id in summary_of_summaries.model_id.unique():
+			summary_of_summaries.loc[summary_of_summaries.model_id == model_id]['token_type'] = tuner_utils.multiplator(summaries.loc[summaries.model_id == model_id].token_type)
 	
-	# re-add the sentence types to the summary of summaries for plot labels
-	summaries.sentence_num = pd.to_numeric(summaries.sentence_num)
-	sentence_types_nums = summaries.loc[summaries.groupby(['model_id', 'sentence_type']).sentence_num.idxmin()].reset_index(drop=True)[['model_id', 'sentence_type','sentence']].rename({'sentence' : 'ex_sentence'}, axis = 1)
-	summary_of_summaries = summary_of_summaries.merge(sentence_types_nums)
+	# re-add an example of each sentence type to the summary of summaries for plot labels
+	summaries.sentence_num 	= summaries.sentence_num.astype(int)
+	sentence_examples 		= summaries.loc[summaries.groupby(['model_id','sentence_type']).sentence_num.idxmin()]
+	sentence_examples 		= sentence_examples[['model_id','sentence_type','sentence']]
+	sentence_examples 		= sentence_examples.rename(dict(sentence='ex_sentence'), axis=1)
+	summary_of_summaries 	= summary_of_summaries.merge(sentence_types_nums)
 	
 	save_summary(save_dir, summary_of_summaries)
 	
-	summary_of_summaries['sentence_num'] = 0
-	summary_of_summaries = summary_of_summaries.rename({'ex_sentence' : 'sentence'}, axis=1)
+	# change these back for plotting purposes
+	summary_of_summaries['sentence_num'] 	= 0
+	summary_of_summaries 					= summary_of_summaries.rename({'ex_sentence' : 'sentence'}, axis=1)
 	
-	cfg = adjust_cfg(cfg, source_dir, summary_of_summaries)
+	n_models = summary_of_summaries.model_id.unique().size
 	
 	# Plot the overall results
-	tuner = Tuner(cfg)
-	log.info(f'Creating {scores_name.replace("_", " ")} differences plots with data from {len(summary_of_summaries.model_id.unique())} models')
-	tuner.graph_newverb_results(summary_of_summaries, cfg)
+	if cfg.data.exp_type == 'newverb':
+		log.info(f'Creating {scores_name.replace("_", " ")} differences plots with data from {n_models} models')
+		tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, plot_diffs=True)
 	
-	log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {len(summary_of_summaries.model_id.unique())} models')
-	tuner.graph_newverb_results(summary_of_summaries, cfg, plot_odds_ratios=True)
+	log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {n_models} models')
+	tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg)
 	
-	acc = tuner.get_newverb_accuracies(summary_of_summaries)
+	acc = tuner_utils.get_odds_ratios_accuracies(summary_of_summaries)
 	save_summary(save_dir, acc, 'accuracies', 'csv')
 
-def multi_eval_cossims(cfg: DictConfig, source_dir: str, save_dir: str, cossims: pd.DataFrame) -> pd.DataFrame:
-	"""
+def summarize_cossims(
+	cfg: DictConfig, 
+	source_dir: str, 
+	save_dir: str, 
+	cossims: pd.DataFrame
+) -> None:
+	'''
 	Combines and plots cosine similarity data from multiple models.
-	"""
-	if not (len(cossims.model_name.unique()) == 1 and cossims.model_name.unique()[0] == 'roberta'):
-		roberta_cossims = cossims[~(cossims.target_group.str.endswith('most similar')) & (cossims.model_name == 'roberta')].copy()
-		num_tokens_in_cossims = len(roberta_cossims.token.unique())
+	'''
+	def format_tokens_ids_for_comparisons(cossims: pd.DataFrame) -> pd.DataFrame:
+		if not (len(cossims.model_name.unique()) == 1 and cossims.model_name.unique()[0] == 'roberta'):
+			roberta_cossims = cossims[~(cossims.target_group.str.endswith('most similar')) & (cossims.model_name == 'roberta')].copy()
+			num_tokens_in_cossims = len(roberta_cossims.token.unique())
+			
+			roberta_cossims['token'] = [re.sub(chr(288), '', token) for token in roberta_cossims.token]
+			num_tokens_after_change = len(roberta_cossims.token.unique())
+			if num_tokens_in_cossims != num_tokens_after_change:
+				# this isn't going to actually get rid of any info, but it's worth logging
+				# we only check this for the target tokens, because the situation is common enough with found tokens that it's not really worth mentioning
+				log.warning('RoBERTa cossim target tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
+			
+			# first, replace the ones that don't start with spaces before with a preceding ^
+			cossims.loc[(cossims.model_name == 'roberta') & ~(cossims.token.str.startswith(chr(288))), 'token'] = \
+				cossims[(cossims.model_name == 'roberta') & ~(cossims.token.str.startswith(chr(288)))].token.str.replace(r'^(.)', r'^\1', regex=True)
+			
+			# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
+			cossims.loc[(cossims.model_name == 'roberta') & (cossims.token.str.startswith(chr(288))), 'token'] = \
+			[re.sub(chr(288), '', token) for token in cossims[(cossims.model_name == 'roberta') & (cossims.token.str.startswith(chr(288)))].token]
+			
+			cossims = cossims.assign(
+				predicted_arg = [predicted_arg.replace(chr(288), '') for predicted_arg in cossims.predicted_arg],
+				target_group = [target_group.replace(chr(288), '') for target_group in cossims.target_group],
+			)
 		
-		roberta_cossims['token'] = [re.sub(chr(288), '', token) for token in roberta_cossims.token]
-		num_tokens_after_change = len(roberta_cossims.token.unique())
-		if num_tokens_in_cossims != num_tokens_after_change:
-			# this isn't going to actually get rid of any info, but it's worth logging
-			# we only check this for the target tokens, because the situation is common enough with found tokens that it's not really worth mentioning
-			log.warning('RoBERTa cossim target tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
+		# this means that we have at least one cased and one uncased model, so we convert all novel words to uppercase for standardization
+		if len(cossims.model_name.unique()) > 1 and 'roberta' in cossims.model_name.unique():
+			cossims = cossims.assign(
+				predicted_arg = [predicted_arg.upper() for predicted_arg in cossims.predicted_arg],
+				target_group = [target_group.upper() if not target_group.endswith('most similar') else target_group for target_group in cossims.target_group],
+			)
+			
+			# different models have different token ids for the same token, so we need to fix that when that happens
+		for token in cossims.token.unique():
+			# the second part of this conditional accounts for cases where roberta tokenizers and bert tokenizers behave differently
+			# in terms of how many tokens they split a target token into. in this case, since it is a set target, 
+			# we want to compare the group mean regardless, so we manually replace the token id even if it's only included in one kind of model
+			if len(cossims[cossims.token == token].token_id.unique()) > 1 or any([tv for tv in ~cossims[cossims.token == token].target_group.str.endswith('most similar').unique() for target_group in cossims[cossims.token == token].target_group.unique()]):
+				cossims.loc[cossims.token == token].token_id = 'multiple'
 		
-		# first, replace the ones that don't start with spaces before with a preceding ^
-		cossims.loc[(cossims.model_name == 'roberta') & ~(cossims.token.str.startswith(chr(288))), 'token'] = \
-			cossims[(cossims.model_name == 'roberta') & ~(cossims.token.str.startswith(chr(288)))].token.str.replace(r'^(.)', r'^\1', regex=True)
-		
-		# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
-		cossims.loc[(cossims.model_name == 'roberta') & (cossims.token.str.startswith(chr(288))), 'token'] = \
-		[re.sub(chr(288), '', token) for token in cossims[(cossims.model_name == 'roberta') & (cossims.token.str.startswith(chr(288)))].token]
-		
-		cossims = cossims.assign(
-			predicted_arg = [predicted_arg.replace(chr(288), '') for predicted_arg in cossims.predicted_arg],
-			target_group = [target_group.replace(chr(288), '') for target_group in cossims.target_group],
-		)
+		return cossims
 	
-	# this means that we have at least one cased and one uncased model, so we convert all novel words to uppercase for standardization
-	if len(cossims.model_name.unique()) > 1 and 'roberta' in cossims.model_name.unique():
-		cossims = cossims.assign(
-			predicted_arg = [predicted_arg.upper() for predicted_arg in cossims.predicted_arg],
-			target_group = [target_group.upper() if not target_group.endswith('most similar') else target_group for target_group in cossims.target_group],
-		)
+	agg_kwargs = dict(
+		cossim_mean = ('cossim', 'mean'),
+		cossim_sem 	= ('cossim', 'sem'),
+		num_points 	= ('cossim', 'size')
+	)
 	
-	# different models have different token ids for the same token, so we need to fix that when that happens
-	for token in cossims.token.unique():
-		# the second part of this conditional accounts for cases where roberta tokenizers and bert tokenizers behave differently
-		# in terms of how many tokens they split a target token into. in this case, since it is a set target, 
-		# we want to compare the group mean regardless, so we manually replace the token id even if it's only included in one kind of model
-		if len(cossims[cossims.token == token].token_id.unique()) > 1 or any([tv for tv in ~cossims[cossims.token == token].target_group.str.endswith('most similar').unique() for target_group in cossims[cossims.token == token].target_group.unique()]):
-			cossims.loc[cossims.token == token, 'token_id'] = 'multiple'
+	groups = [c for c in most_similars.columns if not c == 'cossim']
+	
+	cossims = format_tokens_ids_for_comparisons(cossims)
 	
 	# we summarize the most similar tokens and target tokens separately
 	# for the most similar tokens, we want to know something the agreement 
 	# in token choice across models, which means summarizing across tokens rather than models
+	
 	# for the target tokens, we want to know something about average similarity within each model, 
 	# which means summarizing across models and not tokens
-	multiplator = lambda x: x.unique()[0] if len(x.unique()) == 1 else 'multiple'
-	
 	most_similars = cossims[cossims.target_group.str.endswith('most similar')].copy()
 	if not most_similars.empty:
 		for token in most_similars.token.unique():
 			for predicted_arg in most_similars[most_similars.token == token].predicted_arg.unique():
 				for column in [c for c in most_similars.columns if not c in ['token', 'predicted_arg']]:
-					most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), column] = multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), column])
+					most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), column] = \
+						tuner_utils.multiplator(most_similars.loc[(most_similars.token == token) & (most_similars.predicted_arg == predicted_arg), column])
 		
 		most_similars = most_similars. \
-			groupby([c for c in most_similars.columns if not c == 'cossim']) \
-			['cossim']. \
-			agg(['mean', 'sem', 'size']). \
+			groupby(groups) \
+			agg(**agg_kwargs). \
 			reset_index(). \
-			sort_values(['predicted_arg', 'target_group']). \
-			rename({'size' : 'num_points'}, axis=1)
+			sort_values(['predicted_arg', 'target_group'])
 	
 	targets = cossims[~cossims.target_group.str.endswith('most similar')].copy()
 	if not targets.empty:
 		for target_group in targets.target_group.unique():
-			targets.loc[targets.target_group == target_group, 'token'] = multiplator(targets.loc[targets.target_group == target_group, 'token'])
+			targets.loc[targets.target_group == target_group].token = tuner_utils.multiplator(targets.loc[targets.target_group == target_group].token)
 		
 		targets = targets. \
-			groupby([c for c in targets.columns if not c == 'cossim']) \
-			['cossim']. \
-			agg(['mean', 'sem', 'size']). \
+			groupby(groups) \
+			agg(**agg_kwargs). \
 			reset_index(). \
-			sort_values(['predicted_arg', 'target_group']). \
-			rename({'size' : 'num_points'}, axis=1)
+			sort_values(['predicted_arg', 'target_group'])
 	
-	cossims = pd.concat([df for df in (targets, most_similars) if not df.empty], ignore_index=True)
+	cossims = pd.concat([targets, most_similars], ignore_index=True)
 	
 	save_summary(save_dir, cossims, 'cossims', 'csv')
 	
+	n_models = cossims[cossims.model_id != 'multiple'].model_id.unique().size
+	
 	# we can only create cosine similarity plots for target group tokens, and only if there is more than one argument we are comparing
 	if any(~cossims.target_group.str.endswith('most similar')) and not len(cossims.predicted_arg.unique()) <= 1:
-		cfg = adjust_cfg(cfg, source_dir, cossims)
-		tuner = Tuner(cfg)
-		
-		log.info(f'Creating cosine similarity plots with data from {len(cossims[cossims.model_id != "multiple"].model_id.unique())} models')
-		tuner.plot_cossims(cossims)
+		log.info(f'Creating cosine similarity plots with data from {n_models} models')
+		tuner_plots.create_cossims_plot(cossims)
 
 
 if __name__ == '__main__':

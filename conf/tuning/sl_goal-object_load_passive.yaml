@@ -1,9 +1,7 @@
 name: sl_goal-object_load_passive
 
 reference_sentence_type: load goal-object passive
-exp_type: entail
-
-which_args: ''
+exp_type: newarg
 
 to_mask:
   - GORX
