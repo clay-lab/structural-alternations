@@ -16,7 +16,7 @@ from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 from tqdm import tqdm
-from math import sqrt, ceil
+from math import sqrt, ceil, floor
 from typing import *
 from omegaconf import DictConfig
 from . import tuner_utils
@@ -317,7 +317,10 @@ def set_legend_labels(
 
 
 # used during tuning/evaluation
-def get_plot_title(df: pd.DataFrame, metric: str = ''):
+def get_plot_title(
+	df: pd.DataFrame,
+	metric: str = ''
+) -> str:
 	title = tuner_utils.multiplator(df.model_name, multstr="Multiple models'")
 	title += f' {metric}'
 	if 'eval_epoch' in df.columns:
@@ -346,7 +349,7 @@ def get_plot_title(df: pd.DataFrame, metric: str = ''):
 	title += '\n'
 	
 	if 'args_group' in df.columns:
-		title += f'\nargs group: {multiplator(df.args_group)}'
+		title += f'args group: {tuner_utils.multiplator(df.args_group)}\n'
 	
 	return title
 
@@ -416,8 +419,20 @@ def create_metrics_plots(
 			if not m == metric:
 				m1 = metric
 				m2 = m
-				for token in ignore_strs:
+				
+				# we need to filter out cases where one of the ignore tokens occurs inside the other
+				# which leads to issues when the smaller one gets replaced first. instead, we just
+				# filter to the largest token to avoid the issue
+				m1_ignore_strs = [t for t in ignore_strs if t in m1]
+				m1_ignore_strs = [t for t in m1_ignore_strs if not any(t in ignore_str and len(ignore_str) > len(t) for ignore_str in m1_ignore_strs)]
+				
+				m2_ignore_strs = [t for t in ignore_strs if t in m2]
+				m2_ignore_strs = [t for t in m2_ignore_strs if not any(t in ignore_str and len(ignore_str) > len(t) for ignore_str in m2_ignore_strs)]
+				
+				for token in m1_ignore_strs:
 					m1 = m1.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
+				
+				for token in m2_ignore_strs:
 					m2 = m2.replace(token.upper(), '').replace(token.lower(), '') # do this to deal with both cased and uncased models
 				
 				m1 = m1.strip()
@@ -456,15 +471,6 @@ def create_metrics_plots(
 	
 	metrics = metrics.copy()
 	
-	# sort so that training datasets are at the top
-	metrics = metrics.sort_values(
-		['dataset','metric','epoch'], 
-		key=lambda col: col.astype(str).str.replace(r'(.*\(train\))', '0\\1', regex=True) \
-									   .str.replace(r'(.*\(masked, no dropout\))', '1\\1', regex=True) \
-									   .str.rjust(len(str(max(metrics.epoch)))) \
-									   .str.lower()
-		)
-	metrics = metrics.reset_index(drop=True)
 	# for legend titles
 	metrics.dataset = [dataset.replace('_', ' ') for dataset in metrics.dataset]
 	
@@ -510,25 +516,26 @@ def create_metrics_plots(
 			if num_dev_sets > 1:
 				sns.lineplot(data=dev_sets_df[dev_sets_df.metric == metric], x='epoch', y='value', ax=ax, color=palette[-1], ci=68)
 				ax.lines[-1].set_linestyle(':')
-				
-			# if self.exp_type == 'newverb' and any([re.search(arg_type, metric) for arg_type in self.cfg.tuning.args]):
-			if any(m in get_like_metrics(metric, ignore_strs=ignore_strs, all_metrics=metrics.metric.unique()) for m in dont_plot_separately):
+			
+			dont_plot_sep_like_metrics = [m for m in dont_plot_separately if m in get_like_metrics(metric, ignore_strs=ignore_for_ylims, all_metrics=metrics.metric.unique())]
+			dont_plot_sep_like_metrics = [m for m in dont_plot_sep_like_metrics if re.sub(r'\[(.*)\].*', '[\\1]', metric) in m]
+			
+			if any(dont_plot_sep_like_metrics):
 				# this occurs when we're doing a newverb exp and we want to plot the individual tokens in addition to the overall mean
-				like_metrics = [m for m in like_metrics if re.sub(r'\[(.*)\].*', '[\\1]', metric) in m]
-				token_df = df[df.metric.isin(like_metrics)][plot_cols]
+				tokens_df = df[df.metric.isin(dont_plot_sep_like_metrics)][plot_cols]
 				
-				if not token_df.empty:
-					token_df['token'] = [re.sub(r'^([^\s]+).*', '\\1', m) for m in token_df.metric]
+				if not tokens_df.empty:
+					tokens_df['token'] = [re.sub(r'^([^\s]+).*', '\\1', m) for m in tokens_df.metric]
 					
 					v_adjust = (ax.get_ylim()[1] - ax.get_ylim()[0])/100
 					common_kwargs.update(dict(linewidth=.5, legend=False, alpha=.3))
 					text_kwargs = dict(size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15, alpha=.3)
 					
-					for token, dataset, token_dataset_df in token_df.groupby(['token', 'dataset']):
+					for (token, dataset), token_dataset_df in tokens_df.groupby(['token', 'dataset']):
 						token_dataset_df = token_dataset_df[~token_dataset_df.value.isnull()].reset_index(drop=True)
 						sns.lineplot(data=token_dataset_df, **common_kwargs)
 						
-						x_text_pos = floor(dataset_token_df.epoch.max() * .8)
+						x_text_pos = floor(token_dataset_df.epoch.max() * .8)
 						y_text_pos = token_dataset_df[token_dataset_df.epoch == x_text_pos].value - v_adjust
 						ax.text(x_text_pos, y_text_pos, token, **text_kwargs)
 			
@@ -548,7 +555,9 @@ def create_metrics_plots(
 			
 			fig.suptitle(title)
 			fig.tight_layout()
-			fig.subplots_adjust(top=0.825-num_dev_sets*.03125)
+			
+			# little hack here for when we have an extra line in the label in the new verb experiments
+			fig.subplots_adjust(top=0.825-(num_dev_sets + (1 if 'args_group' in metrics.columns else 0))*.03125)
 			
 			pdf.savefig()
 			plt.close()
@@ -765,7 +774,7 @@ def create_odds_ratios_plots(
 		if len(ratio_names_positions) > 1 and not all(x_data[position_num] == y_data[position_num]):
 			fig, ax = plt.subplots(2, 2)
 			fig.set_size_inches(11, 13.45)
-			ax = list(itertools.chain(*ax))
+			ax = [axes for axeses in ax for axes in axeses] # much faster than using tuner_utils.flatten
 		else:
 			fig, ax = plt.subplots(1, 2)
 			fig.set_size_inches(11, 9)
@@ -927,16 +936,16 @@ def create_odds_ratios_plots(
 			xlabel = f'{ax_label} in {pair[0]} sentences'
 			ylabel = f'{ax_label} in {pair[1]} sentences'
 			
-			common_args = {
-				'x': x_data,
-				'y': y_data,
-				'val': odds_ratio, 
-				'sem': odds_ratio_sem,
-				'exp_type': eval_cfg.data.exp_type,
-				'xlabel': xlabel,
-				'ylabel': ylabel,
+			common_args = dict(
+				x=x_data,
+				y=y_data,
+				val=odds_ratio, 
+				sem=odds_ratio_sem,
+				exp_type=eval_cfg.data.exp_type,
+				xlabel=xlabel,
+				ylabel=ylabel,
 				**kwargs
-			}
+			)
 			
 			oddsplot(ax=ax[0], **common_args)
 			oddsplot(ax=ax[1], diffs_plot=True, **common_args)
@@ -965,7 +974,10 @@ def create_odds_ratios_plots(
 			plt.close('all')
 			del fig
 
-def graph_results(summary: Dict, eval_cfg: DictConfig) -> None:
+def graph_results(
+	summary: Dict, 
+	eval_cfg: DictConfig
+) -> None:
 	
 	dataset = str(eval_cfg.data.name).split('.')[0]
 	

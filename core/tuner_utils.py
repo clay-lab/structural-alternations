@@ -7,6 +7,7 @@ import json
 import gzip
 import torch
 import random
+import inspect
 import logging
 import itertools
 
@@ -27,22 +28,44 @@ log = logging.getLogger(__name__)
 # order of grammatical functions for sorting things in display order
 GF_ORDER = ['[subj]', '[obj]', '[2obj]', '[iobj]', '[obl]', '[pobj]', '[adj]']
 
+
 # short useful functions
+def flatten(l: List) -> List:
+	# flatten a list of lists or np.ndarrays without breaking strings into characters
+	# from https://stackoverflow.com/questions/5286541/how-can-i-flatten-lists-without-splitting-strings
+	l = apply_to_all_of_type(l, ListConfig, OmegaConf.to_container)
+	if l is not None:
+		return [k for j in ([i] if not isinstance(i,(list,tuple,np.ndarray)) else flatten(i) for i in l) for k in j]
+
 def listify(l: 'any') -> List:
+	if isinstance(l,list):
+		return l
 	
-	return l if isinstance(l, list) else OmegaConf.to_container(l) if isinstance(l, ListConfig) else [l]
+	if isinstance(l,ListConfig):
+		return OmegaConf.to_container(l)
+	
+	if isinstance(l,tuple):
+		return list(l)
+	
+	if isinstance(l,(np.ndarray,pd.Series)):
+		return l.tolist()
+	
+	return [l]
 
 def unlistify(l: 'any') -> 'any':
-	if isinstance(l, dict):
+	if isinstance(l,dict):
 		return l[list(l.keys())[0]] if len(l) == 1 else l
 	
-	return l[0] if isinstance(l, list) and len(l) == 1 else l
+	return l[0] if isinstance(l,list) or isinstance(l,tuple) and len(l) == 1 else l
 
 def none(iterator: 'Iterator') -> bool:
 	
 	return not any(iterator)
 
-def multiplator(series: Union[List,pd.Series], multstr = 'multiple'):
+def multiplator(
+	series: Union[List,pd.Series], 
+	multstr = 'multiple'
+) -> 'any':
 	if np.unique(series).size == 1:
 		return np.unique(series)[0]
 	elif np.unique(series).size > 1:
@@ -71,23 +94,53 @@ def apply_to_all_of_type(
 	fun: Callable, 
 	*args: List, 
 	**kwargs: Dict
-):
-	if isinstance(data, DictConfig) or isinstance(data, ListConfig):
-		# we want the primitive versions of these so we can modify them
+) -> 'any':
+	if isinstance(data,(DictConfig,ListConfig)):
+		# we need the primitive versions of these so we can modify them
 		data = OmegaConf.to_container(data)
 	
-	data = deepcopy(data)		
+	data = deepcopy(data)
 	
 	if isinstance(data,t):
-		return fun(data, *args, **kwargs)
+		returns = filter_none(fun(data, *args, **kwargs))
 	elif isinstance(data,dict):
-		return {apply_to_all_of_type(k, t, fun, *args, **kwargs): apply_to_all_of_type(v, t, fun, *args, **kwargs) for k, v in data.items()}
-	elif isinstance(data,list):
-		return [apply_to_all_of_type(i, t, fun, *args, **kwargs) for i in data]
-	elif isinstance(data, pd.Series):
-		return pd.Series([apply_to_all_of_type(i, t, fun, *args, **kwargs) for i in data])
+		returns = filter_none({apply_to_all_of_type(k, t, fun, *args, **kwargs): apply_to_all_of_type(v, t, fun, *args, **kwargs) for k, v in data.items()})
+	elif isinstance(data,(list,tuple,set)):
+		returns = filter_none(type(data)(apply_to_all_of_type(i, t, fun, *args, **kwargs) for i in data))
+	elif isinstance(data,(torch.Tensor,pd.Series)):
+		returns = filter_none(type(data)([apply_to_all_of_type(i, t, fun, *args, **kwargs) for i in data]))
+	elif isinstance(data,np.ndarray):
+		returns = filter_none(np.array([apply_to_all_of_type(i, t, fun, *args, **kwargs) for i in data]))
 	else:
-		return data
+		returns = filter_none(data)
+	
+	if isinstance(data,(pd.Series,np.ndarray)):
+		return returns if returns.any() else None
+	else:
+		return returns if returns else None
+
+def filter_none(data: 'any') -> 'any':
+	# from https://stackoverflow.com/questions/20558699/python-how-recursively-remove-none-values-from-a-nested-data-structure-lists-a
+	data = deepcopy(data)
+	
+	if isinstance(data,(list,tuple,set)):
+		return type(data)(filter_none(x) for x in data if x is not None)
+	elif isinstance(data,dict):
+		return type(data)(
+			(filter_none(k), filter_none(v))
+				for k, v in data.items() if k is not None and v is not None
+			)
+	else:
+		if isinstance(data,(pd.Series,np.ndarray)):
+			return data if data.any() else None
+		else:
+			return data if data else None
+
+# decorator to create recursive functions
+def recursor(t: 'type', *args, **kwargs) -> Callable:
+	return lambda fun: \
+		lambda data, *args, **kwargs: \
+			apply_to_all_of_type(data=data, t=t, fun=fun, *args, **kwargs)
 
 
 # summary and file related
@@ -125,11 +178,15 @@ def get_data_for_pairwise_comparisons(
 	diffs: bool = False
 ) -> Tuple:
 	
-	def get_pairs(summary: pd.DataFrame, eval_cfg: DictConfig = None, cossims: bool = False) -> List[Tuple[str]]:
+	def get_pairs(
+		summary: pd.DataFrame, 
+		eval_cfg: DictConfig = None, 
+		cossims: bool = False
+	) -> List[Tuple[str]]:
 		if not cossims:
 			# Get each unique pair of sentence types so we can create a separate plot for each pair
 			types = summary.sentence_type.unique()
-			types = sorted(types, key = lambda s_t: eval_cfg.data.sentence_types.index(s_t))
+			types = sorted(types, key=lambda s_t: eval_cfg.data.sentence_types.index(s_t))
 		else:
 			types = summary.predicted_arg.unique()
 		
@@ -138,7 +195,7 @@ def get_data_for_pairwise_comparisons(
 		if not cossims:
 			# Sort so that the trained cases are first
 			reference_sentence_type = multiplator(summary.reference_sentence_type)
-			pairs = [sorted(pair, key = lambda x: str(-int(x == reference_sentence_type)) + x) for pair in pairs]
+			pairs = [sorted(pair, key=lambda x: str(-int(x == reference_sentence_type)) + x) for pair in pairs]
 			
 			# Filter to only cases including the reference sentence type for ease of interpretation
 			pairs = [(s1, s2) for s1, s2 in pairs if s1 == reference_sentence_type] if reference_sentence_type != 'none' else pairs
@@ -147,56 +204,23 @@ def get_data_for_pairwise_comparisons(
 		
 		return pairs
 	
-	def format_summary_for_comparisons(summary: pd.DataFrame, exp_type: str = None, cossims: bool = False, diffs: bool = False) -> Tuple[pd.DataFrame,Tuple[str]]:
-		if not cossims:
-			columns = ['token'] if exp_type == 'newverb' else ['ratio_name'] if exp_type == 'newarg' else None
-		else:
-			columns = ['predicted_arg', 'target_group']
-		
+	def format_summary_for_comparisons(
+		summary: pd.DataFrame, 
+		exp_type: str = None, 
+		cossims: bool = False, 
+		diffs: bool = False
+	) -> Tuple[pd.DataFrame,Tuple[str]]:
 		summary = summary.copy()
-		
-		for column in columns:
-			# if we are dealing with bert/distilbert and roberta models, replace the strings with uppercase ones for comparison
-			if 'roberta' in summary.model_name.unique() and summary.model_name.unique().size > 1 and exp_type == 'newarg':
-				# if we are dealing with multiple models, we want to compare them by removing the idiosyncratic variation in how
-				# tokenization works. bert and distilbert are uncased, which means the tokens are converted to lower case.
-				# here, we convert them back to upper case so they can be plotted in the same group as the roberta tokens,
-				# which remain uppercase
-				summary.loc[summary.model_name != 'roberta', column] = \
-					summary[summary.model_name != 'roberta'][column].str.upper()
-				
-			# for roberta, strings with spaces in front of them are tokenized differently from strings without spaces
-			# in front of them. so we need to remove the special characters that signals that, and add a new character
-			# signifying 'not a space in front' to the appropriate cases instead
-			
-			# first, check whether doing this will alter information
-			if 'roberta' in summary.model_name.unique():
-				roberta_summary = summary[summary.model_name == 'roberta'].copy()
-				num_tokens_in_summary = len(set([i for i in [j.split('/') for j in roberta_summary[column].unique()]]))
-				
-				roberta_summary[column] = [re.sub(chr(288), '', ratio_name) for ratio_name in roberta_summary[column]]
-				num_tokens_after_change = len(set([i for i in [j.split('/') for j in roberta_summary[column].unique()]]))
-				if num_tokens_in_summary != num_tokens_after_change:
-					# this isn't going to actually get rid of any info, but it's worth logging
-					log.warning('RoBERTa tokens were used with and without preceding spaces. This may complicate comparing results to BERT models.')
-				
-				# first, replace the ones that don't start with spaces before with a preceding ^
-				summary.loc[(summary.model_name == 'roberta') & ~(summary[column].str.startswith(chr(288))), column] = \
-					summary[(summary.model_name == 'roberta') & ~(summary[column].str.startswith(chr(288)))][column].str.replace(r'((^.)|(?<=\/).)', r'^\1', regex=True)
-				
-				# then, replace the ones with the preceding special character (since we are mostly using them in the middle of sentences)
-				summary.loc[(summary.model_name == 'roberta') & (summary[column].str.startswith(chr(288))), column] = \
-					summary[(summary.model_name == 'roberta') & (summary[column].str.startswith(chr(288)))][column].str.replace(chr(288), '')
 				
 		if exp_type == 'newverb' and not cossims:
 			# Sort by grammatical function prominence for newverb exps (we do this because 'subj' alphabetically follows 'obj'), but it's more natural for it to go first
-			summary['gf_ratio_order'] = [GF_ORDER.index(gf_ratio_name.split('/')[0]) for gf_ratio_name in summary.gf_ratio_name]
-			summary = summary.sort_values(['model_id', 'gf_ratio_order'])
-			summary = summary.drop('gf_ratio_order', axis=1)
-			summary['gf_ratio_name'] = [re.sub(r'\[|\]', '', gf_ratio_name) for gf_ratio_name in summary.gf_ratio_name]
+			summary['ratio_order'] = [GF_ORDER.index(gf_ratio_name.split('/')[0]) for gf_ratio_name in summary.gf_ratio_name]
+			summary = summary.sort_values(['model_id', 'ratio_order'])
+			summary = summary.drop('ratio_order', axis=1)
+			summary['ratio_name'] = [re.sub(r'\[|\]', '', ratio_name) for ratio_name in summary.ratio_name]
 		
-		colnames = get_eval_metrics_colnames(exp_type, cossims, diffs)
-		metric = colnames[-2]
+		colnames 	= get_eval_metrics_colnames(exp_type, cossims, diffs)
+		metric 		= colnames[-2]
 		
 		if summary.model_id.unique().size > 1:
 			metric = f'{metric}_mean'
@@ -205,20 +229,23 @@ def get_data_for_pairwise_comparisons(
 		
 		return summary, colnames
 	
-	def get_eval_metrics_colnames(exp_type: str, cossims: bool = False, diffs: bool = False) -> Tuple[str]:
+	def get_eval_metrics_colnames(
+		exp_type: str, 
+		cossims: bool = False, 
+		diffs: bool = False
+	) -> Tuple[str]:
 		if not cossims:
-			colnames = ['odds_ratio'] if exp_type == 'newarg' or not diffs else ['odds_ratio_pre_post_difference'] if exp_type == 'newverb' else [None]
+			metric = 'odds_ratio' if exp_type == 'newarg' or not diffs else 'odds_ratio_pre_post_difference' if exp_type == 'newverb' else None
 		elif cossims:
-			colnames = ['cossim']
+			metric = 'cossim'
 		
-		colnames.append(f'{colnames[-1]}_sem')
+		semmetric = f'{metric}_sem'
 		
-		return tuple(colnames)
+		return metric, semmetric
 	
-	exp_type = eval_cfg.data.exp_type if eval_cfg is not None else None
-	summary, colnames = format_summary_for_comparisons(summary, exp_type, cossims=cossims, diffs=diffs)
-	
-	pairs = get_pairs(summary, eval_cfg, cossims)
+	exp_type 			= eval_cfg.data.exp_type if eval_cfg is not None else None
+	summary, colnames 	= format_summary_for_comparisons(summary, exp_type, cossims=cossims, diffs=diffs)
+	pairs 				= get_pairs(summary, eval_cfg, cossims)
 	
 	return summary, tuple(colnames), pairs
 	
@@ -389,7 +416,7 @@ def create_tokenizer_with_added_tokens(
 def create_bert_tokenizer_with_added_tokens(
 	model_id: str, tokens_to_mask: List[str], 
 	delete_tmp_vocab_files: bool = True, **kwargs
-):
+) -> Union['BertTokenizer', 'DistilBertTokenizer']:
 	if 'uncased' in model_id:
 		tokens_to_mask = [t.lower() for t in tokens_to_mask]
 	
@@ -425,7 +452,7 @@ def create_bert_tokenizer_with_added_tokens(
 def create_roberta_tokenizer_with_added_tokens(
 	model_id: str, tokens_to_mask: List[str], 
 	delete_tmp_vocab_files: bool = True, **kwargs
-):
+) -> 'RobertaTokenizer':
 	if 'uncased' in model_id:
 		tokens_to_mask = [t.lower() for t in tokens_to_mask]
 	
@@ -522,66 +549,58 @@ def get_roberta_bpes_for_new_tokens(new_tokens: List[str]) -> List[str]:
 	roberta_bpes = [pair for token in roberta_bpes for pair in token]
 	return roberta_bpes
 
-def format_roberta_tokens(tokens: Union[str,List[str]], dest: str = 'tokenizer') -> List[str]:
-	if not dest in ['tokenizer', 't', 'display', 'd']:
-		
-		raise ValueError('Invalid format specified. Must be one of t(okenizer), d(isplay)')
+@recursor(str)
+def format_roberta_tokens_for_tokenizer(data: str) -> str:
+	if not data.startswith(chr(288)) and not data.startswith('^'):
+		data = f'{chr(288)}{data}'
+	elif data.startswith('^'):
+		data = re.sub(r'^\^', '', data)
 	
-	dest = dest[0]
-	
-	def format_single_roberta_token(token: str, dest: str):
-		if dest == 't':
-			if not token.startswith(chr(288)) and not token.startswith('^'):
-				token = f'{chr(288)}{token}'
-			elif token.startswith('^'):
-				token = re.sub(r'^\^', '', token)
-		elif dest == 'd':
-			if token.startswith(chr(288)):
-				token = re.sub(rf'^{chr(288)}', '', token)
-			elif not token.startswith('^'):
-				token = f'^{token}'
-		
-		return token
-	
-	return apply_to_all_of_type(data=tokens, t=str, fun=format_single_roberta_token, dest=dest)
+	return data
 
-def format_roberta_tokens_for_display(*args, **kwargs) -> List[str]:
+@recursor(str)
+def format_roberta_tokens_for_display(token: str) -> str:
+	if token.startswith(chr(288)):
+		token = re.sub(rf'^{chr(288)}', '', token)
+	elif not token.startswith('^'):
+		token = f'^{token}'
 	
-	return format_roberta_tokens(*args, **kwargs, dest='display')
-
-def format_roberta_tokens_for_tokenizer(*args, **kwargs) -> List[str]:
+	return token
 	
-	return format_roberta_tokens(*args, **kwargs, dest='tokenizer')
-	
+@recursor(str)
 def format_strings_with_tokens_for_display(
-	s: List[str], 
-	tokenizer_tokens: Union[str,List[str]], 
-	model_name: str,
-	string_id: str,
-) -> List[str]:
-	
-	def format_single_string_with_tokens_for_display(s: str, tokens: List[str], model_name: str, string_id: str):
-		for token in listify(tokens):
-			if model_name == 'roberta':
-				if token.startswith(chr(288)) or token.startswith('^'):
-					token = token[1:]
-				
-				s = re.sub(rf'(?<!{chr(288)}){token}', f'^{token}', s)
-				s = re.sub(rf'{chr(288)}{token}', token, s)
+	data: str, 
+	tokenizer_tokens: List[str],
+	tokens_to_uppercase: List[str], 
+	model_name: str, 
+	string_id: str
+):
+	for token in listify(tokenizer_tokens):
+		if model_name == 'roberta':
+			if token.startswith(chr(288)) or token.startswith('^'):
+				token = token[1:]
 			
-			if 'uncased' in string_id:
-				s = re.sub(token, token.upper(), s)
+			data = re.sub(rf'(?<!{chr(288)}){token}', f'^{token}', data)
+			data = re.sub(rf'{chr(288)}{token}', token, data)
 		
-		return s
-		
-	return apply_to_all_of_type(
-		data=s, t=str, 
-		fun=format_single_string_with_tokens_for_display, 
-		tokens=tokenizer_tokens,
-		model_name=model_name,
-		string_id=string_id,
-	)
+		# this might need to be adjusted if we ever use an uncased roberta model,
+		# since we'll need to check after modifying the token to token[1:] above
+		elif 'uncased' in string_id and token in tokens_to_uppercase:
+			data = re.sub(token, token.upper(), data)
+	
+	return data
 
+@recursor(str)
+def format_data_for_tokenizer(
+	data: str, 
+	mask_token: str, 
+	string_id: str, 
+	remove_punct: bool
+) -> str:
+	data = data.lower() if 'uncased' in string_id else data
+	data = strip_punct(data) if remove_punct else data
+	data = data.replace(mask_token.lower(), mask_token)
+	return data
 
 def verify_tokens_exist(
 	tokenizer: 'PreTrainedTokenizer', 
@@ -608,11 +627,7 @@ def verify_tokenization_of_sentences(
 	tokenizer_id 	= tokenizer.name_or_path
 	tokenizer_one 	= tokenizer
 	tokenizer_two 	= AutoTokenizer.from_pretrained(tokenizer_id, **kwargs)
-	
-	# flatten a list of lists of strings without breaking string into characters
-	# from https://stackoverflow.com/questions/5286541/how-can-i-flatten-lists-without-splitting-strings
-	flatten 	= lambda y: [k for j in ([i] if not isinstance(i,list) else flatten(i) for i in y) for k in j]
-	sentences 	= flatten(sentences)
+	sentences 		= flatten(sentences)
 	
 	if 'roberta' in tokenizer.name_or_path:
 		# to replace the tokens in the sentences for comparison with roberta, we need to get the display versions
@@ -635,7 +650,8 @@ def verify_tokenization_of_sentences(
 	
 	return identical
 
-# evaluation
+
+# analysis
 def get_best_epoch(
 	loss_df: pd.DataFrame, 
 	method: str = 'mean', 
@@ -678,15 +694,15 @@ def get_best_epoch(
 	
 	return best_epoch
 
-
-# analysis
-
 # Used with the R analysis script since it's much quicker to do this in Python
 # went back to the old way of doing this because of https://github.com/rstudio/reticulate/issues/1166
 # though now that we've implemented a class to do this here, it may not be necessary
-def load_csvs(csvs: List[str], converters: Dict) -> pd.DataFrame:
+def load_csvs(
+	csvs: List[str], 
+	**kwargs: Dict
+) -> pd.DataFrame:
 	csvs = [csvs] if isinstance(csvs, str) else csvs
-	return pd.concat([pd.read_csv(f, converters=converters) for f in tqdm(csvs)], ignore_index=True)
+	return pd.concat([pd.read_csv(f, **kwargs) for f in tqdm(csvs)], ignore_index=True)
 
 def load_pkls(pkls: List[str]) -> pd.DataFrame:
 	pkls = [pkls] if isinstance(pkls, str) else pkls
@@ -784,4 +800,3 @@ class gen_summary():
 		
 		# reinitialize quasiquotation variables using the columns from the new df
 		self.prep_quasiquotation()
-		
