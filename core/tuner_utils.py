@@ -25,8 +25,16 @@ from transformers import AutoTokenizer
 
 log = logging.getLogger(__name__)
 
-# order of grammatical functions for sorting things in display order
-GF_ORDER = ['[subj]', '[obj]', '[2obj]', '[iobj]', '[obl]', '[pobj]', '[adj]']
+# grammatical functions in order of prominence for sorting things
+GF_ORDER = [
+	'[subj]', 
+	'[obj]', 
+	'[2obj]', 
+	'[iobj]', 
+	'[obl]',
+	'[pobj]', 
+	'[adj]'
+]
 
 
 # short useful functions
@@ -727,30 +735,45 @@ def delete_files(files: List[str]) -> None:
 
 class gen_summary():
 	"""
-	Generates summary statistics for saved dataframes
+	Generates summary statistics for saved dataframes, allowing R-style unquoted arguments to functions
+	for convenience, via manipulation of globals()
 	"""
 	def __init__(self, 
 		df: Union[pd.DataFrame,str,'TextIOWrapper','StringIO'], 
 		columns: List = ['gen_given_ref', 'correct', 'odds_ratio_pre_post_diff', 'odds_ratio', 'cossim'],
 		funs: List = ['mean', 'sem']
-	) -> Type['gen_summary']:
+	) -> 'gen_summary':
 		"""
 		Create a gen_summary instance
-		df: a pandas dataframe, str, or file-like object
-		columns: a list of columns to generate summary statistics for that are in df.columns
-		funs: a list of summary statistics to generate using pandas' agg function
+		
+			params:
+				df 				: a pandas dataframe, str, or file-like object
+				columns 		: a list of columns to generate summary statistics for that are in df.columns
+				funs 			: a list of summary statistics to generate using pandas' agg function
+			
+			returns:
+				gen_summary 	: a summary generator that can be called with (un)quoted column names
+								  to generate a summary of columns in df
 		"""
+		# allow passing a filepath
 		if not isinstance(df, pd.DataFrame):
 			df = pd.read_csv(df)
 			
-		self.df = df
-		self.columns = [c for c in columns if c in self.df.columns]
-		self.funs = funs
+		self.df 		= df
+		self.columns 	= [c for c in columns if c in self.df.columns]
+		self.funs 		= funs
 		self.prep_quasiquotation()
 	
 	def __call__(self, *columns: Tuple) -> pd.DataFrame.groupby:
 		"""
 		Generate a summary using the columns specified, print and return it
+			
+			params:
+				*columns (tuple)				: a list of unquote names of columns in summary to group summary statistics by
+			
+			returns:
+				results (pd.DataFrame.groupby) 	: a summary consisting of self.funs applied to the columns in self.columns
+												  grouped by the passed columns
 		"""
 		agg_dict = {c : self.funs for c in self.columns if c in self.df.columns}
 		results = self.df.groupby(list(columns)).agg(agg_dict).sort_values(list(columns))
@@ -759,9 +782,9 @@ class gen_summary():
 	
 	def prep_quasiquotation(self) -> None:
 		"""
-		Add column names to global variables to facilitate R-like quasiquotation usage.
+		Adds column names to global variables to facilitate R-like quasiquotation usage.
 		As a failsafe, if a variable is already defined with a conflicting definition,
-		we return early. In this case, strings may be provided to generate a summary.
+		we return early without adding any names. In this case, quoted strings may be provided to generate a summary.
 		"""
 		for c in self.df.columns:
 			if c in globals() and not globals()[c] == c:
@@ -774,21 +797,28 @@ class gen_summary():
 	def set_funs(self, *funs: Tuple) -> None:
 		"""
 		Set the summary functions to use for this gen_summary
-		funs: a list of summary statistics to generate using pandas' agg function
+			
+			params: 
+				funs (tuple): 	a tuple of functions known to pandas by string 
+								name used to generate summary statistics
 		"""
 		self.funs = list(funs)
 	
 	def set_columns(*columns: Tuple) -> None:
 		"""
-		Set the columns to get summary statistics for
-		columns: a list of columns to generate summary statistics for that are in self.df.columns
+		Set the numerical columns to get summary statistics for
+			
+			params:
+				columns (tuple): a tuple of columns in self.df to generate summary statistics for
 		"""
 		self.columns = [c for c in list(columns) if c in self.df.columns]
 	
 	def set_df(self, df: Union[pd.DataFrame,str,'TextIOWrapper','StringIO']) -> None:
 		"""
-		Set the df to a different one, and reinitialize all variables
-		df: a pd.DataFrame, str, or file-like object
+		Set the df to a different one, and attempt to reinitialize all variables
+			
+			params:
+				df (pd.DataFrame,str,IO):	a dataframe object, filehandler, or path to a csv
 		"""
 		if not isinstance(df, pd.DataFrame):
 			df = pd.read_csv(df)
@@ -796,7 +826,9 @@ class gen_summary():
 		self.df = df
 		
 		# reset the columns to remove any that aren't present in the new df
-		set_columns(self.columns)
+		set_columns(self.df.columns)
 		
 		# reinitialize quasiquotation variables using the columns from the new df
+		# note that if the new df uses column names already defined in the previous df
+		# this will throw an error, but some unquoted string names may still work
 		self.prep_quasiquotation()

@@ -185,7 +185,6 @@ class Tuner:
 		
 		return formatted_data
 	
-	
 	# formatting of results
 	def __format_strings_with_tokens_for_display(self, data: 'any') -> 'any':
 		'''
@@ -257,7 +256,6 @@ class Tuner:
 			df[var] = vars(self)[var]
 		
 		return df
-	
 	
 	# evaluation
 	def __log_debug_predictions(
@@ -1513,8 +1511,8 @@ class Tuner:
 		with torch.no_grad():
 			outputs = self.model(**self.tokenizer(sentences, return_tensors='pt', padding=True))
 		
-		logprobs = F.log_softmax(outputs.logits, dim=-1)
-		predicted_ids = torch.squeeze(torch.argmax(logprobs, dim=-1))
+		logprobs 			= F.log_softmax(outputs.logits, dim=-1)
+		predicted_ids 		= torch.squeeze(torch.argmax(logprobs, dim=-1))
 		predicted_sentences = [self.tokenizer.decode(predicted_sentence_ids) for predicted_sentence_ids in predicted_ids]
 		
 		if output_fun is not None:
@@ -1829,7 +1827,7 @@ class Tuner:
 		return odds_ratios_summary
 	
 	
-	# wrapper functions for plots/accuracies (implemented in tuner_utils and tuner_plots)
+	# wrapper/helper functions for plots/accuracies (implemented in tuner_utils and tuner_plots)
 	def create_metrics_plots(self, metrics: pd.DataFrame) -> None:
 		'''
 		Calculates which metrics to plot using identical y axes and which to plot on the same figure, and plots metrics
