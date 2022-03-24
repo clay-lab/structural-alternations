@@ -102,7 +102,7 @@ class Tuner:
 			log.error('Added tokens affected the tokenization of sentences!')
 			return
 		
-		inputs 					= self.tokenizer(inputs, return_tensors='pt', padding=True).to(device)
+		inputs 					= self.tokenizer(inputs, return_tensors='pt', padding=True).to(self.device)
 		labels 					= inputs['input_ids'].clone().detach()
 		
 		to_mask_indices 		= [np.where([token_id in to_mask for token_id in sentence])[-1].tolist() for sentence in inputs['input_ids']]
@@ -247,7 +247,7 @@ class Tuner:
 			returns:
 				df (pd.DataFrame): the dataframe with hyperparameters added in columns
 		'''
-		exclude = ['mask_token', 'mask_token_id', 'save_full_model', 'checkpoint_dir', 'load_full_model']
+		exclude = ['mask_token', 'mask_token_id', 'save_full_model', 'checkpoint_dir', 'load_full_model', 'device']
 		
 		included_vars = [var for var in vars(self) if not var in exclude]
 		included_vars = [var for var in included_vars if type(vars(self)[var]) in (str,int,float,bool,np.nan)]
@@ -668,6 +668,8 @@ class Tuner:
 		
 		# too little memory to use gpus locally, but we can specify to use them on the cluster with +use_gpu
 		self.device 			= 'cuda' if torch.cuda.is_available() and 'use_gpu' in self.cfg and self.cfg.use_gpu else 'cpu'
+		if self.device == 'cuda':
+			log.info('Using GPU support')
 		
 		self.checkpoint_dir 	= cfg_or_path if isinstance(cfg_or_path, str) else os.getcwd()
 		self.save_full_model 	= False
