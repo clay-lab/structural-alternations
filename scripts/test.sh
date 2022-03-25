@@ -13,6 +13,7 @@ module load cuDNN
 
 # using your anaconda environment
 source activate salts
+
 python ../tune.py -m \
 	hydra/launcher=joblib \
 	hydra.launcher.n_jobs=2 \
