@@ -14,7 +14,7 @@ module load cuDNN
 module load miniconda
 
 source activate salts
-cd ..
+# cd ..
 
 python tune.py -m \
 	model=bert,distilbert,roberta \
