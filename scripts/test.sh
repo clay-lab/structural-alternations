@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=testsalts
-#SBATCH --output=logs/test_log.txt
+#SBATCH --output=logs/test_%j.txt
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=3
 #SBATCH --gpus=p100:3
@@ -11,6 +11,7 @@
 
 module load CUDA
 module load cuDNN
+module load miniconda
 
 source activate salts
 cd ..
