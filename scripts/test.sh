@@ -17,10 +17,8 @@ source activate salts
 cd ..
 
 python tune.py -m \
-	hydra/launcher=joblib \
-	hydra.launcher.n_jobs=2 \
 	model=bert,distilbert,roberta \
-	'tuning=glob(dative*,exclude=[*large,*all,*mail*,*passive)' \
+	tuning=dative_DO_give_active,dative_DO_send_active,dative_PD_give_active,dative_PD_send_active \
 	dev=best_matches \
 	dev_exclude=mail \
 	hyperparameters.max_epochs=10 \
