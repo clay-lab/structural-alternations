@@ -22,7 +22,6 @@ from typing import *
 
 from sklearn import svm
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 
 log = logging.getLogger(__name__)

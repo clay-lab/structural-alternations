@@ -259,6 +259,7 @@ def summarize_cossims(
 	'''
 	Combines and plots cosine similarity data from multiple models.
 	'''
+	'''
 	def format_tokens_ids_for_comparisons(cossims: pd.DataFrame) -> pd.DataFrame:
 		if not (len(cossims.model_name.unique()) == 1 and cossims.model_name.unique()[0] == 'roberta'):
 			roberta_cossims = cossims[~(cossims.target_group.str.endswith('most similar')) & (cossims.model_name == 'roberta')].copy()
@@ -300,7 +301,7 @@ def summarize_cossims(
 				cossims.loc[cossims.token == token].token_id = 'multiple'
 		
 		return cossims
-	
+	'''
 	agg_kwargs = dict(
 		cossim_mean = ('cossim', 'mean'),
 		cossim_sem 	= ('cossim', 'sem'),
@@ -309,7 +310,7 @@ def summarize_cossims(
 	
 	groups = [c for c in most_similars.columns if not c == 'cossim']
 	
-	cossims = format_tokens_ids_for_comparisons(cossims)
+	# cossims = format_tokens_ids_for_comparisons(cossims)
 	
 	# we summarize the most similar tokens and target tokens separately
 	# for the most similar tokens, we want to know something the agreement 
