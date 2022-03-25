@@ -17,5 +17,3 @@ dependencies:
   - torch=1.10.0
   - torchtext=0.10.0
   - cudatoolkit=11.3
-  - pip:
-    - -r requirements.txt
