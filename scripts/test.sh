@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=testsalts
-#SBATCH --output=test_log.txt
+#SBATCH --output=logs/test_log.txt
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=3
 #SBATCH --gpus=p100:3
@@ -13,8 +13,9 @@ module load cuDNN
 
 # using your anaconda environment
 source activate salts
+cd ..
 
-python ../tune.py -m \
+python tune.py -m \
 	hydra/launcher=joblib \
 	hydra.launcher.n_jobs=2 \
 	model=bert,distilbert,roberta \

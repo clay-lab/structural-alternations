@@ -1,0 +1,7 @@
+
+The following have been reloaded with a version change:
+  1) CUDAcore/11.1.1 => CUDAcore/11.2.2
+
+/var/spool/slurmd/job53789768/slurm_script: line 15: activate: No such file or directory
+/var/spool/slurmd/job53789768/slurm_script: line 22: syntax error near unexpected token `('
+/var/spool/slurmd/job53789768/slurm_script: line 22: `	tuning=glob(dative*,exclude=[*large,*all,*mail*,*passive]) \'
