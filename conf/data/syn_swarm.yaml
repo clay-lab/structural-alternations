@@ -1,7 +1,6 @@
 # Synthetic constructions with 'swarm'
 
 name: syn_swarm.data
-friendly_name: syn_swarm
 description: "Synthetic 'swarm' tuples"
 entail: true
 new_verb: false

@@ -1,7 +1,6 @@
 # Synthetic constructions with shower
 
 name: syn_shower_spray_ext.data
-friendly_name: syn_shower_spray_ext
 description: Synthetic 'shower' tuples
 exp_type: newarg
 

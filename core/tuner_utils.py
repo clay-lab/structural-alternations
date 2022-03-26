@@ -72,11 +72,15 @@ def none(iterator: 'Iterator') -> bool:
 
 def multiplator(
 	series: Union[List,pd.Series], 
-	multstr = 'multiple'
+	multstr: str = 'multiple'
 ) -> 'any':
-	if np.unique(series).size == 1:
-		return np.unique(series)[0]
-	elif np.unique(series).size > 1:
+	# we cast to pd series here because it allows us to compare nans coming from an object array
+	# numpy doesn't handle those correctly (it treats them as unique non-nan values or just gives up)
+	series = pd.Series(series)
+	
+	if series.unique().size == 1:
+		return series.unique()[0]
+	elif none(series.isna()) and series.unique().size > 1:
 		return multstr
 	else:
 		return np.nan
@@ -145,7 +149,7 @@ def filter_none(data: 'any') -> 'any':
 			return data if data else None
 
 # decorator to create recursive functions
-def recursor(t: 'type', *args, **kwargs) -> Callable:
+def recursor(t: 'type', *args: Tuple, **kwargs: Dict) -> Callable:
 	return lambda fun: \
 		lambda data, *args, **kwargs: \
 			apply_to_all_of_type(data=data, t=t, fun=fun, *args, **kwargs)
@@ -155,7 +159,7 @@ def recursor(t: 'type', *args, **kwargs) -> Callable:
 def get_file_prefix(summary: pd.DataFrame) -> str:
 	dataset_name = summary.eval_data.unique()[0]
 	epoch_label = multiplator(summary.epoch_criteria, multstr = '-')
-	if summary.model_id.unique().size == 1:
+	if summary.model_id.unique().size == 1 and not summary.model_id.unique()[0] == 'multiple':
 		epoch_label = '-' + epoch_label
 		magnitude = len(str(summary.total_epochs.unique()[0]))
 		epoch_label = f'{str(summary.eval_epoch.unique()[0]).zfill(magnitude)}{epoch_label}'
@@ -231,7 +235,7 @@ def get_data_for_pairwise_comparisons(
 		metric 		= colnames[-2]
 		
 		if summary.model_id.unique().size > 1:
-			metric = f'{metric}_mean'
+			colnames[-2] = f'{metric}_mean'
 		else:
 			summary[f'{metric}_sem'] = 0
 		
@@ -241,7 +245,7 @@ def get_data_for_pairwise_comparisons(
 		exp_type: str, 
 		cossims: bool = False, 
 		diffs: bool = False
-	) -> Tuple[str]:
+	) -> List[str]:
 		if not cossims:
 			metric = 'odds_ratio' if exp_type == 'newarg' or not diffs else 'odds_ratio_pre_post_difference' if exp_type == 'newverb' else None
 		elif cossims:
@@ -249,7 +253,7 @@ def get_data_for_pairwise_comparisons(
 		
 		semmetric = f'{metric}_sem'
 		
-		return metric, semmetric
+		return [metric, semmetric]
 	
 	exp_type 			= eval_cfg.data.exp_type if eval_cfg is not None else None
 	summary, colnames 	= format_summary_for_comparisons(summary, exp_type, cossims=cossims, diffs=diffs)
@@ -263,9 +267,10 @@ def transfer_hyperparameters_to_df(
 ) -> pd.DataFrame:
 	hp_cols = [
 		c for c in source.columns if not c in [
-			'odds_ratio', 'ratio_name', 'position_ratio_name',
+			'odds_ratio', 'odds_ratio_mean', 'odds_ratio_sem', 'ratio_name', 'position_ratio_name',
 			'role_position', 'token_type', 'token_id', 'token', 
 			'sentence', 'sentence_type', 'sentence_num', 'odds_ratio_pre_post_difference',
+			'odds_ratio_pre_post_difference_mean', 'odds_ratio_pre_post_difference_sem',
 			'both_correct', 'both_incorrect', 'gen_correct', 'gen_incorrect', 
 			'ref_correct', 'ref_incorrect', 'ref_correct_gen_incorrect',
 			'ref_incorrect_gen_correct', 'specificity', 'specificity_se',

@@ -1,7 +1,6 @@
 # Synthetic constructions with teach
 
 name: syn_teach_send_ext.data
-friendly_name: syn_teach_send_ext
 description: Synthetic 'teach' tuples
 exp_type: newarg
 

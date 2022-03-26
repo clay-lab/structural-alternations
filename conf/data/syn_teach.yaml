@@ -1,7 +1,6 @@
 # Synthetic constructions with 'teach'
 
 name: syn_teach.data
-friendly_name: syn_teach
 description: Synthetic 'teach' tuples
 entail: true
 new_verb: false

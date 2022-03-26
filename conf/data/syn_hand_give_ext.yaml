@@ -1,7 +1,6 @@
 # Synthetic constructions with hand
 
 name: syn_hand_give_ext.data
-friendly_name: syn_hand_give_ext
 description: Synthetic 'hand' tuples
 exp_type: newarg
 

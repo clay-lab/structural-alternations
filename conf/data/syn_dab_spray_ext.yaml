@@ -1,7 +1,6 @@
 # Synthetic constructions with dab
 
 name: syn_dab_spray_ext.data
-friendly_name: syn_dab_spray_ext
 description: Synthetic 'dab' tuples
 exp_type: newarg
 

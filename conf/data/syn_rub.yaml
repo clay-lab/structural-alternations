@@ -1,7 +1,6 @@
 # Synthetic constructions with 'rub'
 
 name: syn_rub.data
-friendly_name: syn_rub
 description: Synthetic 'rub' tuples
 entail: true
 new_verb: false

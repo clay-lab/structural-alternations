@@ -1,7 +1,6 @@
 # Synthetic constructions with stuff
 
 name: syn_stuff_spray_ext.data
-friendly_name: syn_stuff_spray_ext
 description: Synthetic 'stuff' tuples
 exp_type: newarg
 

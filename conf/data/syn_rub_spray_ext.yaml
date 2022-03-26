@@ -1,7 +1,6 @@
 # Synthetic constructions with rub
 
 name: syn_rub_spray_ext.data
-friendly_name: syn_rub_spray_ext
 description: Synthetic 'rub' tuples
 exp_type: newarg
 

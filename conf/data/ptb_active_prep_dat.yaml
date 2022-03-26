@@ -1,16 +1,16 @@
 # Active Prepositional Dative constructions from the WSJ corpus of the Penn Tree Bank.
 
 name: ptb_active_prep_dat.data
-description: "PTB Active Prepositional Dative"
+description: PTB Active Prepositional Dative
 entail: false
 new_verb: false
 
 eval_groups:
-  "animate" : ['person', 'man', 'woman', 'student', 'teacher', "king", "queen", "prince", "princess", "writer", "author", "builder", "driver", "human", "dog", "bird", "dancer", "player", "angel", "actor", "actress", "singer", "director", "bee", "friend", "wolf", "lion", "scholar", "pirate", "spirit", "fox"]
-  "inanimate" : ['apple', 'book', 'chair', 'table', 'phone', "shoe", "water", "earth", "land", "light", "sun", "moon", "plate", "eye", "ear", "branch", "tree", "time", "energy", "bottle", "can", "mask", "leaf", "tile", "couch", "button", "box", "cap", "wire", "paper"]
-  "theme" : "THAX"
-  "recipient" : "RICKET"
+  animate : [person, man, woman, student, teacher, king, queen, prince, princess, writer, author, builder, driver, human, dog, bird, dancer, player, angel, actor, actress, singer, director, bee, friend, wolf, lion, scholar, pirate, spirit, fox]
+  inanimate : [apple, book, chair, table, phone, shoe, water, earth, land, light, sun, moon, plate, eye, ear, branch, tree, time, energy, bottle, can, mask, leaf, tile, couch, button, box, cap, wire, paper]
+  theme : THAX
+  recipient : RICKET
 
 to_mask:
-  - "THAX"
-  - "RICKET"
+  - THAX
+  - RICKET

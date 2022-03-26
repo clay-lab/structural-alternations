@@ -1,7 +1,6 @@
 # Synthetic constructions with 'spray'
 
 name: syn_spray.data
-friendly_name: syn_spray_for_datives
 description: "Synthetic 'spray' tuples"
 entail: true
 new_verb: false

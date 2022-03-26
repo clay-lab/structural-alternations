@@ -1,7 +1,6 @@
 # Synthetic constructions with spray
 
 name: syn_spray_spray_ext.data
-friendly_name: syn_spray_spray_ext
 description: Synthetic 'spray' tuples
 exp_type: newarg
 

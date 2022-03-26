@@ -1,7 +1,6 @@
 # Synthetic constructions with tell
 
 name: syn_tell_mail_ext.data
-friendly_name: syn_tell_mail_ext
 description: Synthetic 'tell' tuples
 exp_type: newarg
 

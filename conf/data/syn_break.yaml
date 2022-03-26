@@ -1,7 +1,6 @@
 # Synthetic constructions with 'break'
 
 name: syn_break.data
-friendly_name: syn_break
 description: "Synthetic 'break' tuples"
 entail: true
 new_verb: false

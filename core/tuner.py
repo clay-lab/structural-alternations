@@ -503,6 +503,8 @@ class Tuner:
 		tsnes = tuner_utils.transfer_hyperparameters_to_df(summary, tsnes)
 		self.create_tsnes_plots(tsnes)
 		
+		tsnes.to_csv(f'{file_prefix}-tsnes.csv.gz', index=False, na_rep='NaN')
+		
 		if eval_cfg.data.exp_type == 'newverb':
 			log.info('Creating odds ratios differences plots')
 			self.create_odds_ratios_plots(summary, eval_cfg, plot_diffs=True)
@@ -630,7 +632,7 @@ class Tuner:
 			
 			self.tokens_to_mask						= tokens
 			
-			log.info(f'Initializing Tokenizer:\t{self.cfg.model.tokenizer} ({self.cfg.model.string_id})')
+			log.info(f'Initializing Tokenizer:\t{self.cfg.model.tokenizer}   ({self.cfg.model.string_id})')
 			self.tokenizer 							= tuner_utils.create_tokenizer_with_added_tokens(self.cfg.model.string_id, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)
 			self.model.resize_token_embeddings(len(self.tokenizer))
 			
@@ -667,7 +669,7 @@ class Tuner:
 		# too little memory to use gpus locally, but we can specify to use them on the cluster with +use_gpu
 		self.device 			= 'cuda' if torch.cuda.is_available() and 'use_gpu' in self.cfg and self.cfg.use_gpu else 'cpu'
 		if self.device == 'cuda':
-			log.info('Using GPU support')
+			log.info(f'Using GPU {torch.cuda.get_device_name(torch.cuda.current_device())}')
 		
 		self.checkpoint_dir 	= cfg_or_path if isinstance(cfg_or_path, str) else os.getcwd()
 		self.save_full_model 	= False
@@ -685,8 +687,14 @@ class Tuner:
 		'''Return a formatted string for printing'''
 		return f'Tuner object @ {self.checkpoint_dir} with config:\n' + OmegaConf.to_yaml(self.cfg, resolve=True)
 	
-	def __call__(self, *args, **kwargs):
-		'''Calls predict sentences to generate model predictions'''
+	def __call__(self, *args: Tuple, **kwargs: Dict) -> Dict:
+		'''
+		Calls predict sentences to generate model predictions
+		
+			params:
+				args (tuple)	: passed to self.predict_sentences
+				kwargs (dict)	: passed to self.predict_sentences
+		'''
 		return self.predict_sentences(*args, **kwargs)
 	
 	# END Class Functions
@@ -1625,9 +1633,7 @@ class Tuner:
 		
 		assert len(eval_cfg.data.sentence_types) == len(transposed_sentences), 'Number of sentence types does not match in data config and data!'
 		
-		to_mask = list(self.args.keys()) if self.exp_type == 'newverb' else self.tokens_to_mask
-		
-		log.info('Tokenizing eval data file')
+		to_mask 								= list(self.args.keys()) if self.exp_type == 'newverb' else self.tokens_to_mask
 		lens 									= [len(sentence_group) for sentence_group in transposed_sentences]
 		
 		# way faster to flatten the inputs and then restore instead of looping
@@ -1852,42 +1858,42 @@ class Tuner:
 		
 		tuner_plots.create_metrics_plots(metrics=metrics, ignore_for_ylims=ignore_for_ylims, dont_plot_separately=dont_plot_separately)
 	
-	def create_cossims_plot(self, *args, **kwargs) -> None:
+	def create_cossims_plot(self, *args: Tuple, **kwargs: Dict) -> None:
 		'''
 		Calls tuner_plots.create_cossims_plot
 		
 			params:
-				*args (list)	: passed to tuner_plots.create_cossims_plot
+				*args (tuple)	: passed to tuner_plots.create_cossims_plot
 				**kwargs (dict)	: passed to tuner_plots.create_cossims_plot
 		'''
 		tuner_plots.create_cossims_plot(*args, **kwargs)
 	
-	def create_tsnes_plots(self, *args, **kwargs) -> None:
+	def create_tsnes_plots(self, *args: Tuple, **kwargs: Dict) -> None:
 		'''
 		Calls tuner_plots.create_tsnes_plots
 		
 			params:
-				*args (list)	: passed to tuner_plots.create_tsnes_plot
+				*args (tuple)	: passed to tuner_plots.create_tsnes_plot
 				**kwargs (dict)	: passed to tuner_plots.create_tsnes_plot
 		'''
 		tuner_plots.create_tsnes_plots(*args, **kwargs)
 	
-	def create_odds_ratios_plots(self, *args, **kwargs) -> None:
+	def create_odds_ratios_plots(self, *args: Tuple, **kwargs: Dict) -> None:
 		'''
 		Calls tuner_plots.create_odds_ratios_plots
 		
 			params:
-				*args (list)	: passed to tuner_plots.create_odds_ratios_plots
+				*args (tuple)	: passed to tuner_plots.create_odds_ratios_plots
 				**kwargs (dict)	: passed to tuner_plots.create_odds_ratios_plots
 		'''
 		tuner_plots.create_odds_ratios_plots(*args, **kwargs)
 	
-	def get_odds_ratios_accuracies(self, *args, **kwargs) -> pd.DataFrame:
+	def get_odds_ratios_accuracies(self, *args: Tuple, **kwargs: Dict) -> pd.DataFrame:
 		'''
 		Calls tuner_utils.get_odds_ratios_accuracies, returns a dataframe containing accuracy information with tokens formatted for display
 		
 			params:
-				*args (list)		: passed to tuner_utils.get_odds_ratios_accuracies
+				*args (tuple)		: passed to tuner_utils.get_odds_ratios_accuracies
 				**kwargs (list)		: passed to tuner_utils.get_odds_ratios_accuracies
 			
 			returns:

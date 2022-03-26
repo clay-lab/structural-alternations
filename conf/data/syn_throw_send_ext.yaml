@@ -1,7 +1,6 @@
 # Synthetic constructions with throw
 
 name: syn_throw_send_ext.data
-friendly_name: syn_throw_send_ext
 description: Synthetic 'throw' tuples
 exp_type: newarg
 

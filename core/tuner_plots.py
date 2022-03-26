@@ -13,6 +13,7 @@ import seaborn as sns
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
+from matplotlib import patheffects as pe
 from matplotlib.backends.backend_pdf import PdfPages
 
 from tqdm import tqdm
@@ -99,6 +100,7 @@ def scatterplot(
 	if sem is not None:
 		# this makes sure the colors of the points match the color of the errorbars
 		collections = ax.collections[1:].copy()
+		
 		for (_, x_group), (_, y_group), collection in zip(x.groupby(hue), y.groupby(hue), collections):
 			ax.errorbar(x=x_group[val], xerr=x_group[sem], y=y_group[val], yerr=y_group[sem], color=collection._original_edgecolor, ls='none')
 	
@@ -131,7 +133,12 @@ def scatterplot(
 	set_legend_labels(ax, legend_labels)
 	
 	if marginal_means:
-		add_marginal_mean_ticks_to_plot(x=x, y=y, val=val, ax=ax, groups=marginal_means)
+		colors = [collection._original_edgecolor for collection in ax.collections[1:]]
+		
+		# if we've added the errorbars, it repeats the original colors twice (once for each axis the error bar is shown on) 
+		# we just want to pass the unique colors
+		colors = sorted(set(colors), key=colors.index)
+		add_marginal_mean_ticks_to_plot(x=x, y=y, val=val, ax=ax, groups=marginal_means, colors=colors)
 	
 	if xlabel is not None:
 		ax.set_xlabel(xlabel, **label_kwargs)
@@ -143,35 +150,45 @@ def scatterplot(
 
 def add_marginal_mean_ticks_to_plot(
 	x: pd.DataFrame, y: pd.DataFrame, 
-	val: str, ax: matplotlib.axes.Axes, 
-	groups: List[str] = None
+	val: str, ax: matplotlib.axes.Axes,
+	colors: List[Tuple[float]] = None,
+	groups: List[str] = None,
 ) -> matplotlib.axes.Axes:
 	# here we add ticks to show the mean and standard errors along each axis
 	groups = [groups] if isinstance(groups, str) else groups
 	
+	if colors is None:
+		# if no colors are passed, default to black
+		colors = [(0.,0.,0.)]
+	
 	if groups is not None and all(all(group in data.columns for group in groups) for data in [x, y]):
+		# this makes sure that the colors used in the plot and the colors used for the groups in the plot and the colors used for marginal mean ticks match
+		groups 		= sorted(groups, key = lambda group: x[group].unique().size == len(colors))
+		
+		# repeat the colors as needed for each additional group
+		for group in groups[:-1]:
+			colors  *= x[group].unique().size
+		
 		group_means = [data.groupby(groups)[val].agg({'mean', 'sem'}) for data in [x,y]]
 	else:
 		group_means = [data[val].agg('mean', 'sem') for data in [x,y]]
 	
-	collections = ax.collections[1:].copy()
-	xllim, xulim = ax.get_xlim()
-	yllim, yulim = ax.get_ylim()
-	xtick_range = (xulim - xllim)/30
-	ytick_range = (yulim - yllim)/30
+	xllim, xulim 	= ax.get_xlim()
+	yllim, yulim 	= ax.get_ylim()
+	xtick_range 	= (xulim - xllim)/30
+	ytick_range 	= (yulim - yllim)/30
 	
-	line_kwargs = dict(linestyle='-', zorder=0, scalex=False, scaley=False, alpha=.3)
+	line_kwargs 	= dict(linestyle='-', zorder=0, scalex=False, scaley=False, alpha=.3)
 	
 	for axis, group_mean, llim, tick_range in zip(['x', 'y'], group_means, [yllim, xllim], [xtick_range, ytick_range]):
-		for (groupname, group), collection in zip(group_mean.groupby(groups), collections):
-			color = collection._original_edgecolor
+		for (groupname, group), color in zip(group_mean.groupby(groups), colors):
 			
 			line_kwargs.update(dict(color=color))
 			
-			x_loc = (group.loc[groupname, 'mean'], group.loc[groupname, 'mean'])
-			y_loc = (llim, llim + tick_range)
-			xsem_loc = (x_loc - group.loc[groupname, 'sem'], x_loc + group.loc[groupname, 'sem'])
-			ysem_loc = (llim + tick_range/2, llim + tick_range/2)
+			x_loc 		= (group.loc[groupname, 'mean'], group.loc[groupname, 'mean'])
+			y_loc 		= (llim, llim + tick_range)
+			xsem_loc 	= (x_loc - group.loc[groupname, 'sem'], x_loc + group.loc[groupname, 'sem'])
+			ysem_loc 	= (llim + tick_range/2, llim + tick_range/2)
 			
 			if axis == 'y':
 				x_loc, y_loc = y_loc, x_loc
@@ -264,7 +281,7 @@ def set_unique_values(
 	values_generator: Generator = None
 ) -> None:
 	default_value = [default_value] if not isinstance(default_value,list) else default_value
-
+	
 	if isinstance(value_str_or_dict, str) or value_str_or_dict is None:
 		if value_str_or_dict in df.columns:
 			n_values = df[value_str_or_dict].unique().size - 1
@@ -338,7 +355,7 @@ def get_plot_title(
 	title += f' (\u0394={tuner_utils.multiplator(df.delta)})'
 	title += '\ntuning: ' + tuner_utils.multiplator(df.tuning).replace('_', ' ')
 	title += ', masking: ' if all(df.masked) else ' unmasked' if none(df.masked) else ''
-	title += tuner_utils.multiplator(df.masked_tuning_style) if any(df.masked == 'multiple') or any(df.masked) else ''
+	title += (', ' + tuner_utils.multiplator(df.masked_tuning_style)) if any(df.masked == 'multiple') or any(df.masked) else ''
 	title += ', ' + ('no punctuation' if all(df.strip_punct) else "with punctuation" if none(df.strip_punct) else 'multiple punctuation')
 	title += f', {tuner_utils.multiplator(df.unfreezing)} unfreezing' if df.unfreezing.unique().size > 1 else ''
 	if df.unfreezing.unique().size == 1 and df.unfreezing.unique()[0] == 'gradual':
@@ -583,7 +600,7 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 		
 		return cossims, cossim, sem, pairs, fig, ax
 	
-	def get_cossims_plot_title(cossims: pd.DataFrame) -> str:
+	def get_cossims_plot_title(cossims: pd.DataFrame, cossim: str) -> str:
 		metric = 'cosine similarities to '
 		metric += tuner_utils.multiplator(cossims.eval_data, multstr=f"{cossims.eval_data.unique().size} eval sets'")
 		metric += f' target group tokens'
@@ -601,20 +618,20 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 		for col1, col2 in itertools.permutations(['target_group', 'predicted_arg']):
 			if cossims[col1].unique().size > 1:
 				for group, df in cossims.groupby(col1):
-					means = df.groupby(col2).cossim.agg({'mean', 'sem', 'std', 'size'})
+					means = df.groupby(col2)[cossim].agg({'mean', 'sem', 'std', 'size'})
 					out_group_means = means.loc[[i for i in means.index if not i == group]]
 					for arg in out_group_means.index:
-						mean1 = means['mean'][group]
-						sem1 = means['sem'][group]
-						std1 = means['std'][group]
-						size1 = means['size'][group]
+						mean1 	= means['mean'][group]
+						sem1 	= means['sem'][group]
+						std1 	= means['std'][group]
+						size1 	= means['size'][group]
 						
-						mean2 = out_group_means['mean'][arg]
-						sem2 = out_group_means['sem'][arg]
-						std2 = out_group_means['std'][arg]
-						size2 = out_group_means['size'][arg]
+						mean2 	= out_group_means['mean'][arg]
+						sem2 	= out_group_means['sem'][arg]
+						std2 	= out_group_means['std'][arg]
+						size2 	= out_group_means['size'][arg]
 						
-						label1 = group_labels[group]
+						label1 	= group_labels[group]
 						if col1 == 'target_group':
 							label2 = label1
 						elif col1 == 'predicted_arg':
@@ -694,7 +711,7 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 						fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')]
 					)
 	
-	suptitle = get_cossims_plot_title(cossims)
+	suptitle = get_cossims_plot_title(cossims, cossim)
 	
 	fig.suptitle(suptitle)
 	fig.tight_layout()
@@ -828,7 +845,7 @@ def create_odds_ratios_plots(
 		odds_ratio: str, arg_type: str
 	) -> str:
 		title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs')) + '\n'
-		metric = 'odds ratios' if odds_ratio == 'odds_ratio' else 'odds ratios improvements'
+		metric = 'odds ratios' if odds_ratio in ['odds_ratio' or 'odds_ratio_mean'] else 'odds ratios improvements'
 		
 		title += get_plot_title(df=summary, metric=metric)
 		

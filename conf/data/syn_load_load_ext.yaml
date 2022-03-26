@@ -1,7 +1,6 @@
 # Synthetic constructions with load
 
 name: syn_load_load_ext.data
-friendly_name: syn_load_load_ext
 description: Synthetic 'load' tuples
 exp_type: newarg
 
