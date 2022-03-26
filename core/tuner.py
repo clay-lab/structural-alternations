@@ -309,59 +309,72 @@ class Tuner:
 			
 			return logits, probabilities, log_probabilities, surprisals, predicted_ids
 		
-		results = []
-		metrics = tuple(zip(masked_token_indices, self.tuning_data['sentences'], *get_output_metrics(outputs)))
-		
 		if eval_groups is None:
 			eval_groups = self.tokens_to_mask
 		
 		if isinstance(eval_groups,list):
 			eval_groups = {token: [token] for token in eval_groups}
 		
-		for arg_type in eval_groups:
-			for arg in eval_groups[arg_type]:
-				for sentence_num, (arg_indices, sentence, logits, probs, logprobs, surprisals, predicted_ids) in enumerate(metrics):
-					if arg in arg_indices:
-						arg_token_id = self.tokenizer.convert_tokens_to_ids(arg)
-						if arg_token_id == self.unk_token_id:
-							raise ValueError(f'Argument "{arg}" was not tokenized correctly! Try using something different instead.')
+		tokens_to_type_labels = {token: label for label in eval_groups for token in eval_groups[label]}
+		assert not len(tokens_to_type_labels.keys()) < len(eval_groups.values()), 'Tokens should only be used in a single eval group!'
+		
+		eval_group_masked_token_indices = [
+			{
+				k: v 
+				for k, v in sentence_masked_token_indices.items()
+				if k in tokens_to_type_labels.keys()
+			} 
+			for sentence_masked_token_indices in masked_token_indices
+		]
+		
+		results = []
+		metrics = zip(eval_group_masked_token_indices, self.tuning_data['sentences'], *get_output_metrics(outputs))
+		
+		for sentence_num, (token_indices, sentence, logits, probs, logprobs, surprisals, predicted_ids) in enumerate(metrics):
+			for token in token_indices:
+				token_id = self.tokenizer.convert_tokens_to_ids(token)
+				assert token_id != self.unk_token_id, f'Token "{token}" was not tokenized correctly! Try using something different instead.'
+				
+				exp_logprob = logprobs[token_indices[token],token_id]
+				
+				common_args = {
+					'arg type'			: tokens_to_type_labels[token],
+					'token id'			: token_id,
+					'token'				: token,
+					'sentence'			: sentence,
+					'sentence num'		: sentence_num,
+					'predicted sentence': self.tokenizer.decode(predicted_ids),
+					'predicted ids'		: ' '.join([str(i.item()) for i in predicted_ids]),
+					'logit'				: logits[token_indices[token],token_id],
+					'probability'		: probs[token_indices[token],token_id],
+					'log probability'	: exp_logprob,
+					'surprisal'			: surprisals[token_indices[token],token_id],
+				}
+				
+				if self.exp_type == 'newverb':
+					common_args.update({'args group': self.args_group})
+				
+				# we only want to consider other masked positions that contain tokens in the eval groups for odds ratios
+				other_eval_tokens = [
+					(other_token, token_index)
+					for other_token, token_index in token_indices.items()
+					if not other_token == token 
+					   and other_token in tokens_to_type_labels
+					   and tokens_to_type_labels[other_token] in tuner_utils.flatten(list(eval_groups.keys()))
+				]
+				
+				if other_eval_tokens:
+					for other_token, other_token_index in other_eval_tokens:
+						logprob 	= logprobs[other_token_index,token_id]
+						odds_ratio 	= exp_logprob - logprob
 						
-						exp_logprob = logprobs[arg_indices[arg],arg_token_id]
-						
-						common_args = {
-							'arg type'			: arg_type,
-							'token id'			: arg_token_id,
-							'token'				: arg,
-							'sentence'			: sentence,
-							'sentence num'		: sentence_num,
-							'predicted sentence': self.tokenizer.decode(predicted_ids),
-							'predicted ids'		: ' '.join([str(i.item()) for i in predicted_ids]),
-							'logit'				: logits[arg_indices[arg],arg_token_id],
-							'probability'		: probs[arg_indices[arg],arg_token_id],
-							'log probability'	: exp_logprob,
-							'surprisal'			: surprisals[arg_indices[arg],arg_token_id],
-						}
-						
-						if self.exp_type == 'newverb':
-							common_args.update({'args group': self.args_group})
-						
-						# we only want to consider other masked positions that contain tokens in the eval groups for odds ratios
-						other_positions = [(other_arg, arg_index) for other_arg, arg_index in arg_indices.items() if not other_arg == arg and other_arg in tuner_utils.flatten(list(eval_groups.values()))]
-						
-						if other_positions:
-							# get the group label for the other arguments
-							other_arg_types	= {v: k for k, l in eval_groups.items() for v in l}
-							for other_arg, arg_index in other_positions:
-								logprob = logprobs[arg_index,arg_token_id]
-								odds_ratio = exp_logprob - logprob
-							
-								results.append({
-									'odds ratio': odds_ratio,
-									'ratio name': arg_type + '/' + other_arg_types[other_arg],
-									**common_args
-								})
-						else:
-							results.append({**common_args})
+						results.append({
+							'odds ratio': odds_ratio,
+							'ratio name': f'{tokens_to_type_labels[token]}/{tokens_to_type_labels[other_token]}',
+							**common_args
+						})
+				else:
+					results.append({**common_args})
 		
 		return results
 	
@@ -897,6 +910,7 @@ class Tuner:
 						for arg_type in eval_groups:
 							if any(metric in r for r in results if r['arg type'] == arg_type):
 								epoch_metrics[metric][arg_type] = float(torch.mean(torch.tensor([r[metric] for r in results if r['arg type'] == arg_type])))
+								
 								# if we have more than one token that fits into this group, we get means for each of them separately as well
 								if isinstance(eval_groups,dict) and arg_type in eval_groups and isinstance(eval_groups[arg_type],list) and len(eval_groups[arg_type]) > 1:
 									for token in eval_groups[arg_type]:
@@ -1051,7 +1065,7 @@ class Tuner:
 				arg_values			= tuner_utils.flatten(list(args.values()))
 				
 				num_extender		= lambda x, y = 0: str(x+y).zfill(len(str(total_tokens)))
-				gf_replacer 		= lambda s, a, n: s.replace(a, extender(tuner_utils.GF_ORDER.index(a), n))
+				gf_replacer 		= lambda s, a, n: s.replace(a, num_extender(tuner_utils.GF_ORDER.index(a), n))
 				
 				col[i] = re.sub(r'^loss$', f'{num_extender(0)}loss', col[i])
 				col[i] = re.sub(r'^remaining patience$', f'{num_extender(1)}remaining patience', col[i])
@@ -1554,7 +1568,7 @@ class Tuner:
 			# we use the metrics file to determine the epoch at which the full model was saved
 			# note that we have not saved the model state at each epoch, unlike with the weights
 			# this is a limitation of the gradual unfreezing approach
-			epoch = tuner_utils.get_best_epoch(loss_df, method = 'mean')
+			epoch = tuner_utils.get_best_epoch(loss_df, method='mean')
 			
 			log.info(f'Restoring model state from epoch {epoch}/{total_epochs}')
 			

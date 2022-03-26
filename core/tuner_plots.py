@@ -29,6 +29,16 @@ def determine_int_axticks(
 	series: pd.Series, 
 	target_num_ticks: int = 10
 ) -> List[int]:
+	'''
+	Determine integer axticks for discrete values
+	
+		params:
+			series (pd.Series)		: a series containing integer values to be plotted along an axis
+			target_num_ticks (int)	: the desired number of ticks
+		
+		returns:
+			int_axticks (int)		: a list of ints splitting the series into approximately targe_num_ticks groups
+	'''
 	if isinstance(series,list):
 		series = pd.Series(series)
 	
@@ -80,7 +90,42 @@ def scatterplot(
 	plot_kwargs: Dict = {}, line_kwargs: Dict = {}, 
 	text_kwargs: Dict = {}, label_kwargs: Dict = {},
 ) -> matplotlib.axes.Axes:
+	'''
+	The main function used for creating scatterplots for tuner objects
 	
+		params:
+			data (pd.DataFrame) 		: a dataframe containing information about the data to plot
+			x (pd.DataFrame)			: a dataframe containing information and values to plot on the x-axis.
+										  Note that passing a column name will not work, unlike in matplotlib or seaborn
+			y (pd.DataFrame)			: a dataframe containing information and values to plot on the y-axis.
+										  Note that passing a column name will not work, unlike in matplotlib or seaborn
+			val (str)					: the measure to plot on the x and y axes. only one measure may be plotted (i.e., x and y show the same kind of data)
+			hue (str)					: a string indicating a column in the dataframes to use for group colors
+			ax (matplotlib.axes.Axes)	: an object to plot on
+			sem (str)					: name of column containing standard error values in x and y
+			text (str)					: name of column containing text to add to the plot for x and y
+			text_color (str)			: name of column containing groups to color text differently for
+			text_size (str)				: name of column containing groups to size text differently for
+			center_at_origin (bool)		: whether to center the plot at the origin
+			aspect_ratio (str)			: whether to adjust the aspect ratio of the plot. should be one of 'square', 'eq_square'
+										  'eq_square' produces a plot with equal-size x- and y-axes with equal limits
+										  'square' produces a plot with visually equal-size x- and y-axes, but with possible different ranges on x and y axes
+			comparison_line (bool)		: whether to draw a comparison line (diagonal if diffs_plot is false, at x = 0 if diffs_plot is true)
+			legend_title (str)			: what to title the plot legend (if it exists)
+			legend_labels (dict)		: a dictionary mapping the values in the dataframes' hue columns to display labels
+			diffs_plot (bool)			: whether to create a plot where y = y - x
+			marginal_means (list)		: a list of column names, each separate grouping of which to add ticks for the group mean and standard error on the plot's margins for
+			xlabel (str)				: the label of the x-axis
+			ylabel (str)				: the label of the y-axis
+			plot_kwargs (dict)			: arguments passed to sns scatterplot
+			line_kwargs (dict)			: arguments passed to ax.plot (used to draw comparison lines)
+			text_kwargs (dict)			: arguments passed to ax.text (used when adding text to plots)
+			label_kwargs (dict)			: arguments passed to ax.set_xlabel and ax.set_ylabel (when xlabel and ylabel are provided)
+		
+		returns:
+			ax (matplotlib.axes.Axes)	: the ax object after the plot has been created
+	'''
+						
 	data = data.copy()
 	x = x.copy()
 	y = y.copy()
@@ -149,11 +194,27 @@ def scatterplot(
 	return ax
 
 def add_marginal_mean_ticks_to_plot(
-	x: pd.DataFrame, y: pd.DataFrame, 
-	val: str, ax: matplotlib.axes.Axes,
+	x: pd.DataFrame, 
+	y: pd.DataFrame, 
+	val: str, 
+	ax: matplotlib.axes.Axes,
 	colors: List[Tuple[float]] = None,
 	groups: List[str] = None,
 ) -> matplotlib.axes.Axes:
+	'''
+	Adds ticks to the margins of the plot for means and standard devations for groups
+	
+		params:
+			x (pd.DataFrame)			: the data plotted on the x-axis
+			y (pd.DataFrame)			: the data plotted on the y-axis
+			val (str)					: which value to plot group means for
+			ax (matplotlib.axes.Axes)	: the ax object to add mean ticks to
+			colors (list)				: a list of colors (expressed as float tuples) corresponding to groups grouped by color in the plot
+			groups (list)				: a list of columns in x and y. for each combination of unique values in all columns, a separate mean tick and se will be adde
+		
+		returns:
+			ax (matplotlib.axes.Axes)	: the ax object with the mean and standard error ticks added to the margins
+	'''
 	# here we add ticks to show the mean and standard errors along each axis
 	groups = [groups] if isinstance(groups, str) else groups
 	
@@ -202,9 +263,25 @@ def add_marginal_mean_ticks_to_plot(
 
 # setters
 def get_set_plot_limits(
-	ax: matplotlib.axes.Axes, center_at_origin: bool = False,
-	aspect_ratio: str = '', diffs_plot: bool = False
+	ax: matplotlib.axes.Axes, 
+	center_at_origin: bool = False,
+	aspect_ratio: str = '', 
+	diffs_plot: bool = False
 ) -> Tuple:
+	'''
+	Sets and returns the plot limits for the appropriate plot type
+	
+		params:
+			ax (matplotlib.axes.Axes)	: the ax object to get/set limits for
+			center_at_origin (bool)		: whether to center the plot at the origin
+			aspect_ratio (str)			: what aspect ratio to use. currently, only 'eq_square' is implemented
+										  'eq_square' produces a plot with x and y axis that cover the same range
+			diffs_plot (str)			: whether this is a plot where y = y - x
+		
+		returns:
+		 	limits (tuple)				: a tuple with ((x lower lim, x upper lim), (y lower lim), (y upper lim))
+		 								  according to the passed parameters
+	'''
 	if center_at_origin:
 		xulim = max([*np.abs(ax.get_xlim()), *np.abs(ax.get_ylim())])
 		xulim += (ax.get_xlim()[1] - ax.get_xlim()[0])/32
@@ -239,13 +316,27 @@ def set_unique_text_colors(
 	df: pd.DataFrame, 
 	text_color: Union[str, Dict]	
 ) -> None:
-	def colors_generator(n):
-		colors = [colors] + sns.color_palette('bright', n_colors=n)
-		for color in colors:
-			yield color
+	'''
+	Set unique color values to use for groups
+	
+		params:
+			df (pd.DataFrame)		: a dataframe to add color information to for each group
+			text_color (str or dict): if str, a column in the dataframe to generate unique text colors for
+									  if dict, must contain one entry of the form 'colname': str, where str
+									  is the colname in the dataframe to add color information for. other entries
+									  map entries in colname to the text color desired for them
+	'''
+	def colors_generator(default_value: Tuple[float], n: int) -> Tuple[float]:
+		'''
+		Generate a color palette with n unique colors
+		
+			params:
+				n (int): the number of unique colors to generate
+		'''
+		yield from sns.color_palette('bright', n_colors=n)
 	
 	set_unique_values(
-		df = df,
+		df=df,
 		value_name='color',
 		value_str_or_dict=text_color,
 		default_value=(0.,0.,0.),
@@ -256,14 +347,18 @@ def set_unique_text_sizes(
 	df: pd.DataFrame, 
 	text_size: Union[str, Dict]
 ) -> None:
-	sizes = 6
+	'''
+	Set unique text sizes to use for groups
+	
+		params:
+			df (pd.DataFrame)		: a dataframe to add text size information to for each group
+			text_size (str or dict)	: if str, a column in the dataframe to generate unique text colors for
+									  if dict, must contain one entry of the form 'colname': str, where str
+									  is the colname in the dataframe to add size information for. other entries
+									  map entries in colname to the text size desired for them
+	'''
 	def sizes_generator(n):
-		s = 6
-		num = 0
-		while num < n:
-			s += 2
-			yield s
-			num += 1
+		yield from range(6, (6+n)*2, 2)
 	
 	set_unique_values(
 		df=df, 
@@ -280,6 +375,20 @@ def set_unique_values(
 	default_value: 'any' = None,
 	values_generator: Generator = None
 ) -> None:
+	'''
+	Adds information about unique grouping values to a dataframe for plotting
+	
+		params:
+			df (pd.DataFrame)				: the dataframe to add values to
+			value_name (str)				: the kind of value being added (e.g., color, size)
+			value_str_or_dict (str or dict) : if str, a column in the dataframe to generate unique values for
+											  if dict, must contain one entry of the form 'colname': str, where str
+											  is the colname in the dataframe to add value information for. other entries
+											  map entries in colname to the values desired for them
+			default_value (any)				: what the default/first value to add
+			values_generator (Generator)	: a generator that yields unique values of the appropriate type
+	'''
+			
 	default_value = [default_value] if not isinstance(default_value,list) else default_value
 	
 	if isinstance(value_str_or_dict, str) or value_str_or_dict is None:
@@ -301,6 +410,13 @@ def set_legend_title(
 	ax: matplotlib.axes.Axes,
 	legend_title: str = None
 ) -> None:
+	'''
+	Sets the plot legend title
+	
+		params:
+			ax (matplotlib.axes.Axes)	: the plot to set the legend title for
+			legend_title (str)			: what to set the legend title to
+	'''
 	if legend_title is not None:
 		if legend_title != '':
 			try:
@@ -323,6 +439,14 @@ def set_legend_labels(
 	ax: matplotlib.axes.Axes,
 	legend_labels: Dict = None
 ) -> None:
+	'''
+	Set the plots legend labels
+	
+		params:
+			ax (matplotlib.axes.Axes)	: the plot to set legend labels for
+			legend_labels (Dict)		: a dict mapping the default legend labels (taken from colnames in the data)
+										  to the desired display labels
+	'''
 	if legend_labels is not None:
 		for text in ax.get_legend().get_texts():
 			try:
@@ -338,6 +462,16 @@ def get_plot_title(
 	df: pd.DataFrame,
 	metric: str = ''
 ) -> str:
+	'''
+	Get a plot title for tuner plots
+	
+		params:
+			df (pd.DataFrame)	: a dataframe containing information about the experiment
+			metric (str)		: the metric for which a plot title is being created
+		
+		returns:
+			title (str)			: a plot title with information from df and metric
+	'''
 	title = tuner_utils.multiplator(df.model_name, multstr="Multiple models'")
 	title += f' {metric}'
 	if 'eval_epoch' in df.columns:
@@ -375,9 +509,38 @@ def create_metrics_plots(
 	ignore_for_ylims: List[str], 
 	dont_plot_separately: List[str]
 ) -> None:
+	'''
+	Plots metrics collected during fine-tuning
+	
+		params:
+			metrics (pd.DataFrame)		: a dataframe containing information about metrics to plot
+			ignore_for_ylims (list)		: label values to ignore when determining which metrics are alike for computing identical y-axes
+			dont_plot_separately (list)	: metrics to not plot on separate plots (used to plot individual word data together with means in newverb expts)
+	'''
 	def get_metrics_plot_title(df: pd.DataFrame, metric: str) -> str:
+		'''
+		Get a title for the metrics plot
 		
+			params:
+				df (pd.DataFrame)	: a dataframe containing metrics information
+				metric (str)		: which metric is being plotted
+			
+			returns:
+				title (str)			: the title for the plot
+		'''
 		def format_dataset_max_min(label: str, ser: pd.Series, r: int = 2) -> str:
+			'''
+			Get a string with the maximum (if applicable) and minimum values in the series
+			Note that when r = 0, we are plotting patience, and so we don't include the maximum
+			
+				params:
+					label (str)		: the name of the dataset
+					ser (pd.Series)	: a series containing values for a metric in the dataset
+					r (int)			: how much to round the max and min values
+				
+				returns:
+					max_min (str)	: a formatted string containing information about the maximum (if applicable) and minimum values in ser
+			'''
 			subtitle = f'{label}: '
 			
 			format_str = f'{{m:.{r}f}}'
@@ -427,10 +590,24 @@ def create_metrics_plots(
 		
 		return title
 	
-	def get_like_metrics(metric: str, ignore_strs: List[str], all_metrics: Union[List[str],np.ndarray]) -> List[str]:
-		# Get the other metrics which are like this one but for different tokens so that we can
-		# set the axis limits to a common value. This is so we can compare the metrics visually
-		# for each token more easily
+	def get_like_metrics(
+		metric: str, 
+		ignore_strs: List[str], 
+		all_metrics: Union[List[str],np.ndarray]
+	) -> List[str]:
+		'''
+		Get the other metrics which are like metric but for different tokens so that we can
+		set the axis limits to a common value. This is so we can compare the metrics visually
+		for each token more easily
+		
+			params:
+				metric (str)			: the metric to find like metrics for
+				ignore_strs (str)		: which strings to ignore when determining whether metrics are alike
+				all_metrics (list-like)	: a list of all the metrics to compare to metric
+			
+			returns:
+				like_metrics (list)		: a list of the metrics like metric in all_metrics, when ignoring the strs in ignore_strs
+		'''
 		like_metrics = []
 		for m in all_metrics:
 			if not m == metric:
@@ -460,7 +637,19 @@ def create_metrics_plots(
 		
 		return like_metrics
 	
-	def setup_metrics_plot(metric: str, ignore_for_ylims: str) -> Tuple:
+	def setup_metrics_plot(metric: str, ignore_for_ylims: List[str]) -> Tuple:
+		'''
+		Initializes a metrics plot
+		
+			params:
+				metric (str)											: which metric is being plotted?
+				ignore_for_ylims (list)									: a list of strings to ignore when determining shared y-axis limits
+			
+			returns:
+				df (pd.DataFrame)										: a dataframe with the information needed for plotting this metric
+				palette (list)											: list of colors to use when plotting (we need one more color than datasets for the mean line)
+				fig, ax (matplotlib.figure.Figure, matplotlib.axes.Axes): matplotlib plot objects
+		'''
 		df = metrics.copy()
 		
 		# we do this so that the metrics that are alike are plotted on the same scale
@@ -581,8 +770,26 @@ def create_metrics_plots(
 			del fig
 
 def create_cossims_plot(cossims: pd.DataFrame) -> None:
+	'''
+	Plot information about cosine similarities comparing predicted arguments to target groups
 	
+		params:
+			cossims (pd.DataFrame): a dataframe containing cosine similarity data to plot
+	'''
 	def setup_cossims_plot(cossims: pd.DataFrame) -> Tuple:
+		'''
+		Initalize a cosine similarity plot
+		
+			params:
+				cossims (pd.DataFrame)									: a dataframe containing cosine similarity data to plot
+			
+			returns:
+				cossims (pd.DataFrame)									: the dataframe filtered to plot-relevant information
+				cossim (str)											: the name of the column containing cosine similarity data (cossim, or cossim_mean)
+				sem (str)												: the name of the column containing cosine similarity standard error data (cossim_sem)
+				pairs (tuple)											: tuple of pairs of predicted arguments to compare
+				fig, ax (matplotlib.figure.Figure, matplotlib.axes.Axes): matplotlib plot objects
+		'''
 		cossims = cossims[~cossims.target_group.str.endswith('most similar')].copy().reset_index(drop=True)
 		if cossims.empty:
 			log.info('No target groups were provided for cosine similarities. No comparison plots for cosine similarities can be created.')
@@ -601,6 +808,16 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 		return cossims, cossim, sem, pairs, fig, ax
 	
 	def get_cossims_plot_title(cossims: pd.DataFrame, cossim: str) -> str:
+		'''
+		Get a title for a cosine similarity plot
+		
+			params:
+				cossims (pd.DataFrame)	: a dataframe containing information about the plot
+				cossim (str)			: the name of the column containing cosine similarities (cossim or cossim_mean)
+			
+			returns:
+				title (str)				: a title for the cosine similarity plot
+		'''
 		metric = 'cosine similarities to '
 		metric += tuner_utils.multiplator(cossims.eval_data, multstr=f"{cossims.eval_data.unique().size} eval sets'")
 		metric += f' target group tokens'
@@ -725,8 +942,24 @@ def create_tsnes_plots(
 	tsnes: pd.DataFrame, 
 	components: List[str] = ['tsne1', 'tsne2']
 ) -> None:
+	'''
+	Plot 2 tsne components
 	
-	def get_tsne_plot_title(df: pd.DataFrame, tsne_type: str = ''):
+		params:
+			tsnes (pd.DataFrame)	: a dataframe containing tsnes to plot
+			components (list)		: which 2 components in tsnes to plot
+	'''
+	def get_tsne_plot_title(df: pd.DataFrame, tsne_type: str = '') -> str:
+		'''
+		Get a title for the tsne plot
+		
+			params:
+				df (pd.DataFrame)	: a dataframe containing information about tsnes
+				tsne_type (str)		: what kind of tokens are being plotted on the tsnes (first n or target groups)
+			
+			returns:
+				title (str)			: a title for the tsnes plot
+		'''
 		metric = f't-SNEs of {tsne_type} + novel token(s) (filtered)'
 		title = get_plot_title(df, metric)
 		return title
@@ -779,8 +1012,29 @@ def create_odds_ratios_plots(
 	plot_diffs: bool = False, 
 	**kwargs: Dict
 ) -> None:
+	'''
+	Create plots of odds ratios or differences of odds ratios
+	
+		params:
+			summary (pd.DataFrame)	: a summary containing information about odds ratios
+			eval_cfg (DictConfig)	: a configuration for the experiment being plotted
+			plot_diffs (bool)		: whether to plot improvements in odds ratios or just odds ratios
+			**kwargs (Dict)			: passed to odds plot and then scatterplot
+	'''
 	
 	def setup_odds_ratios_plot(data: pd.DataFrame, ratio_name: str, position_num: str) -> Tuple:
+		'''
+		Initialize an odds ratios plot
+		
+			params:
+				data (pd.DataFrame)										: a dataframe containing information about the odds ratios to be plotted
+				ratio_name (str)										: the name of the column containing the labels of the odds ratios
+				position_num (str)										: the name of the column containing the labels of the odds ratios expressed in terms of argument positions
+			
+			returns:
+				ratio_names_positions (list)							: a list of the unique pairs of ratio_names and positions in the data
+				fig, ax (matplotlib.figure.Figure, matplotlib.axes.Axes): matplotlib plot objects
+		'''
 		# get number of linear positions (if there's only one position, we can't make plots by linear position)
 		ratio_names_positions = data[[ratio_name, position_num]].drop_duplicates().reset_index(drop=True)
 		ratio_names_positions = list(ratio_names_positions.to_records(index = False))
@@ -799,14 +1053,38 @@ def create_odds_ratios_plots(
 		return ratio_names_positions, fig, ax	
 	
 	def oddsplot(
-		x: pd.DataFrame, y: pd.DataFrame, 
-		val: str, sem: str,
-		ax: matplotlib.axes.Axes,  exp_type: str,
-		xlabel: str, ylabel: str,
-		diffs_plot: bool = False, pos_plot: bool = False,
+		x: pd.DataFrame, 
+		y: pd.DataFrame, 
+		val: str, 
+		sem: str,
+		ax: matplotlib.axes.Axes,  
+		exp_type: str,
+		xlabel: str,
+		ylabel: str,
+		diffs_plot: bool = False, 
+		pos_plot: bool = False,
 		plot_kwargs: Dict = {}, line_kwargs: Dict = {},
 		text_kwargs: Dict = {}, label_kwargs: Dict = dict(fontsize=8),
 	) -> None:
+		'''
+		Main function for plotting odds ratios. Essentially does some transformations based on settings and calls scatterplot
+		
+			params:
+				x (pd.DataFrame)			: the data containing odds ratios to plot on the x axis
+				y (pd.DataFrame)			: the data containing odds ratios to plot on the y axis
+				val (str)					: the name of the column containing the odds ratios to plot
+				sem (str)					: the name of the column containing standard errors for val
+				ax (matplotlib.axes.Axes)	: the object to create the plot on
+				exp_type (str)				: the type of experiment for which odds ratios are being plotted
+				xlabel (str)				: the x axis label
+				ylabel (stn)				: the y axis label
+				diffs_plot (bool)			: whether ax should be a plot of y = y - x
+				pos_plot (bool)				: whether ax is a plot of linear order odds ratios as opposed to thematic role odds ratios
+				plot_kwargs (dict)			: passed to scatterplot
+				line_kwargs (dict)			: passed to scatterplot
+				text_kwargs (dict)			: passed to scatterplot
+				label_kwargs (dict)			: passed to scatterplot (default reduces fontsize)
+		'''
 		if diffs_plot:
 			ylabel = f'Over{ylabel[0].lower() + ylabel[1:]}'
 		
@@ -840,10 +1118,24 @@ def create_odds_ratios_plots(
 		return ax
 	
 	def get_odds_ratios_plot_title(
-		summary: pd.DataFrame, eval_cfg: DictConfig, pair: Tuple[str], 
-		x_data: pd.DataFrame, y_data: pd.DataFrame, 
-		odds_ratio: str, arg_type: str
+		summary: pd.DataFrame, 
+		eval_cfg: DictConfig, 
+		pair: Tuple[str], 
+		x_data: pd.DataFrame, 
+		y_data: pd.DataFrame, 
+		odds_ratio: str
 	) -> str:
+		'''
+		Get a title containing accuracy information for the odds ratios plot
+		
+			params:
+				summary (pd.DataFrame)	: the data being plotted
+				eval_cfg (DictConfig)	: the configuration of the experiment/evaluation
+				pair (tuple)			: the pair for which odds ratios are being plotted
+				x_data (pd.DataFrame)	: the data being plotted on the x axis
+				y_data (pd.DataFrame)	: the data being plotted on the y axis
+				odds_ratio (str)		: the name of the column in summary/x_data/y_data containing the odds ratios being plotted
+		'''
 		title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs')) + '\n'
 		metric = 'odds ratios' if odds_ratio in ['odds_ratio' or 'odds_ratio_mean'] else 'odds ratios improvements'
 		
@@ -909,9 +1201,25 @@ def create_odds_ratios_plots(
 		return title
 	
 	def get_linear_order_plot_data(
-		x_data: pd.DataFrame, y_data: pd.DataFrame,
-		odds_ratio_col: str, ratio_names_positions: Tuple
+		x_data: pd.DataFrame, 
+		y_data: pd.DataFrame,
+		odds_ratio_col: str, 
+		ratio_names_positions: Tuple
 	) -> Tuple[pd.DataFrame,str,str]:
+		'''
+		Get data used for constructing plots of odds ratios by linear order instead of by thematic role
+		
+			params:
+				x_data (pd.DataFrame)			: the data to be plotted on the x axis
+				y_data (pd.DataFrame)			: the data to be plotted on the y axis
+				odds_ratio_col (str)			: which column contains the odds ratios to be plotted
+				ratios_names_positions (tuple0)	: pairs of unique odds ratios of thematic roles and how they compare to odds ratios of positions
+			
+			returns:
+				y_pos_data (pd.DataFrame)		: y_data formatted for the linear order plot (odds ratios are flipped if needed)
+				xlabel (str)					: an x axis label containing information about how linear order corresponds to expected token positions
+				ylabel (str)					: a y axis label containing information about how linear order corresponds to expected token positions
+		'''
 		y_pos_data = y_data.copy()
 		xlabel = []
 		ylabel = []
@@ -995,7 +1303,13 @@ def graph_results(
 	summary: Dict, 
 	eval_cfg: DictConfig
 ) -> None:
+	'''
+	Plot aconf and entropy (needs to be updated)
 	
+		params:
+			summary (dict)			: a dictionary containing results information
+			eval_cfg (DictConfig)	: the configuration of the experiment
+	'''
 	dataset = str(eval_cfg.data.name).split('.')[0]
 	
 	fig, axs = plt.subplots(2, 2, sharey='row', sharex='row', tight_layout=True)
