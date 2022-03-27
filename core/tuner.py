@@ -637,11 +637,7 @@ class Tuner:
 			
 			tokens 									= self.__format_tokens_for_tokenizer(self.cfg.tuning.to_mask)
 			if self.model_name == 'roberta':
-				tokens = tuner_utils.format_roberta_tokens_for_tokenizer(tokens)
-			else:
-				# we use ^ in display-facing notation to signify tokens without a preceding space
-				# these are not used in bert and distilbert, so we exclude them
-				tokens = [token for token in tokens if not token.startswith('^')]
+				tokens 								= tuner_utils.format_roberta_tokens_for_tokenizer(tokens)
 			
 			self.tokens_to_mask						= tokens
 			
@@ -676,7 +672,26 @@ class Tuner:
 				self.masked_argument_data 			= self.__get_formatted_datasets(mask_args=True, masking_style='always')[self.tuning]
 				self.masked_dev_argument_data 		= self.__get_formatted_datasets(mask_args=True, masking_style='always', datasets=self.cfg.dev)
 				self.args_group 					= self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.model_name
-				
+			
+			if 'seed' in self.cfg:
+				self.random_seed 					= self.cfg.seed
+			elif (
+					'which_args' in self.cfg.tuning and 
+					self.args_group in [self.model_name, 'best_average', 'most_similar'] and 
+					f'{self.model_name}_seed' in self.cfg.tuning
+				):
+				self.random_seed 					= self.cfg.tuning[f'{self.model_name}_seed']
+			else:
+				self.random_seed 					= int(torch.randint(2**32-1, (1,)))
+			
+			self.word_embeddings = tuner_utils.reinitialize_token_weights(
+				word_embeddings=self.word_embeddings, 
+				tokens_to_initalize=self.tokens_to_mask,
+				tokenizer=self.tokenizer,
+				device=self.device, 
+				seed=self.random_seed,
+			)
+			
 		self.cfg 				= OmegaConf.load(os.path.join(cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
 		
 		# too little memory to use gpus locally, but we can specify to use them on the cluster with +use_gpu
@@ -775,6 +790,7 @@ class Tuner:
 					param.requires_grad = True
 					assert param.requires_grad, f'{name} is frozen!'
 		
+		"""
 		def initialize_added_token_weights() -> None:
 			'''Initializes the token weights to random values to provide variability in model tuning, saves random seed'''
 			with torch.no_grad():
@@ -803,7 +819,8 @@ class Tuner:
 				for i, token in enumerate(self.tokens_to_mask):
 					token_id = self.tokenizer.convert_tokens_to_ids(token)
 					self.word_embeddings[token_id] = new_embeds.weight[i]
-		
+		"""
+
 		def save_weights(weights: Dict) -> None:
 			'''Saves dictionary of weights to disk'''
 			with gzip.open('weights.pkl.gz', 'wb') as f:
@@ -1086,8 +1103,6 @@ class Tuner:
 					col[i] = re.sub(r'(.*?)([0-9]+)(.*?)', '\\2\\1\\3', col[i])
 			
 			return pd.Series(col)
-		
-		initialize_added_token_weights()
 		
 		# Store weights pre-training so we can inspect the initial status later
 		saved_weights = {'random_seed': self.random_seed, 0: self.added_token_weights}
@@ -1808,6 +1823,7 @@ class Tuner:
 			
 			sentence_type_logprobs = F.log_softmax(sentence_type_outputs.logits, dim=-1)
 			
+			breakpoint()
 			for arg_type in args:
 				for arg in args[arg_type]:
 					for sentence_num, (arg_indices, sentence, logprob) in enumerate(zip(data[sentence_type]['masked_token_indices'], data[sentence_type]['sentences'], sentence_type_logprobs)):
@@ -1818,7 +1834,7 @@ class Tuner:
 						positions = {p: positions.index(p) + 1 for p in positions}	
 						
 						for arg_position, arg_index in [(arg_position, arg_index) for arg_position, arg_index in arg_indices.items() if not arg_position == arg_type]:
-							log_odds = logprob[arg_index,arg_token_id]
+							log_odds 		= logprob[arg_index,arg_token_id]
 							exp_log_odds = logprob[arg_indices[arg_type],arg_token_id]
 							odds_ratio = exp_log_odds - log_odds
 							

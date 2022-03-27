@@ -488,8 +488,8 @@ def get_plot_title(
 	title += f', patience: {tuner_utils.multiplator(df.patience)}'
 	title += f' (\u0394={tuner_utils.multiplator(df.delta)})'
 	title += '\ntuning: ' + tuner_utils.multiplator(df.tuning).replace('_', ' ')
-	title += ', masking: ' if all(df.masked) else ' unmasked' if none(df.masked) else ''
-	title += (', ' + tuner_utils.multiplator(df.masked_tuning_style)) if any(df.masked == 'multiple') or any(df.masked) else ''
+	title += ', masking: ' if all(df.masked) else ' unmasked' if none(df.masked) else ', '
+	title += tuner_utils.multiplator(df.masked_tuning_style) if any(df.masked == 'multiple') or any(df.masked) else ''
 	title += ', ' + ('no punctuation' if all(df.strip_punct) else "with punctuation" if none(df.strip_punct) else 'multiple punctuation')
 	title += f', {tuner_utils.multiplator(df.unfreezing)} unfreezing' if df.unfreezing.unique().size > 1 else ''
 	if df.unfreezing.unique().size == 1 and df.unfreezing.unique()[0] == 'gradual':
@@ -712,7 +712,8 @@ def create_metrics_plots(
 					plot_data = df[df.metric == metric]
 				
 				yticks = determine_int_axticks(pd.concat([plot_data.value.astype(int), pd.Series(0)]))
-				plt.yticks(yticks)
+				# ensure that we always get a 0 for remaining patience at the bottom
+				plt.yticks(list(set([0] + yticks)))
 			else:
 				plot_data = df[df.metric == metric][plot_cols].copy().reset_index(drop=True)
 			

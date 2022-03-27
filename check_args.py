@@ -6,8 +6,6 @@ import os
 import re
 import hydra
 import torch
-import random
-import joblib
 import logging
 
 import numpy as np
@@ -16,14 +14,15 @@ import seaborn as sns
 import torch.nn as nn
 
 from tqdm import tqdm
-from math import comb, perm, ceil
-from typing import Dict, List, Tuple
-from joblib import Parallel, delayed
+from typing import *
 from omegaconf import DictConfig, OmegaConf
+
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+
 from scipy.stats import pearsonr
 from transformers import logging as lg
+from transformers import AutoTokenizer, AutoModelForMaskedLM
 lg.set_verbosity_error()
 
 from core import tuner_utils
@@ -32,333 +31,243 @@ log = logging.getLogger(__name__)
 
 @hydra.main(config_path='conf', config_name='check_args')
 def check_args(cfg: DictConfig) -> None:
+	'''
+	Generates candidate nouns that models consider roughly equally likely in different argument positions. Saves results to disk
+	
+		params:
+			cfg (dictconfig)	: a configuration specifying sentence data to use, as well as target frequency for candidate nouns
+	'''
 	if not cfg.tuning.exp_type == 'newverb': 
 		raise ValueError('Can only get args for new verb experiments!')
 	
 	print(OmegaConf.to_yaml(cfg, resolve=True))
 	
 	dataset 				= load_dataset(cfg.dataset_loc)
-	model_cfgs_path 		= os.path.join(hydra.utils.get_original_cwd(), '..', 'conf', 'model')
-	model_cfgs 				= [os.path.join(model_cfgs_path, f) for f in os.listdir(model_cfgs_path) if not f == 'multi.yaml']
+	model_cfgs_path 		= os.path.join(hydra.utils.get_original_cwd(), 'conf', 'model')
+	model_cfgs 				= [os.path.join(model_cfgs_path, f) for f in os.listdir(model_cfgs_path)]
 	
 	candidate_freq_words 	= get_candidate_words(dataset, model_cfgs, cfg.target_freq, cfg.range, cfg.min_length)
 	
-	if not cfg.target_freq == 'any':
-		log.info(f'Found {len(candidate_freq_words)} words matching criteria: target_freq={cfg.target_freq}, range={cfg.range}')
-	else:
-		log.info(f'Found {len(candidate_freq_words)} words')
-	
-	predictions = get_word_predictions(cfg, model_cfgs, candidate_freq_words)
+	predictions 			= get_word_predictions(cfg, model_cfgs, candidate_freq_words)
 	assert not predictions.empty, 'No predictions were generated!'
 	
-	predictions_summary = summarize_predictions(predictions)	
+	predictions_summary 	= summarize_predictions(predictions)	
 	
-	# Report the tokens treated most identically across models
-	for ratio_name in predictions_summary.ratio_name.unique():
-		averages = predictions_summary[(predictions_summary.model_name == 'average') & (predictions_summary.ratio_name == ratio_name)].reset_index(drop=True)[['model_name', 'token', 'ratio_name', 'SumSq']].sort_values('token')
-		for model_name in [model_name for model_name in predictions_summary.model_name.unique() if not model_name == 'average']:
-			model_predictions = predictions_summary[(predictions_summary.model_name == model_name) & (predictions_summary.ratio_name == ratio_name)].sort_values('token').reset_index(drop=True)
-			
-			if all(model_predictions.token.values == averages.token.values):
-				averages[f'{model_name}_diff'] = averages.SumSq - model_predictions.SumSq
-				if not 'SumSq_diff_average' in averages.columns:
-					averages['SumSq_diff_average'] = [d**2 for d in averages[f'{model_name}_diff']]
-				else:
-					averages['SumSq_diff_average'] = [ss + d**2 for ss, d in zip(averages.SumSq_diff_average, averages[f'{model_name}_diff'])]
-			else:
-				raise Exception(f"Order of tokens doesn't match in {model_name} and averages!")
-		
-		most_similar = averages.sort_values('SumSq_diff_average').reset_index(drop=True)[['model_name', 'token', 'ratio_name', 'SumSq', 'SumSq_diff_average']]
-		
-		# best_average = predictions_summary[(predictions_summary.model_name == 'average') & (predictions_summary.ratio_name == ratio_name)].sort_values('SumSq').reset_index(drop=True)	
-		most_similar_tokens = most_similar.iloc[:cfg.tuning.num_words*len(cfg.tuning.best_average_args),].token.unique()
-		
-		most_similar_sumsq_diffs = most_similar[most_similar.token.isin(most_similar_tokens)][['token', 'SumSq_diff_average']].drop_duplicates().set_index('token')
-		most_similar_sumsq_diffs.SumSq_diff_average = ["{:.2f}".format(round(ss,2)) for ss in most_similar_sumsq_diffs.SumSq_diff_average]
-		most_similar_sumsq_diffs = most_similar_sumsq_diffs.T
-		most_similar_sumsq_diffs.columns.name = None
-		
-		most_similar = predictions_summary[predictions_summary.token.isin(most_similar_tokens)][['model_name', 'token', 'ratio_name', 'freq', 'SumSq']]
-		most_similar.token = pd.Categorical(most_similar.token, most_similar_tokens)
-		most_similar = most_similar.sort_values(['model_name', 'token'])
-		most_similar.SumSq = ["{:.2f}".format(round(ss,2)) for ss in most_similar.SumSq]
-		
-		most_similar_freqs = most_similar[['token', 'freq']].drop_duplicates().set_index('token')
-		most_similar_freqs.freq = [str(freq) + '   ' for freq in most_similar_freqs.freq]
-		most_similar_freqs = most_similar_freqs.T
-		most_similar_freqs.columns.name = None
-		
-		most_similar = most_similar.pivot(index=['model_name', 'ratio_name'], columns='token', values='SumSq').reset_index()
-		most_similar.columns.name = None
-		
-		most_similar = pd.concat([most_similar, most_similar_freqs, most_similar_sumsq_diffs])
-		log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.best_average_args)} argument positions with most similar SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f' across models:\n\n{most_similar.to_string()}\n')
+	log_predictions_summary(predictions_summary, cfg)
 	
-	# Report the tokens with the best average SumSq
-	for ratio_name in predictions_summary.ratio_name.unique():
-		best_average = predictions_summary[(predictions_summary.model_name == 'average') & (predictions_summary.ratio_name == ratio_name)].sort_values('SumSq').reset_index(drop=True)	
-		best_average_tokens = best_average.iloc[:cfg.tuning.num_words*len(cfg.tuning.best_average_args),].token.unique()
-		
-		best_average = predictions_summary[predictions_summary.token.isin(best_average_tokens)][['model_name', 'token', 'ratio_name', 'freq', 'SumSq']]
-		best_average.token = pd.Categorical(best_average.token, best_average_tokens)
-		best_average = best_average.sort_values(['model_name', 'token'])
-		best_average.SumSq = ["{:.2f}".format(round(ss,2)) for ss in best_average.SumSq]
-		
-		best_average_freqs = best_average[['token', 'freq']].drop_duplicates().set_index('token')
-		best_average_freqs.freq = [str(freq) + '   ' for freq in best_average_freqs.freq]
-		best_average_freqs = best_average_freqs.T
-		best_average_freqs.columns.name = None
-		
-		best_average = best_average.pivot(index=['model_name', 'ratio_name'], columns='token', values='SumSq').reset_index()
-		best_average.columns.name = None
-		
-		best_average = pd.concat([best_average, best_average_freqs])
-		log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.best_average_args)} argument positions with lowest average SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f':\n\n{best_average.to_string()}\n')
-	
-	# Report the tokens with the lowest SumSq for each model
-	for model_name in [model_name for model_name in predictions_summary.model_name.unique() if not model_name == 'average']:
-		for ratio_name in predictions_summary.ratio_name.unique():
-			model_predictions = predictions_summary[(predictions_summary.model_name == model_name) & (predictions_summary.ratio_name == ratio_name)].sort_values('SumSq').reset_index(drop=True)
-			best_for_model = model_predictions.iloc[:cfg.tuning.num_words*len(cfg.tuning.best_average_args),][['model_name', 'token', 'ratio_name', 'freq', 'SumSq']]
-			best_for_model.token = pd.Categorical(best_for_model.token, best_for_model.token.unique())
-			best_for_model = best_for_model.sort_values('token')
-			best_for_model.SumSq = ['{:.2f}'.format(round(ss, 2)) for ss in best_for_model.SumSq]
-			
-			best_for_model_freqs = best_for_model[['token', 'freq']].drop_duplicates().set_index('token')
-			best_for_model_freqs.freq = [str(freq) + '   ' for freq in best_for_model_freqs.freq]
-			best_for_model_freqs = best_for_model_freqs.T
-			best_for_model_freqs.columns.name = None
-			
-			best_for_model = best_for_model.pivot(index=['model_name', 'ratio_name'], columns='token', values='SumSq').reset_index()
-			best_for_model.columns.name = None
-			
-			best_for_model = pd.concat([best_for_model, best_for_model_freqs])
-			log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.best_average_args)} argument positions with lowest SumSq for ' + re.sub(r"\[|\]", "", ratio_name) + f' for {model_name}:\n\n{best_for_model.to_string()}\n')
-	
-	predictions = predictions.assign(
-		run_id 					= os.path.split(os.getcwd())[-1],
-		strip_punct 			= cfg.strip_punct,
-		target_freq 			= cfg.target_freq,
-		range 					= cfg.range,
-		words_per_set 			= cfg.tuning.num_words,
-		reference_sentence_type = cfg.tuning.reference_sentence_type,
-		dataset 				= os.path.split(cfg.dataset_loc)[-1],
-	)
-	
-	predictions_summary = predictions_summary.assign(
-		run_id 					= os.path.split(os.getcwd())[-1],
-		strip_punct 			= cfg.strip_punct,
-		target_freq 			= cfg.target_freq,
-		range 					= cfg.range,
-		words_per_set 			= cfg.tuning.num_words,
-		reference_sentence_type = cfg.tuning.reference_sentence_type,
-		dataset 				= os.path.split(cfg.dataset_loc)[-1],
-	)
+	predictions 			= add_hyperparameters_to_df(predictions, cfg)
+	predictions_summary 	= add_hyperparameters_to_df(predictions_summary, cfg)
 	
 	# Do this to save the original tensors
 	predictions.to_pickle('predictions.pkl.gz')
 	
 	# Save a CSV to make things easier to work with later
 	predictions.odds_ratio = [float(o_r) for o_r in predictions.odds_ratio]
-	predictions.to_csv('predictions.csv.gz', index=False)
+	predictions.to_csv('predictions.csv.gz', index=False, na_rep='NaN')
 	
-	predictions_summary.to_csv('predictions_summary.csv.gz', index=False, na_rep = 'NaN')
+	predictions_summary.to_csv('predictions_summary.csv.gz', index=False, na_rep='NaN')
 	
 	# plot the correlations of the sumsq for each pair of model types and report R**2
-	plot_correlations(cfg, predictions_summary)
+	plot_correlations(predictions_summary, cfg)
 
 def load_dataset(dataset_loc: str) -> pd.DataFrame:
+	'''
+	Placeholder for use when implementing support for other datasets.
+	Loads a dataset containing noun frequency information.
+	Currently only SUBTLEX is supported.
+	
+		params:
+			dataset_loc (str): the path to the file containing the noun frequency dataset
+	'''
 	if 'subtlex' in dataset_loc.lower():
 		return load_subtlex(dataset_loc)
 	else:
 		raise NotImplementedError('Support for other noun frequency datasets is not currently implemented.')
 
 def load_subtlex(subtlex_loc: str) -> pd.DataFrame:
+	'''
+	Loads the SUBTLEX dataset containing noun frequency information.
+	Due to the way SUBTLEX is formatted by default, doing this can be quite slow, so also save a reformatted version for quicker loading
+	if it has not already been saved in this format.
+	
+		params:
+			subtlex_loc (str): 	the path to the SUBTLEX dataset in XLSX or CSV format.
+								note that the assumption is that XLSX format has not been reformatted for faster loading
+	'''
 	if subtlex_loc.endswith('.xlsx'):
-		try:
-			subtlex = pd.read_excel(subtlex_loc)
-		except FileNotFoundError:
-			log.error(f'SUBTLEX file not found @ {subtlex_loc}.')
-			return
-		
-		try:
-			subtlex = subtlex[~(subtlex.All_PoS_SUBTLEX.isnull() | subtlex.All_freqs_SUBTLEX.isnull())]
-		
-			# Reformat and save for faster use in the future
-			log.info('Reading in and reshaping SUBTLEX PoS frequency file')
-			log.info('A reshaped version will be saved for faster future use as "subtlex_freqs_formatted.csv"')
-		
-			subtlex.All_PoS_SUBTLEX		= subtlex.All_PoS_SUBTLEX.str.split('.')
-			subtlex.All_freqs_SUBTLEX 	= subtlex.All_freqs_SUBTLEX.astype(str).str.split('.')
+		subtlex = pd.read_excel(subtlex_loc)
+		subtlex = subtlex[~(subtlex.All_PoS_SUBTLEX.isnull() | subtlex.All_freqs_SUBTLEX.isnull())]
 	
-			subtlex = subtlex.explode(['All_PoS_SUBTLEX', 'All_freqs_SUBTLEX'])
-	
-			subtlex = subtlex.pivot_table(
-				index 		= [c for c in subtlex.columns if not c in ['All_PoS_SUBTLEX', 'All_freqs_SUBTLEX']],
-				columns 	= 'All_PoS_SUBTLEX',
-				values 		= 'All_freqs_SUBTLEX',
-				fill_value 	= 0
-			)
-	
-			subtlex = pd.DataFrame(subtlex.to_records())
-			
-			subtlex_dir = os.path.split(subtlex_loc)[0]
-			log.info(f'Saving file at {os.path.join(subtlex_dir, "subtlex_freqs_formatted.csv")}')
-			subtlex.to_csv(os.path.join(subtlex_dir, 'subtlex_freqs_formatted.csv'), index=False)
-		except KeyError:
-			log.error('SUBTLEX xlsx file not in expected format.')
-			return		
+		# Reformat and save for faster use in the future
+		log.info('Reading in and reshaping SUBTLEX PoS frequency file')
+		log.info('A reshaped version will be saved for faster future use as "subtlex_freqs_formatted.csv"')
+		
+		subtlex.All_PoS_SUBTLEX		= subtlex.All_PoS_SUBTLEX.str.split('.')
+		subtlex.All_freqs_SUBTLEX 	= subtlex.All_freqs_SUBTLEX.astype(str).str.split('.')
+		
+		subtlex = subtlex.explode(['All_PoS_SUBTLEX', 'All_freqs_SUBTLEX'])
+		
+		subtlex = subtlex.pivot_table(
+			index 		= [c for c in subtlex.columns if not c in ['All_PoS_SUBTLEX', 'All_freqs_SUBTLEX']],
+			columns 	= 'All_PoS_SUBTLEX',
+			values 		= 'All_freqs_SUBTLEX',
+			fill_value 	= 0
+		)
+		
+		subtlex 	= pd.DataFrame(subtlex.to_records())
+		subtlex_dir = os.path.split(subtlex_loc)[0]
+		
+		log.info(f'Saving file at {os.path.join(subtlex_dir, "subtlex_freqs_formatted.csv")}')
+		subtlex.to_csv(os.path.join(subtlex_dir, 'subtlex_freqs_formatted.csv'), index=False, na_rep='NaN')	
 	else:
-		try:
-			subtlex = pd.read_csv(subtlex_loc)
-		except (ValueError, FileNotFoundError):
-			log.error(f'SUBTLEX file not found @ {subtlex_loc}.')
-			return
+		subtlex = pd.read_csv(subtlex_loc)
 			
 	return subtlex
 
-def get_candidate_words(dataset: pd.DataFrame, model_cfgs: List[str], target_freq: int, tolerance: int, min_length: int) -> Dict[str,str]:
-	# Filter to words that occur primarily as nouns
-	dataset = dataset[dataset.Dom_PoS_SUBTLEX == 'Noun']
+def get_candidate_words(
+	dataset: pd.DataFrame, 
+	model_cfgs: List[str], 
+	target_freq: int, 
+	tolerance: int, 
+	min_length: int
+) -> Dict[str,int]:
+	'''
+	Generates candidate words tokenized as single tokens in each model that match frequency requirements
 	
-	dataset = dataset[['Word', 'Noun']]
+		params:
+			dataset (pd.DataFrame)		: a dataset containing words and frequency information.
+										  words should be in a column named 'Word'
+										  frequency (count) should be in a column named 'Noun'
+			model_cfgs (list)			: a list of paths to cfg files in yaml format specifying model parameters
+			target_freq (int)			: the desired frequency of candidate words
+			tolerance (int)				: candidates words must be within +/- tolerance of the target freq to be included
+			min_length (int)			: the minimum acceptable length of a target word
+		
+		returns:
+			candidate_words_freqs (dict): a dictionary mapping words meeting requirements to their frequency of occurence in the dataset
+	'''
+	dataset 		= dataset[dataset.Dom_PoS_SUBTLEX == 'Noun']
+	dataset 		= dataset[['Word', 'Noun']]
 	
 	if not target_freq == 'any':
-		dataset = dataset.loc[dataset['Noun'].isin(list(range(target_freq - tolerance, target_freq + tolerance)))].copy().reset_index(drop = True)
+		dataset 	= dataset.loc[dataset.Noun.isin(list(range(target_freq - tolerance, target_freq + tolerance)))].copy().reset_index(drop=True)
 	
-	dataset = dataset[~dataset['Word'].str.match('^[aeiou]')] # to avoid a/an issues
-	dataset = dataset[dataset['Word'].str.contains('[aeiouy]')] # must contain at least one vowel (to avoid acronyms/abbreviations)
-	dataset = dataset[dataset.Word.str.len() >= min_length] # to avoid some other junk
-	candidate_words = dataset['Word'].tolist()
+	# filter out potentially problematic words
+	dataset 		= dataset[~dataset.Word.str.match('^[aeiou]')] # to avoid a/an issues
+	dataset 		= dataset[dataset.Word.str.contains('[aeiouy]')] # must contain at least one vowel (to avoid acronyms/abbreviations)
+	dataset 		= dataset[dataset.Word.str.len() >= min_length] # to avoid some other abbrevations
+	candidate_words = dataset.Word.tolist()
 	
 	# To do the experiments, we need each argument word to be tokenized as a single word
 	# so we check that here and filter out those that are tokenized as multiple subwords
 	log.info('Finding candidate words in tokenizers')
 	
 	for model_cfg_path in model_cfgs:
-		model_cfg = OmegaConf.load(model_cfg_path)
-		exec(f'from transformers import {model_cfg.tokenizer}')
-		
-		tokenizer = eval(model_cfg.tokenizer).from_pretrained(model_cfg.string_id, **model_cfg.tokenizer_kwargs)
+		model_cfg 			= OmegaConf.load(model_cfg_path)
+		tokenizer 			= AutoTokenizer.from_pretrained(model_cfg.string_id, **model_cfg.tokenizer_kwargs)
 		
 		if model_cfg.friendly_name == 'roberta':
-			candidate_words = [word for word in candidate_words if len(tokenizer.tokenize(' ' + word)) == 1]
+			# we want to make sure the preceding space versions are tokenized as one token as well for roberta
+			candidate_words = [word for word in candidate_words if tuner_utils.verify_tokens_exist(tokenizer, chr(288) + word)]
 		
-		candidate_words = [word for word in candidate_words if len(tokenizer.tokenize(word)) == 1]
+		candidate_words 	= [word for word in candidate_words if tuner_utils.verify_tokens_exist(tokenizer, word)]
 	
-	candidate_words = {word : dataset.loc[dataset['Word'] == word,'Noun'].to_numpy()[0] for word in candidate_words}
+	candidate_words_freqs 	= {word : dataset.loc[dataset.Word == word].Noun.to_numpy()[0] for word in candidate_words}
+	
+	log.info(f'Found {len(candidate_words_freqs)} words matching criteria: target_freq={target_freq}, range={tolerance if target_freq != "any" else np.nan}')
 			
-	return candidate_words
+	return candidate_words_freqs
 
-def get_word_predictions(cfg: DictConfig, model_cfgs: List[str], candidate_freq_words: Dict[str,int]) -> pd.DataFrame:
-	predictions = {}
+def get_word_predictions(
+	cfg: DictConfig, 
+	model_cfgs: List[str], 
+	candidate_freq_words: Dict[str,int]
+) -> pd.DataFrame:
+	predictions = []
+	# there is a lot similar here to how tuner is set up. maybe we could integrate some of this?
 	for model_cfg_path in model_cfgs:
 		
 		# do this so we can adjust the cfg tokens based on the model without messing up the 
 		# actual config that was passed
-		model_cfg = OmegaConf.load(model_cfg_path)
-		exec(f'from transformers import {model_cfg.tokenizer}, {model_cfg.base_class}')
+		model_cfg 	= OmegaConf.load(model_cfg_path)
 		
-		base_class = model_cfg.base_class.lower().replace('formaskedlm', '')
+		log.info(f'Initializing {model_cfg.friendly_name} model and tokenizer')
+		to_add 		= tuner_utils.format_data_for_tokenizer(data=cfg.tuning.to_mask, mask_token='', string_id=model_cfg.string_id, remove_punct=cfg.strip_punct)
+		if model_cfg.friendly_name == 'roberta':
+			to_add 	= tuner_utils.format_roberta_tokens_for_tokenizer(to_add)
 		
-		log.info(f'Initializing {base_class} model and tokenizer')
-		tokenizer = create_tokenizer_with_added_tokens(model_cfg.string_id, eval(model_cfg.tokenizer), cfg.tuning.to_mask, **model_cfg.tokenizer_kwargs)
-		model = eval(model_cfg.base_class).from_pretrained(model_cfg.string_id, **model_cfg.model_kwargs)
+		tokenizer 	= tuner_utils.create_tokenizer_with_added_tokens(model_cfg.string_id, to_add, **model_cfg.tokenizer_kwargs)
+		
+		model 		= AutoModelForMaskedLM.from_pretrained(model_cfg.string_id, **model_cfg.model_kwargs)
 		model.resize_token_embeddings(len(tokenizer))
 		
-		tokens_to_mask = [t.lower() for t in cfg.tuning.to_mask] if 'uncased' in model_cfg.string_id else list(cfg.tuning.to_mask)
-		tokens_to_mask = (tokens_to_mask + [chr(288) + t for t in tokens_to_mask]) if model_cfg.friendly_name == 'roberta' else tokens_to_mask	
+		getattr(model, model.config.model_type).embeddings.word_embeddings.weight, seed = \
+			tuner_utils.reinitialize_token_weights(
+				word_embeddings=getattr(model, model.config.model_type).embeddings.word_embeddings.weight,
+				tokens_to_initialize=to_add,
+				tokenizer=tokenizer,
+			)
 		
-		with torch.no_grad():
-			# This reinitializes the novel token weights to random values 
-			# to provide variability in model tuning
-			# which matches the experimental conditions
-			model_embedding_weights = getattr(model, base_class).embeddings.word_embeddings.weight
-			model_embedding_dim = getattr(model, base_class).embeddings.word_embeddings.embedding_dim
-			
-			num_new_tokens = len(tokens_to_mask)
-			new_embeds = nn.Embedding(num_new_tokens, model_embedding_dim)
-			
-			std, mean = torch.std_mean(model_embedding_weights)
-			log.info(f"Initializing new token(s) with random data drawn from N({mean:.2f}, {std:.2f})")
-			
-			# we do this here manually to save the number for replicability
-			seed = int(torch.randint(2**32-1, (1,)))
-			set_seed(seed)
-			log.info(f"Seed set to {seed}")
-			
-			nn.init.normal_(new_embeds.weight, mean=mean, std=std)
-			
-			for i, tok in enumerate(tokens_to_mask):
-				tok_id = tokenizer.get_vocab()[tok]
-				getattr(model, base_class).embeddings.word_embeddings.weight[tok_id] = new_embeds.weight[i]
+		data, masked_data = load_tuning_verb_data(cfg, model_cfg, tokenizer.mask_token)
 		
-		data = load_tuning_verb_data(cfg, model_cfg, tokenizer.mask_token)
-		masked_data = data['masked_data']
-		data = data['data']
+		assert tuner_utils.verify_tokenization_of_sentences(tokenizer, masked_data, to_add, **model_cfg.tokenizer_kwargs), \
+			f'Tokenization of sentences for {model_cfg.friendly_name} was affected by adding {to_add}!'
 		
-		if not verify_tokenization_of_sentences(tokenizer, masked_data, tokens_to_mask, **model_cfg.tokenizer_kwargs):
-			log.warning(f'Tokenization of sentences for {model_cfg.friendly_name} was affected by adding {tokens_to_mask}! Skipping this model.')
-			continue
-		
-		inputs = [tokenizer(m, return_tensors='pt', padding=True) for m in masked_data]
+		inputs 					= tokenizer(masked_data, return_tensors='pt', padding=True)
 		
 		# We need to get the order/positions of the arguments for each sentence 
 		# in the masked data so that we know which argument we are pulling 
 		# out predictions for, because when we replace the argument placeholders 
 		# with mask tokens, we lose information about which argument corresponds to which mask token
-		args_in_order = [[word for word in strip_punct(sentence).split(' ') if word in cfg.tuning.best_average_args] for sentence in data]
-		masked_token_indices = [[index for index, token_id in enumerate(i['input_ids'][0]) if token_id == tokenizer.convert_tokens_to_ids(tokenizer.mask_token)] for i in inputs]
-		sentence_arg_indices = [dict(zip(arg, index)) for arg, index in tuple(zip(args_in_order, masked_token_indices))]
+		args_in_order 			= [[word for word in tuner_utils.strip_punct(sentence).split(' ') if word in cfg.tuning.best_average] for sentence in data]
+		masked_token_indices 	= [[index for index, token_id in enumerate(i) if token_id == tokenizer.convert_tokens_to_ids(tokenizer.mask_token)] for i in inputs['input_ids']]
+		sentence_arg_indices 	= [dict(zip(arg, index)) for arg, index in tuple(zip(args_in_order, masked_token_indices))]
 		
 		# Run the model on the masked inputs to get the predictions
 		model.eval()
 		with torch.no_grad():
-			outputs = [model(**i) for i in inputs]
+			outputs = model(**inputs)
 		
 		# Convert predicted logits to log probabilities
-		sentence_logprobs = [nn.functional.log_softmax(output.logits, dim=-1) for output in outputs]
+		logprobs = nn.functional.log_softmax(outputs.logits, dim=-1)
 		
 		# Organize the predictions by model name, argument type, argument position, and argument
-		log.info(f'Getting predictions for {len(candidate_freq_words)} word(s) * {len(cfg.tuning.best_average_args)} argument position(s) for {model_cfg.friendly_name}')
-		predictions[model_cfg.friendly_name] = []
+		# we can probably make this go with the collect results function currently in tuner.py
+		# we'll have to load the verb data differently, though. we'd also have to deal with the eval groups (new words) not existing in the arg indices
+		log.info(f'Getting predictions for {len(candidate_freq_words)} word(s) * {len(cfg.tuning.best_average)} argument position(s) for {model_cfg.friendly_name}')
 		for arg in tqdm(candidate_freq_words):
-			for arg_type in cfg.tuning.best_average_args:
-				predictions_token_arg_sentence = []
-				for sentence_num, (arg_indices, sentence, logprob) in enumerate(zip(sentence_arg_indices, data, sentence_logprobs)):
+			for arg_type in cfg.tuning.best_average:
+				for sentence_num, (arg_indices, sentence, logprob) in enumerate(zip(sentence_arg_indices, data, logprobs)):
+					
+					arg_token_id 		= tokenizer.convert_tokens_to_ids(arg)
+					
 					if model_cfg.friendly_name == 'roberta' and not sentence.startswith(arg_type):
-						arg_token_id = tokenizer.convert_tokens_to_ids(chr(288) + arg)
-					else:
-						arg_token_id = tokenizer.convert_tokens_to_ids(arg)
+						arg_token_id 	= tokenizer.convert_tokens_to_ids(chr(288) + arg)
 					
 					for arg_position, arg_index in [(arg_position, arg_index) for arg_position, arg_index in arg_indices.items() if not arg_position == arg_type]:
-						log_odds = logprob[0,arg_index,arg_token_id]
-						exp_log_odds = logprob[0,arg_indices[arg_type],arg_token_id]
-						odds_ratio = exp_log_odds - log_odds
+						log_odds 		= logprob[arg_index,arg_token_id]
+						exp_log_odds 	= logprob[arg_indices[arg_type],arg_token_id]
+						odds_ratio 		= exp_log_odds - log_odds
 						
-						prediction_row = {
-							'odds_ratio' : odds_ratio,
-							'ratio_name' : arg_type + '/' + arg_position,
-							'token_id' : arg_token_id,
-							'token' : arg,
-							'sentence' : sentence,
-							'sentence_category' : 'tuning' if strip_punct(sentence.lower()) in [strip_punct(s.lower()) for s in cfg.tuning.data] else 'check_args',
-							'sentence_num' : sentence_num,
-							'model_name' : model_cfg.friendly_name,
-							'random_seed' : seed,
-							'freq' : candidate_freq_words[arg],
-						}
-						
-						predictions_token_arg_sentence.append(prediction_row)
-			
-				predictions[model_cfg.friendly_name].append(predictions_token_arg_sentence)
+						predictions.append({
+							'odds_ratio' 		: odds_ratio,
+							'ratio_name' 		: f'{arg_type}/{arg_position}',
+							'token_id' 			: arg_token_id,
+							'token' 			: arg,
+							'sentence' 			: sentence,
+							'sentence_category' : 'tuning' if tuner_utils.strip_punct(sentence.lower()) in [tuner_utils.strip_punct(s.lower()) for s in cfg.tuning.data] else 'check_args',
+							'sentence_num' 		: sentence_num,
+							'model_name' 		: model_cfg.friendly_name,
+							'random_seed' 		: seed,
+							'freq' 				: candidate_freq_words[arg],
+						})
 	
-	predictions = pd.DataFrame([d for model_name in predictions for sentence_token_arg_prediction in predictions[model_name] for d in sentence_token_arg_prediction])
+	predictions = pd.DataFrame(predictions)
 	
-	# because these are log odds ratios, x/y = -y/x. Thus, we only report on the unique combinations for printing.
+	# because these are log odds ratios, log(x/y) = -log(y/x). Thus, we only report the unique combinations for printing.
 	unique_ratio_names = []
-	for arg in cfg.tuning.best_average_args:
-		other_args = [other_arg for other_arg in cfg.tuning.best_average_args if not other_arg == arg]
+	for arg in cfg.tuning.best_average:
+		other_args = [other_arg for other_arg in cfg.tuning.best_average if not other_arg == arg]
 		for other_arg in other_args:
 			if not (f'{other_arg}/{arg}' in unique_ratio_names or f'{arg}/{other_arg}' in unique_ratio_names):
 				unique_ratio_names.append(f'{arg}/{other_arg}')
@@ -395,9 +304,9 @@ def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 		.mean() \
 		.reset_index() \
 		.assign(
-			model_name = 'average',
+			model_name 	= 'average',
 			random_seed = np.nan,
-			token_id = np.nan,
+			token_id 	= np.nan,
 	)
 	
 	predictions_summary = pd.concat([predictions_summary, averages], ignore_index=True)
@@ -405,39 +314,171 @@ def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 	
 	return predictions_summary
 
-def load_tuning_verb_data(cfg: DictConfig, model_cfg: DictConfig, mask_tok: str):
+def load_tuning_verb_data(
+	cfg: DictConfig,
+	model_cfg: DictConfig, 
+	mask_token: str
+):
+	# we might be able to integrate this with how tuner loads these data, and then use that to integrate the arg predictions with collects results
+	# though this may not be possible directly because we don't have specified eval groups
 	sentences = [strip_punct(line).strip() if cfg.strip_punct else line.strip() for line in cfg.tuning.data] + \
 				[strip_punct(line).strip() if cfg.strip_punct else line.strip() for line in cfg.tuning.check_args_data]
 	sentences = [s.lower() for s in sentences] if 'uncased' in model_cfg.string_id else sentences
 	
 	masked_data = []
 	for s in sentences:
-		for arg in cfg.tuning.best_average_args:
-			s = s.replace(arg, mask_tok)
+		for arg in cfg.tuning.best_average:
+			s = s.replace(arg, mask_token)
 		
 		masked_data.append(s)
 	
-	return {'data' : sentences, 'masked_data' : masked_data }
+	return sentences, masked_data
 
-def plot_correlations(cfg: DictConfig, predictions_summary: pd.DataFrame) -> None:
+def log_predictions_summary(predictions_summary: pd.DataFrame, cfg: DictConfig) -> None:
+	'''
+	Report summaries of token with most similar, best average, and best per model sumsqs
+	
+		params:
+			predictions_summary (pd.DataFrame)	: a dataframe containing odds ratios predictions for tokens
+			cfg (dictconfig)					: a configuration with settings for the experiment
+	'''
+	df = predictions_summary.copy()
+	
+	model_dfs = [df for _, df in df[df.model_name != 'average'].groupby('model_name')]
+	
+	averages = df[df.model_name == 'average'].reset_index(drop=True)[['model_name', 'token', 'ratio_name', 'SumSq', 'freq']].sort_values('token')
+	
+	for model_df in model_dfs:
+		model_name 	= model_df.model_name.unique()[0]
+		model_df 	= model_df.copy()
+		model_df 	= model_df.sort_values('token').reset_index(drop=True)
+		assert all(model_df.token.values == averages.token.values), f"Order of tokens doesn't match in {model_name} and averages!"
+		
+		averages[f'{model_name}_diff'] = averages.SumSq - model_df.SumSq
+		if not 'SumSq_diff_average' in averages.columns:
+			averages['SumSq_diff_average'] 	= [d**2 for d in averages[f'{model_name}_diff']]
+		else:
+			averages.SumSq_diff_average 	= [ss + d**2 for ss, d in zip(averages.SumSq_diff_average, averages[f'{model_name}_diff'])]
+	
+	best_average 	= df[df.model_name == 'average'].sort_values('SumSq').reset_index(drop=True)
+	
+	dfs = [averages, best_average]
+	dfs.extend(model_dfs)
+	
+	metrics = ['SumSq_diff_average'] + ['SumSq' for df in dfs if not df.equals(averages)]
+	labels 	= ['most similar SumSq', 'lowest average SumSq'] + [f'lowest SumSq for {df.model_name.unique()[0]}' for df in model_dfs]
+	
+	for dataset, metric, label in zip(dfs, metrics, labels):
+		for ratio_name, df in dataset.groupby('ratio_name'):
+			if metric == 'SumSq_diff_average':
+				df.model_name 		= df.model_name.unique()[0] + ' \u0394SumSq'
+			
+			df						= df.sort_values(metric).reset_index(drop=True)
+			df_tokens				= df.iloc[:cfg.tuning.num_words*len(cfg.tuning.best_average),].token.unique()
+			
+			df 						= df[df.token.isin(df_tokens)]
+			df.SumSq 				= ['{:.2f}'.format(round(ss,2)) for ss in df.SumSq]
+			
+			if metric == 'SumSq_diff_average':
+				df[metric]			= ['{:.2f}'.format(round(ss,2)) for ss in df[metric]]
+			
+			df_freqs 				= df[['token', 'freq']].drop_duplicates().set_index('token')
+			df_freqs.freq 			= [str(freq) + '   ' for freq in df_freqs.freq]
+			df_freqs 				= df_freqs.T
+			df_freqs.columns.name 	= None
+			
+			# add info about individual models to the summary stats to see how they stack up
+			if metric == 'SumSq_diff_average' or label == 'lowest average SumSq':
+				to_concat 	= []
+				datasets 	= model_dfs.copy()
+				datasets 	= datasets + [best_average.copy()] if not label == 'lowest average SumSq' else datasets
+				
+				for dataset in datasets:
+					dataset 				= dataset.copy()
+					dataset 				= dataset
+					dataset 				= dataset[dataset.token.isin(df.token.to_numpy())]
+					dataset.token 			= pd.Categorical(dataset.token, df_tokens)
+					dataset 				= dataset.sort_values('token')
+					dataset.SumSq 			= ['{:.2f}'.format(round(ss,2)) for ss in dataset.SumSq]
+					dataset 				= dataset
+					dataset 				= dataset.pivot(index=['model_name', 'ratio_name'], columns='token', values='SumSq')
+					dataset 				= dataset.reset_index()
+					dataset.columns.name 	= None
+					to_concat.append(dataset)
+			else:
+				to_concat = []
+			
+			df 			 			= df.pivot(index=['model_name', 'ratio_name'], columns='token', values=metric).reset_index()
+			df.columns.name 		= None
+			
+			df 						= pd.concat([df] + to_concat + [df_freqs])
+			log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.best_average)} argument positions with {label} for ' + re.sub(r"\[|\]", "", ratio_name) + f':\n\n{df.to_string()}\n')
+
+def add_hyperparameters_to_df(df: pd.DataFrame, cfg: DictConfig) -> pd.DataFrame:
+	'''
+	Adds config information to a dataframe
+	
+		params:
+			df (pd.DataFrame)	: the dataframe to add config information to
+			cfg (DictConfig)	: a config containing information to add to the dataframe
+		
+		returns:
+			df (pd.DataFrame)	: the dataframe with information from config added
+	'''
+	df = df.assign(
+		run_id 					= os.path.split(os.getcwd())[-1],
+		strip_punct 			= cfg.strip_punct,
+		target_freq 			= cfg.target_freq,
+		range 					= cfg.range,
+		words_per_set 			= cfg.tuning.num_words,
+		reference_sentence_type = cfg.tuning.reference_sentence_type,
+		dataset 				= os.path.split(cfg.dataset_loc)[-1],
+	)
+	
+	return df
+
+def plot_correlations(predictions_summary: pd.DataFrame, cfg: DictConfig) -> None:
+	'''
+	Plots correlations of sumsq odds ratios for all models
+	
+		params:
+			cfg (dictconfig)					: a configuration containing experiment options
+			predictions_summary (pd.DataFrame)	: a dataframe containing a summary of argument predictions
+	'''
+	def corrfunc(x, y, **kwargs):
+		'''Calculates pearson r add adds it to the corr plot'''
+		if not all(x.values == y.values):
+			r, _ 	= pearsonr(x, y)
+			r2 		= r**2
+			ax 		= plt.gca()
+			label 	= 'R\u00b2 = {:.2f}'.format(r2) if not all(x.values == y.values) else ''
+			log.info('R\u00b2 of SumSq for {:21s}{:.2f}'.format(x.name + ', ' + y.name + ':', r2))
+			ax.annotate(label, xy=(.1,.9), xycoords=ax.transAxes, zorder=10, bbox=dict(facecolor='white', alpha=0.65, edgecolor='none', pad=2))			
+	
 	corr = predictions_summary[['model_name', 'ratio_name', 'token', 'SumSq']][predictions_summary.model_name != 'average'] \
 		.pivot(index=['ratio_name', 'token'], columns='model_name', values='SumSq') \
 		.reset_index()
 	
 	corr.columns.name = None
 	with PdfPages('correlations.pdf') as pdf:
-		for ratio_name in corr.ratio_name.unique():
-			ratio_name_corr = corr[corr.ratio_name == ratio_name].drop('ratio_name', axis=1)
-			g = sns.pairplot(ratio_name_corr, kind='reg', corner=True, plot_kws=dict(line_kws=dict(linewidth=1, color='r', zorder=5), scatter_kws=dict(s=8, linewidth=0)))
-			
-			def corrfunc(x, y, **kwargs):
-				if not all(x.values == y.values):
-					r, _ = pearsonr(x, y)
-					r2 = r**2
-					ax = plt.gca()
-					label = 'R\u00b2 = {:.2f}'.format(r2) if not all(x.values == y.values) else ''
-					log.info('R\u00b2 of SumSq for {:21s}{:.2f}'.format(x.name + ', ' + y.name + ':', r2))
-					ax.annotate(label, xy=(.1,.9), xycoords=ax.transAxes, zorder=10, bbox=dict(facecolor='white', alpha=0.65, edgecolor='none', pad=2))
+		for ratio_name, ratio_name_corr in corr.groupby('ratio_name'):
+			ratio_name_corr = ratio_name_corr.drop('ratio_name', axis=1)
+			g = sns.pairplot(
+				ratio_name_corr, 
+				kind='reg', 
+				corner=True, 
+				plot_kws=dict(
+					line_kws=dict(
+						linewidth=1, 
+						color='r',
+						zorder=5
+					), 
+					scatter_kws=dict(
+						s=8, 
+						linewidth=0
+					)
+				)
+			)
 			
 			g.map(corrfunc)
 			
@@ -445,9 +486,9 @@ def plot_correlations(cfg: DictConfig, predictions_summary: pd.DataFrame) -> Non
 			title += ('\nWithout' if all(predictions_summary.strip_punct.values) else '\nWith') + ' punctuation, '
 			title += f'target frequency: {predictions_summary.target_freq.unique()[0]}' + (f' (\u00B1{predictions_summary.range.unique()[0]})' if predictions_summary.target_freq.unique()[0] != 'any' else '')
 			title += f'\ndataset: {os.path.splitext(predictions_summary.dataset.unique()[0])[0]}'
-			title += f'\nsentence type: {predictions_summary.reference_sentence_type.unique()[0]}' if predictions_summary.reference_sentence_type.unique()[0] != 'none' else ''
 			title += f'\ndata from {cfg.tuning.name}'
 			g.fig.suptitle(title, y = 0.88, fontsize='medium', x = 0.675)
+			
 			pdf.savefig()
 			plt.close('all')
 			del g

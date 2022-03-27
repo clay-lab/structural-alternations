@@ -6,6 +6,7 @@ import re
 import json
 import gzip
 import torch
+import torch.nn as nn
 import random
 import inspect
 import logging
@@ -216,7 +217,7 @@ def apply_to_all_of_type(
 
 def filter_none(data: 'any') -> 'any':
 	'''
-	Remove None values from iterables (i.e., [[None, None]] -> {nothing}, [[None, 'blah']] -> [['blah']])
+	Remove None values recursively from iterables (i.e., [[None, None]] -> {nothing}, [[None, 'blah']] -> [['blah']])
 	
 		params:
 			data (any)	: any data from which to remove None values
@@ -938,7 +939,7 @@ def format_data_for_tokenizer(
 ) -> str:
 	'''
 	Format a string for use with a tokenizer
-	Recursor means that this applies recursively to any nested data structure, formatting all tokens for use with roberta,
+	Recursor means that this applies recursively to any nested data structure, formatting all tokens,
 	and outputs data in the same shape as the input
 	
 		params:
@@ -969,8 +970,13 @@ def verify_tokens_exist(
 		returns:
 			bool 							: True iff the tokens in tokens are tokenized as single non unknown tokens by tokenizer, False otherwise
 	'''
-	token_ids = [tokenizer.convert_tokens_to_ids(token) if isinstance(token,str) else token if isinstance(token,int) else None for token in listify(tokens)]
-	token_ids = [token_id for token_id in token_ids if token_id]
+	token_ids = filter_none([
+		tokenizer.convert_tokens_to_ids(token) 
+		if isinstance(token,str) 
+		else token if isinstance(token,int) 
+		else None for token in listify(tokens)
+	])
+	
 	return none(token_id == tokenizer.convert_tokens_to_ids(tokenizer.unk_token) for token_id in token_ids)
 
 def verify_tokenization_of_sentences(
@@ -1022,6 +1028,60 @@ def verify_tokenization_of_sentences(
 	
 	return identical
 
+def reinitialize_token_weights(
+	word_embeddings: nn.Embedding,
+	tokens_to_initialize: List[str],
+	tokenizer: 'PreTrainedTokenizer',
+	device: str = 'cpu',
+	seed: int = None,
+) -> int:
+	'''
+	Reinitializes token weights to random values to provide variability in model tuning
+	
+		params:
+			word_embeddings (nn.Embedding)	: the word embeddings to reinitialize
+			tokens_to_initialize (list)		: which tokens to reinitialize the embeddings of
+			tokenizer (pretrainedtokenizer)	: used to convert tokens to ids
+			device (str)					: which device to put the new embeddings on
+			seed (int)						: the random seed to use when generating new embedding weights
+		
+		returns:
+			word_embeddings (nn.Embedding)	: the embeddings with the weights of the specified tokens
+											  reinitialized to random values
+			seed (int)						: if no seed was provided, the random seed used to generate the tokens
+											  is returned as well
+	'''
+	assert verify_tokens_exist(tokenizer, tokens_to_initialize), 'Tokens do not exist in the vocabulary!'
+	
+	return_seed = False
+	
+	with torch.no_grad():
+		model_embedding_dim 	= word_embeddings.shape[-1]
+		num_new_tokens 			= len(tokens_to_initialize)
+		new_embeds 				= nn.Embedding(num_new_tokens, model_embedding_dim).to(device)
+		
+		std, mean 				= torch.std_mean(word_embeddings)
+		log.info(f'Initializing {num_new_tokens} new token(s) with random data drawn from N({mean:.2f}, {std:.2f})')
+		
+		# we do this here manually because otherwise running multiple models using multirun was giving identical results
+		# we set this right before initializing the weights for reproducability
+		if seed is None:
+			seed 		= int(torch.randint(2**32-1, (1,)))
+			return_seed = True
+		
+		set_seed(seed)
+		log.info(f'Seed set to {seed}')
+		
+		nn.init.normal_(new_embeds.weight, mean=mean, std=std)
+		
+		for i, token in enumerate(tokens_to_initialize):
+			token_id 					= tokenizer.convert_tokens_to_ids(token)
+			word_embeddings[token_id] 	= new_embeds.weight[i]
+	
+	if return_seed:
+		return word_embeddings, seed
+	else:
+		return word_embeddings
 
 # analysis
 def get_best_epoch(
