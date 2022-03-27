@@ -301,11 +301,11 @@ class Tuner:
 				results (list)				: list of dicts with results for each token for each sentence
 		'''
 		def get_output_metrics(outputs: 'MaskedLMOutput') -> Tuple:
-			logits = outputs.logits
-			probabilities = F.softmax(logits, dim=-1)
-			log_probabilities = F.log_softmax(logits, dim=-1)
-			surprisals = -(1/torch.log(torch.tensor(2.))) * F.log_softmax(logits, dim=-1)
-			predicted_ids = torch.argmax(log_probabilities, dim=-1)
+			logits 				= outputs.logits
+			probabilities 		= F.softmax(logits, dim=-1)
+			log_probabilities 	= F.log_softmax(logits, dim=-1)
+			surprisals 			= -(1/torch.log(torch.tensor(2.))) * F.log_softmax(logits, dim=-1)
+			predicted_ids 		= torch.argmax(log_probabilities, dim=-1)
 			
 			return logits, probabilities, log_probabilities, surprisals, predicted_ids
 		
@@ -1772,21 +1772,19 @@ class Tuner:
 		self, 
 		epoch: int, 
 		eval_cfg: DictConfig, 
-		data: Dict = None, 
-		return_type: str = 'df'
+		data: Dict = None
 	) -> Union[pd.DataFrame,Dict]:
 		'''
 		Returns a dataframe containing a summary of odds ratios data
 			
 			params:
-				epoch (int)									: which epoch to evaluate
-				eval_cfg (DictConfig)						: a dictconfig containing evaluation config options
-				data (dict)									: a dict consisting of sentences, inputs, and arg_indices
-															  to evaluate model performance on
-				return_type (str)							: if 'df', returns a dataframe. else returns a list of dicts
+				epoch (int)							: which epoch to evaluate
+				eval_cfg (DictConfig)				: a dictconfig containing evaluation config options
+				data (dict)							: a dict consisting of sentences, inputs, and arg_indices
+													  to evaluate model performance on
 			
 			returns:
-				odds_ratios_summary (pd.DataFrame or list)	: dataframe or list of dicts containing a summary of the odds ratios data
+				odds_ratios_summary (pd.DataFrame)	: dataframe containing a summary of the odds ratios data
 		'''
 		# use data if provided so we don't have to reload it, but load it automatically if not
 		data = self.load_eval_file(eval_cfg) if data is None else data
@@ -1810,9 +1808,9 @@ class Tuner:
 			args = self.args
 			if 'added_args' in eval_cfg.data:
 				if self.args_group in eval_cfg.data.added_args:
-					args = {arg_type: args[arg_type] + eval_cfg.data.added_args[which_args][arg_type] for arg_type in args}
+					args 	= {arg_type: args[arg_type] + eval_cfg.data.added_args[which_args][arg_type] for arg_type in args}
 		else:
-			args = {arg: [arg] for arg in self.tokens_to_mask}
+			args 			= {arg: [arg] for arg in self.tokens_to_mask}
 			tokens_to_roles = {self.__format_tokens_for_tokenizer(v): k for k, v in eval_cfg.data.eval_groups.items()}
 		
 		log.info(f'Evaluating model on testing data')
@@ -1821,10 +1819,11 @@ class Tuner:
 			with torch.no_grad():
 				sentence_type_outputs = self.model(**data[sentence_type]['inputs'])
 			
-			sentence_type_logprobs = F.log_softmax(sentence_type_outputs.logits, dim=-1)
-			
-			breakpoint()
-			for arg_type in args:
+			"""
+				sentence_type_logprobs = F.log_softmax(sentence_type_outputs.logits, dim=-1)
+				
+				breakpoint()
+				for arg_type in args:
 				for arg in args[arg_type]:
 					for sentence_num, (arg_indices, sentence, logprob) in enumerate(zip(data[sentence_type]['masked_token_indices'], data[sentence_type]['sentences'], sentence_type_logprobs)):
 						arg_token_id = self.tokenizer.convert_tokens_to_ids(arg)
@@ -1855,13 +1854,27 @@ class Tuner:
 								'sentence_num' 			: sentence_num,
 								**eval_parameters
 							})
+			"""
+			
+			odds_ratios_summary.extend(
+				self.__collect_results(sentence_type_outputs, data[sentence_type]['masked_token_indices'], args)
+			)
 		
-		if return_type.lower() in ['df', 'pd', 'dataframe', 'pd.dataframe']:
-			odds_ratios_summary = pd.DataFrame(odds_ratios_summary)
-			odds_ratios_summary = self.__add_hyperparameters_to_summary_df(odds_ratios_summary)
+		breakpoint()
+		for k in ['ratio_name', 'token']:
+			for i, _ in enumerate(odds_ratios_summary):
+				odds_ratios_summary[i].update({k: self.__format_strings_with_tokens_for_display(odds_ratios_summary[i][k])})
+		
+		for i, _ in enumerate(odds_ratios_summary):
+			if eval_cfg.data.exp_type == 'newverb':
+				odds_ratios_summary[i].update({'token_type': 'tuning' if odds_ratios_summary[i]['token'] in self.args.values() else 'eval_only'})
+			else:
+				odds_ratios_summary[i].update({'role_position': tokens_to_roles[odds_ratios_summary[i]['token']]})
+		
+		odds_ratios_summary = pd.DataFrame(odds_ratios_summary)
+		odds_ratios_summary = self.__add_hyperparameters_to_summary_df(odds_ratios_summary)
 		
 		return odds_ratios_summary
-	
 	
 	# wrapper/helper functions for plots/accuracies (implemented in tuner_utils and tuner_plots)
 	def create_metrics_plots(self, metrics: pd.DataFrame) -> None:
