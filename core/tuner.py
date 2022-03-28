@@ -842,12 +842,11 @@ class Tuner:
 			log.warning('Only the initial model state and the state with the lowest mean dev loss will be retained and available for evaluation.')
 			
 			mixout_prob = float(re.search(r'(([0-9]+)?\.[0-9]+$)', self.unfreezing)[0])
-			
 			assert 0 < mixout_prob < 1, f'Mixout probability must be between 0 and 1, but you specified {mixout_prob}!'
 			
 			# use deepcopy to avoid error with changing modules while looping through them
 			for name, module in deepcopy(tuple(self.model.named_modules())):
-				if isinstance(module,nn.Dropout):
+				if isinstance(module, nn.Dropout):
 					setattr(self.model, name, nn.Dropout(0))
 					assert getattr(self.model, name).p == 0, f'Dropout was not disabled for {name}!'
 				
@@ -857,7 +856,7 @@ class Tuner:
 					new_module 			= MixLinear(
 											module.in_features, 
 											module.out_features, 
-											bias, 
+											bias,
 											target_state_dict['weight'],
 											mixout_prob
 										)
