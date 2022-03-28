@@ -23,6 +23,7 @@ from copy import deepcopy
 from tqdm import trange, tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from typing import *
+from .mixout.module import MixLinear
 from omegaconf import DictConfig, OmegaConf, open_dict, ListConfig
 from transformers import logging as lg
 from transformers import AutoModelForMaskedLM
@@ -31,6 +32,7 @@ from sklearn.manifold import TSNE
 from . import tuner_plots
 from . import tuner_utils
 from .tuner_utils import none
+from .mixout.module import MixLinear
 
 lg.set_verbosity_error()
 
@@ -673,9 +675,12 @@ class Tuner:
 				setattr(self, k, v)
 			
 			if not isinstance(self.unfreezing,int):
-				unfreezing_epochs_per_layer 		= re.findall(r'[0-9]+', self.unfreezing)
+				unfreezing_epochs_per_layer 		= re.findall(r'[0-9]+', self.unfreezing) if 'gradual' in self.unfreezing else None
 				unfreezing_epochs_per_layer			= int(unfreezing_epochs_per_layer[0]) if unfreezing_epochs_per_layer else 1
-				self.unfreezing 					= re.sub(r'[0-9]*', '', self.unfreezing) if not self.unfreezing == 'none' else np.nan
+				self.unfreezing 					= self.unfreezing if 'mixout' in self.unfreezing else re.sub(r'[0-9]*', '', self.unfreezing) if not self.unfreezing == 'none' else np.nan
+				if 'mixout' in self.unfreezing:
+					assert re.search(r'\.[0-9]+$', self.unfreezing), 'You must provide a probability for mixout freezing!'
+				
 				self.unfreezing_epochs_per_layer 	= self.unfreezing_epochs_per_layer if self.unfreezing == 'gradual' else np.nan
 			
 			self.model_name 						= self.model.config.model_type
@@ -822,7 +827,39 @@ class Tuner:
 				else:
 					param.requires_grad = True
 					assert param.requires_grad, f'{name} is frozen!'
-
+		
+		def set_mixout_layers() -> None:
+			self.save_full_model = True
+			log.warning(f'You are using mixout unfreezing, which requires saving the full model state instead of just the weights of the new tokens.')
+			log.warning('Only the initial model state and the state with the lowest mean dev loss will be retained and available for evaluation.')
+			
+			mixout_prob = float(re.search(r'(([0-9]+)?\.[0-9]+$)', self.unfreezing)[0])
+			
+			assert 0 < mixout_prob < 1, f'Mixout probability must be between 0 and 1, but you specified {mixout_prob}!'
+			
+			# use deepcopy to avoid error with changing modules while looping through them
+			for name, module in deepcopy(tuple(self.model.named_modules())):
+				if isinstance(module,nn.Dropout):
+					setattr(self.model, name, nn.Dropout(0))
+					assert getattr(self.model, name).p == 0, f'Dropout was not disabled for {name}!'
+				
+				elif isinstance(module, nn.Linear):
+					target_state_dict 	= deepcopy(module.state_dict())
+					bias 				= True if module.bias is not None else False
+					new_module 			= MixLinear(
+											module.in_features, 
+											module.out_features, 
+											bias, 
+											target_state_dict['weight'],
+											mixout_prob
+										)
+					new_module.load_state_dict(target_state_dict)
+					setattr(self.model, name, new_module)
+					
+					assert isinstance(getattr(self.model, name), MixLinear), f'{name} was not correctly changed to use mixout!'
+			
+			log.info(f'Linear layers have been replaced with MixLinear, mixout_prob={mixout_prob}. Dropout layers have been disabled.')
+		
 		def save_weights(weights: Dict) -> None:
 			'''Saves dictionary of weights to disk'''
 			with gzip.open('weights.pkl.gz', 'wb') as f:
@@ -1131,6 +1168,8 @@ class Tuner:
 			'''Freezes or unfreezes the model in accordance with the config settings'''
 			if self.unfreezing == 'complete':
 				unfreeze_all_params()
+			elif 'mixout' in self.unfreezing:
+				set_mixout_layers()
 			elif not isinstance(self.unfreezing, int):
 				freeze_to_layer(self.model.config.num_hidden_layers)
 			elif isinstance(self.unfreezing, int):
@@ -1163,7 +1202,7 @@ class Tuner:
 		inputs, labels, dev_inputs, dev_labels, masked_inputs, masked_dev_inputs = get_tuner_inputs_labels()
 		
 		hyperparameters_str =  f'lr={lr}, min_epochs={min_epochs}, max_epochs={epochs}, '
-		hyperparameters_str += f'patience={patience}, \u0394={delta}, unfreezing={None if np.isnan(self.unfreezing) else self.unfreezing}'
+		hyperparameters_str += f'patience={patience}, \u0394={delta}, unfreezing={None if isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing) else self.unfreezing}'
 		hyperparameters_str += f'{self.unfreezing_epochs_per_layer}' if self.unfreezing == 'gradual' else ''
 		hyperparameters_str += f', mask_args={self.mask_args}' if not np.isnan(self.mask_args) else ''
 		
@@ -1216,12 +1255,12 @@ class Tuner:
 						best_losses, patience_counters
 					)
 					
-					if not self.unfreezing == 'complete':
+					if not (self.unfreezing == 'complete' or 'mixout' in self.unfreezing):
 						zero_grad_for_non_added_tokens()
 					
 					optimizer.step()
 					
-					if not self.unfreezing == 'complete':
+					if not (self.unfreezing == 'complete' or 'mixout' in self.unfreezing):
 						verify_word_embeddings()
 					
 					saved_weights[epoch+1] = self.added_token_weights
