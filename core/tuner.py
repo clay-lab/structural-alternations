@@ -1127,9 +1127,18 @@ class Tuner:
 					seed=self.random_seed,
 				)
 		
+		def set_model_freezing() -> None:
+			'''Freezes or unfreezes the model in accordance with the config settings'''
+			if self.unfreezing == 'complete':
+				unfreeze_all_params()
+			elif not isinstance(self.unfreezing, int):
+				freeze_to_layer(self.model.config.num_hidden_layers)
+			elif isinstance(self.unfreezing, int):
+				freeze_to_layer(self.unfreezing)
+		
 		initialize_added_token_weights()
 		
-		# Store weights pre-training so we can inspect the initial status later
+		# store weights pre-training so we can inspect the initial status later
 		saved_weights = {'random_seed': self.random_seed, 0: self.added_token_weights}
 		
 		if not self.tuning_data or (self.exp_type == 'newverb' and self.unfreezing is not None):
@@ -1138,7 +1147,7 @@ class Tuner:
 			if not self.tuning_data:	
 				return
 		
-		# Collect Hyperparameters
+		# collect hyperparameters
 		lr  		= self.lr
 		epochs 		= self.max_epochs
 		min_epochs 	= self.min_epochs
@@ -1146,15 +1155,10 @@ class Tuner:
 		delta 		= self.delta
 		optimizer 	= torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=0)
 		
-		# Store the old embeddings so we can verify that only the new ones get updated
+		# store the old embeddings so we can verify that only the new ones get updated
 		self.old_embeddings = self.word_embeddings.clone()
 		
-		if self.unfreezing == 'complete':
-			unfreeze_all_params()
-		elif not isinstance(self.unfreezing, int):
-			freeze_to_layer(self.model.config.num_hidden_layers)
-		elif isinstance(self.unfreezing, int):
-			freeze_to_layer(self.unfreezing)
+		set_model_freezing()
 		
 		inputs, labels, dev_inputs, dev_labels, masked_inputs, masked_dev_inputs = get_tuner_inputs_labels()
 		
