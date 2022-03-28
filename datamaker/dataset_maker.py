@@ -10,8 +10,6 @@ from typing import *
 from datasets import load_dataset
 from omegaconf import OmegaConf, DictConfig
 
-from transformers import AutoModelForMaskedLM, AutoTokenizer
-
 log = logging.getLogger(__name__)
 
 OmegaConf.register_new_resolver(
