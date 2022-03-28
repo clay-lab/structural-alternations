@@ -1,20 +1,13 @@
 name: salts
 
 dependencies:
-<<<<<<< HEAD
-  - python>=3.8,<=3.9.7
-  - hydra
-  - omegaconf
-  - seaborn
-  - pip
-=======
   - python >=3.8,<=3.9.7
   - antlr4-python3-runtime=4.8
   - pip
   - seaborn
   - hydra-core=1.1.1
->>>>>>> refactor
   - tokenizers
+  - datasets
   - numpy=1.21.4
   - matplotlib=3.5.0
   - transformers=4.12.5
