@@ -401,8 +401,8 @@ def set_unique_values(
 		else:
 			df[f'__tmp__{value_name}__'] = [default_value[0] for line in df.index]
 	elif isinstance(value_str_or_dict, dict):
-		if all(k in df[value_str_or_dict['colname']].unique() for k in value_str_or_dict if k != 'colname'):
-			df[f'__tmp__{value_name}__'] = [value_str_or_dict[k] for k in df[value_str_or_dict['colname']]]
+		if all(value in value_str_or_dict for value in  df[value_str_or_dict['colname']].unique()):
+			df[f'__tmp__{value_name}__'] = [value_str_or_dict[value] for value in df[value_str_or_dict['colname']]]
 		else:
 			raise ValueError(f'Not all keys in {value_str_or_dict} were found in the df columns!')
 
@@ -1007,7 +1007,7 @@ def create_tsnes_plots(
 			
 			pdf.savefig()
 			plt.close()
-			del fig	
+			del fig
 
 def create_odds_ratios_plots(
 	summary: pd.DataFrame,
@@ -1065,8 +1065,11 @@ def create_odds_ratios_plots(
 		ylabel: str,
 		diffs_plot: bool = False, 
 		pos_plot: bool = False,
-		plot_kwargs: Dict = {}, line_kwargs: Dict = {},
-		text_kwargs: Dict = {}, label_kwargs: Dict = dict(fontsize=8),
+		plot_kwargs: Dict = {}, 
+		line_kwargs: Dict = {},
+		text_kwargs: Dict = dict(horizontalalignment='center', verticalalignment='top'), 
+		label_kwargs: Dict = dict(fontsize=8),
+		scatterplot_kwargs: Dict = {},
 	) -> None:
 		'''
 		Main function for plotting odds ratios. Essentially does some transformations based on settings and calls scatterplot
@@ -1115,6 +1118,7 @@ def create_odds_ratios_plots(
 			legend_labels=labels,
 			plot_kwargs=plot_kwargs, line_kwargs=line_kwargs, 
 			text_kwargs=text_kwargs, label_kwargs=label_kwargs,
+			**scatterplot_kwargs,
 		)
 		
 		return ax

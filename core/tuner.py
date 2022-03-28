@@ -593,11 +593,19 @@ class Tuner:
 		tsnes.to_csv(f'{file_prefix}-tsnes.csv.gz', index=False, na_rep='NaN')
 		
 		if eval_cfg.data.exp_type == 'newverb':
+			odds_ratios_plot_kwargs = dict(
+				scatterplot_kwargs=dict(
+					text='token', 
+					text_color={'colname': 'token_type', 'eval only': 'blue', 'tuning': 'black'}
+				)
+			)
 			log.info('Creating odds ratios differences plots')
-			self.create_odds_ratios_plots(summary, eval_cfg, plot_diffs=True)
+			self.create_odds_ratios_plots(summary, eval_cfg, plot_diffs=True, **odds_ratios_plot_kwargs)
+		else:
+			odds_ratios_plot_kwargs = {}
 		
 		log.info('Creating odds ratios plots')
-		self.create_odds_ratios_plots(summary, eval_cfg)
+		self.create_odds_ratios_plots(summary, eval_cfg, **odds_ratios_plot_kwargs)
 		
 		if eval_cfg.data.exp_type == 'newverb':
 			acc = self.get_odds_ratios_accuracies(summary, eval_cfg, get_diffs_accuracies=True)
@@ -678,7 +686,7 @@ class Tuner:
 				unfreezing_epochs_per_layer 		= re.findall(r'[0-9]+', self.unfreezing) if 'gradual' in self.unfreezing else None
 				unfreezing_epochs_per_layer			= int(unfreezing_epochs_per_layer[0]) if unfreezing_epochs_per_layer else 1
 				self.unfreezing 					= self.unfreezing if 'mixout' in self.unfreezing else re.sub(r'[0-9]*', '', self.unfreezing) if not self.unfreezing == 'none' else np.nan
-				if 'mixout' in self.unfreezing:
+				if 'mixout' in str(self.unfreezing):
 					assert re.search(r'\.[0-9]+$', self.unfreezing), 'You must provide a probability for mixout freezing!'
 				
 				self.unfreezing_epochs_per_layer 	= self.unfreezing_epochs_per_layer if self.unfreezing == 'gradual' else np.nan
@@ -1168,7 +1176,7 @@ class Tuner:
 			'''Freezes or unfreezes the model in accordance with the config settings'''
 			if self.unfreezing == 'complete':
 				unfreeze_all_params()
-			elif 'mixout' in self.unfreezing:
+			elif 'mixout' in str(self.unfreezing):
 				set_mixout_layers()
 			elif not isinstance(self.unfreezing, int):
 				freeze_to_layer(self.model.config.num_hidden_layers)
@@ -1255,12 +1263,12 @@ class Tuner:
 						best_losses, patience_counters
 					)
 					
-					if not (self.unfreezing == 'complete' or 'mixout' in self.unfreezing):
+					if not (self.unfreezing == 'complete' or 'mixout' in str(self.unfreezing)):
 						zero_grad_for_non_added_tokens()
 					
 					optimizer.step()
 					
-					if not (self.unfreezing == 'complete' or 'mixout' in self.unfreezing):
+					if not (self.unfreezing == 'complete' or 'mixout' in str(self.unfreezing)):
 						verify_word_embeddings()
 					
 					saved_weights[epoch+1] = self.added_token_weights
@@ -1321,7 +1329,7 @@ class Tuner:
 			except KeyboardInterrupt:
 				log.warning(f'Training halted manually at epoch {epoch+1}')
 				pass
-			
+		
 		add_tb_labels(epoch, writer, tb_metrics_dict)
 		writer.flush()
 		writer.close()
@@ -1946,7 +1954,7 @@ class Tuner:
 		
 		# add experiment specific information
 		if eval_cfg.data.exp_type == 'newverb':
-			odds_ratios_summary['token_type'] 		= ['tuning' if token in self.args.values() else 'eval only' for token in odds_ratios_summary.token]
+			odds_ratios_summary['token_type'] 		= ['tuning' if token in tuner_utils.flatten(list(self.args.values())) else 'eval only' for token in odds_ratios_summary.token]
 			# replace the mask tokens in the sentences with the argument types according to the mask token indices
 			for sentence, gf_indices in zip(odds_ratios_summary.sentence.unique().copy(), masked_token_indices):
 				for gf in gf_indices:
