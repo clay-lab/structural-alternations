@@ -41,6 +41,11 @@ def formatted_dir_name(model: DictConfig, tuning: DictConfig, hyperparameters: D
 	
 	if 'gradual' in hyperparameters.unfreezing:
 		dir_name += re.sub(r'.*([0-9]+)', '\\1', hyperparameters.unfreezing).zfill(2)
+	elif 'mixout' in hyperparameters.unfreezing:
+		mixout_prob = re.search(r'([0-9]+)?\.[0-9]+$', hyperparameters.unfreezing)[0]
+		if mixout_prob.startswith('.'):
+			mixout_prob = '0' + mixout_prob
+		dir_name += mixout_prob
 	
 	dir_name 	+= 	'-'
 	dir_name 	+= 	f'lr{hyperparameters.lr}'
