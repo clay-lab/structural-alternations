@@ -18,7 +18,7 @@ checkpoint_dir: ''
 
 hydra:
   run:
-    dir: ${checkpoint_dir}/eval-${data.friendly_name}
+    dir: ${checkpoint_dir}/eval-${name:${data.name}}
   sweep:
     dir: ${checkpoint_dir}
-    subdir: eval-${data.friendly_name}
+    subdir: eval-${name:${data.name}}

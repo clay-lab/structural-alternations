@@ -563,15 +563,17 @@ def create_metrics_plots(
 			df = df[df.metric == metric]
 		
 		mean_dev = df[(~df.dataset.str.endswith('(train)')) & (df.dataset != 'overall')].copy()
-		if metric != 'remaining patience':
-			mean_dev = mean_dev[['epoch', 'value']].groupby('epoch').value.agg('mean')
-			title += format_dataset_max_min(label='mean dev', ser=mean_dev)
-		else:
-			overall = df[df.metric == 'remaining patience overall'][['epoch', 'value']].set_index('epoch')
-			overall = overall.squeeze()
-			# if we only have one dev set, we don't need to report overall patience
-			num_dev_sets = mean_dev.dataset.unique().size
-			if num_dev_sets > 1:
+		
+		# if we only have one dev set, we don't need to report means or overall patience (since this is equivalent to the single dev set)
+		num_dev_sets = mean_dev.dataset.unique().size
+		
+		if num_dev_sets > 1:
+			if metric != 'remaining patience':
+				mean_dev = mean_dev[['epoch', 'value']].groupby('epoch').value.agg('mean')
+				title += format_dataset_max_min(label='mean dev', ser=mean_dev)
+			else:
+				overall = df[df.metric == 'remaining patience overall'][['epoch', 'value']].set_index('epoch')
+				overall = overall.squeeze()
 				title += format_dataset_max_min(label='overall', ser=overall, r=0)
 		
 		# drop the remaining patience overall to iterate through the dev sets
@@ -1037,9 +1039,8 @@ def create_odds_ratios_plots(
 				fig, ax (matplotlib.figure.Figure, matplotlib.axes.Axes): matplotlib plot objects
 		'''
 		# get number of linear positions (if there's only one position, we can't make plots by linear position)
-		ratio_names_positions = data[[ratio_name, position_num]].drop_duplicates().reset_index(drop=True)
-		ratio_names_positions = list(ratio_names_positions.to_records(index = False))
-		ratio_names_positions = sorted(ratio_names_positions, key = lambda x: int(re.sub(r'position ([0-9]+)((\/.*)|$)', '\\1', x[1])))
+		ratio_names_positions = data[[ratio_name, position_num]].drop_duplicates().reset_index(drop=True).to_records(index=False).tolist()
+		ratio_names_positions = sorted(ratio_names_positions, key=lambda x: int(re.sub(r'position ([0-9]+)((\/.*)|$)', '\\1', x[1])))
 		
 		# this is true if plots by linear order will differ from plots by gf/role,
 		# which means we want to construct a bigger canvas so we can plot them
@@ -1137,12 +1138,12 @@ def create_odds_ratios_plots(
 				y_data (pd.DataFrame)	: the data being plotted on the y axis
 				odds_ratio (str)		: the name of the column in summary/x_data/y_data containing the odds ratios being plotted
 		'''
-		title = re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs')) + '\n'
-		metric = 'odds ratios' if odds_ratio in ['odds_ratio' or 'odds_ratio_mean'] else 'odds ratios improvements'
+		title 		= re.sub(r"\'\s(.*?)", f"' {', '.join(pair)} ", eval_cfg.data.description.replace('tuples', 'pairs')) + '\n'
+		metric 		= 'odds ratios' if odds_ratio in ['odds_ratio' or 'odds_ratio_mean'] else 'odds ratios improvements'
 		
-		title += get_plot_title(df=summary, metric=metric)
+		title 		+= get_plot_title(df=summary, metric=metric)
 		
-		pair_acc = [{**tuner_utils.get_accuracy_measures(x_data, y_data, odds_ratio), 'arg_type': 'any'}]
+		pair_acc 	= [{**tuner_utils.get_accuracy_measures(x_data, y_data, odds_ratio), 'arg_type': 'any'}]
 		for ratio_name in x_data.ratio_name.unique():
 			pair_acc.append({
 				**tuner_utils.get_accuracy_measures(
@@ -1182,22 +1183,21 @@ def create_odds_ratios_plots(
 			else:
 				gen_given_ref_o_r = torch.tensor(y_data[y_data.index.isin(x_data[(x_data[odds_ratio] > 0) & (x_data.ratio_name.str.startswith(f'{arg}'))].index)][odds_ratio].tolist())
 			
-			std, mean = torch.std_mean(gen_given_ref_o_r)
-			mean = round(float(mean), 2)
-			perc_correct_str += f', \u03BC Y|X: {mean}'
+			std, mean 				= torch.std_mean(gen_given_ref_o_r)
+			perc_correct_str 		+= f', \u03BC Y|X: {mean:.2f}'
 			if gen_given_ref_o_r.nelement() > 0:
-				se = round(float(std/sqrt(len(gen_given_ref_o_r))), 2)
-				perc_correct_str += f' (\u00B1{se})'
+				se 					= std/sqrt(len(gen_given_ref_o_r))
+				perc_correct_str 	+= f' (\u00B1{se:.2f})'
 			
 			subtitle += perc_correct_str
 		
-		x_sentence_ex = tuner_utils.get_sentence_label(x_data)
-		y_sentence_ex = tuner_utils.get_sentence_label(y_data)
+		x_sentence_ex 	= tuner_utils.get_sentence_label(x_data)
+		y_sentence_ex 	= tuner_utils.get_sentence_label(y_data)
 		
-		subtitle += '\n\nX: ' + x_sentence_ex
-		subtitle += '\nY: ' + y_sentence_ex
+		subtitle 		+= '\n\nX: ' + x_sentence_ex
+		subtitle 		+= '\nY: ' + y_sentence_ex
 		
-		title += subtitle
+		title 			+= subtitle
 		
 		return title
 	
@@ -1256,8 +1256,8 @@ def create_odds_ratios_plots(
 	
 	with PdfPages(filename) as pdf:
 		for pair in tqdm(paired_sentence_types):
-			x_data, y_data = tuner_utils.get_single_pair_data(summary, pair, 'ratio_name')
-			ratio_names_positions, fig, ax = setup_odds_ratios_plot(x_data, 'ratio_name', 'position_ratio_name')
+			x_data, y_data 					= tuner_utils.get_single_pair_data(summary, pair, 'ratio_name')
+			ratio_names_positions, fig, ax 	= setup_odds_ratios_plot(x_data, 'ratio_name', 'position_ratio_name')
 			
 			xlabel = f'{ax_label} in {pair[0]} sentences'
 			ylabel = f'{ax_label} in {pair[1]} sentences'
@@ -1292,7 +1292,7 @@ def create_odds_ratios_plots(
 				oddsplot(ax=ax[2], **common_args)
 				oddsplot(ax=ax[3], diffs_plot=True, **common_args)
 			
-			title = get_odds_ratios_plot_title(summary, eval_cfg, pair, x_data, y_data, odds_ratio, arg_type)
+			title = get_odds_ratios_plot_title(summary, eval_cfg, pair, x_data, y_data, odds_ratio)
 			
 			fig.suptitle(title)
 			fig.tight_layout()

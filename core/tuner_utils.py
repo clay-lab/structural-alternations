@@ -211,9 +211,9 @@ def apply_to_all_of_type(
 		returns = filter_none(data)
 	
 	if isinstance(data,(pd.Series,np.ndarray)):
-		return returns if returns.any() else None
+		return returns if returns.any() or returns.size == 1 and returns[0] == 0 else None
 	else:
-		return returns if returns else None
+		return returns
 
 def filter_none(data: 'any') -> 'any':
 	'''
@@ -237,9 +237,9 @@ def filter_none(data: 'any') -> 'any':
 			)
 	else:
 		if isinstance(data,(pd.Series,np.ndarray)):
-			return data if data.any() else None
+			return data if data.any() or data.size == 1 and data[0] == 0 else None
 		else:
-			return data if data else None
+			return data
 
 def recursor(t: 'type', *args: Tuple, **kwargs: Dict) -> Callable:
 	'''
@@ -382,10 +382,10 @@ def get_data_for_pairwise_comparisons(
 				
 		if exp_type == 'newverb' and not cossims:
 			# Sort by grammatical function prominence for newverb exps (we do this because 'subj' alphabetically follows 'obj'), but it's more natural for it to go first
-			summary['ratio_order'] = [GF_ORDER.index(gf_ratio_name.split('/')[0]) for gf_ratio_name in summary.gf_ratio_name]
-			summary = summary.sort_values(['model_id', 'ratio_order'])
-			summary = summary.drop('ratio_order', axis=1)
-			summary['ratio_name'] = [re.sub(r'\[|\]', '', ratio_name) for ratio_name in summary.ratio_name]
+			summary['ratio_order'] 	= [GF_ORDER.index(gf_ratio_name.split('/')[0]) for gf_ratio_name in summary.ratio_name]
+			summary 				= summary.sort_values(['model_id', 'ratio_order'])
+			summary 				= summary.drop('ratio_order', axis=1)
+			summary['ratio_name'] 	= [re.sub(r'\[|\]', '', ratio_name) for ratio_name in summary.ratio_name]
 		
 		colnames 	= get_eval_metrics_colnames(exp_type, cossims, diffs)
 		metric 		= colnames[-2]
@@ -482,6 +482,16 @@ def get_single_pair_data(
 			x_data, y_data (pd.DataFrame)	: information from summary where pair_col == pair[0] and pair_col == pair[1]
 											  and all groups in the group column occur in both x and y
 	'''
+	# do some sorting
+	summary = summary.sort_values(group).reset_index(drop=True)
+	
+	if 'ratio_name' in summary and any(re.sub(r'\[|\]', '', gf) in ratio_name for gf in GF_ORDER for ratio_name in summary.ratio_name):
+		# Sort by grammatical function prominence for newverb exps (we do this because 'subj' alphabetically follows 'obj'), but it's more natural for it to go first
+		summary['ratio_order'] 	= [GF_ORDER.index(f'[{gf_ratio_name.split("/")[0]}]') for gf_ratio_name in summary.ratio_name]
+		summary 				= summary.sort_values(['model_id', 'ratio_order'])
+		summary 				= summary.drop('ratio_order', axis=1)
+		summary.ratio_name		= [re.sub(r'\[|\]', '', ratio_name) for ratio_name in summary.ratio_name]
+	
 	x_data = summary[summary[pair_col] == pair[0]].reset_index(drop=True)
 	y_data = summary[summary[pair_col] == pair[1]].reset_index(drop=True)
 	
@@ -509,6 +519,9 @@ def get_accuracy_measures(
 			dict 				: a dictionary containing accuracy information about refs and gens
 								  where accuracy is computed based on colname > 0 (intended for use with odds ratios)
 	'''
+	refs 						= refs.copy().reset_index(drop=True)
+	gens 						= gens.copy().reset_index(drop=True)
+	
 	refs_correct 				= refs[colname] > 0
 	gens_correct 				= gens[colname] > 0
 	num_points 					= len(refs.index)
@@ -637,6 +650,43 @@ def get_odds_ratios_accuracies(
 	acc = pd.DataFrame(acc)
 	
 	return acc
+
+def move_cols(
+	df: pd.DataFrame, 
+	cols_to_move: List[str] = [], 
+	ref_col: str = None, 
+	position: str = 'after'
+) -> pd.DataFrame:
+    '''
+    Reorders columns in a dataframe by name and (optionally) relative position to a reference column.
+    From https://towardsdatascience.com/reordering-pandas-dataframe-columns-thumbs-down-on-standard-solutions-1ff0bc2941d5
+    
+    	params:
+    		df (pd.DataFrame)	: a dataframe
+    		cols_to_move (list)	: a list of column names to be moved
+    		ref_col (str)		: the column relative to which the cols to move should be positioned
+    		place (str)			: one of 'before', 'after'. whether to place the cols to move before or after the ref col
+    	
+    	returns:
+    		df (pd.DataFrame)	: the dataframe with the columns reordered
+    '''
+    cols 		= list(df.columns)
+    
+    # if the ref col is not provide or is not in the columns, move columns to the front
+    index 		= cols.index(ref_col) if ref_col is not None and ref_col in cols else 0
+    position 	= 'before' if index == 0 else position
+           
+    if position == 'after':
+        seg1 = cols[:index+1]
+        seg2 = cols_to_move
+    else:
+        seg1 = cols[:index]
+        seg2 = cols_to_move + ([ref_col] if ref_col else [])
+    
+    seg1 = [i for i in seg1 if i not in seg2]
+    seg3 = [i for i in cols if i not in seg1 + seg2]
+    
+    return(df[seg1 + seg2 + seg3])
 
 
 # Tokenizer utilities
@@ -1034,7 +1084,7 @@ def reinitialize_token_weights(
 	tokenizer: 'PreTrainedTokenizer',
 	device: str = 'cpu',
 	seed: int = None,
-) -> int:
+) -> Tuple[nn.Embedding, int]:
 	'''
 	Reinitializes token weights to random values to provide variability in model tuning
 	
@@ -1082,6 +1132,7 @@ def reinitialize_token_weights(
 		return word_embeddings, seed
 	else:
 		return word_embeddings
+
 
 # analysis
 def get_best_epoch(
@@ -1196,7 +1247,7 @@ class gen_summary():
 	"""
 	def __init__(self, 
 		df: Union[pd.DataFrame,str,'TextIOWrapper','StringIO'], 
-		columns: List = ['gen_given_ref', 'correct', 'odds_ratio_pre_post_diff', 'odds_ratio', 'cossim'],
+		columns: List = ['gen given ref', 'correct', 'odds ratio pre-post difference', 'odds ratio', 'cossim'],
 		funs: List = ['mean', 'sem']
 	) -> 'gen_summary':
 		"""

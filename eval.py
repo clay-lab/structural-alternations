@@ -10,6 +10,8 @@ from core.tuner import Tuner
 
 log = logging.getLogger(__name__)
 
+OmegaConf.register_new_resolver('name', lambda data: data.split('.')[0])
+
 @hydra.main(config_path='conf', config_name='eval')
 def eval(cfg: DictConfig) -> None:
 	print(OmegaConf.to_yaml(cfg, resolve=True))
