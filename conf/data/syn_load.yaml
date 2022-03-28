@@ -1,7 +1,6 @@
 # Synthetic constructions with 'load'
 
 name: syn_load.data
-friendly_name: syn_load
 description: Synthetic 'load' tuples
 entail: true
 new_verb: false

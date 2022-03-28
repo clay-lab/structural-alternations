@@ -1,9 +1,7 @@
 name: swarm_location-subject
 
 reference_sentence_type: location-subject
-exp_type: entail
-
-which_args: ''
+exp_type: newarg
 
 to_mask:
   - LORX

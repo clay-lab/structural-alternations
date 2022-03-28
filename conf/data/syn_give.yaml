@@ -1,7 +1,6 @@
 # Synthetic constructions with give
 
 name: syn_give.data
-friendly_name: syn_give
 description: Synthetic 'give' tuples
 entail: true
 new_verb: false

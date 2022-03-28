@@ -1,9 +1,7 @@
 name: dative_PD_give_passive
 
 reference_sentence_type: give PD passive
-exp_type: entail
-
-which_args: ''
+exp_type: newarg
 
 to_mask:
   - RICKET

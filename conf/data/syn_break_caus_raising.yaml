@@ -1,17 +1,16 @@
 name: syn_break_caus_raising.data
-friendly_name: syn_break_caus_raising
-description: "Synthetic 'break' pairs"
+description: Synthetic 'break' pairs
 entail: true
 new_verb: false
 
 sentence_types:
-  - "causative past"
-  - "raising"
+  - causative past
+  - raising
 
 eval_groups:
-  "theme" : "THAX"
-  "agent" : "RICKET"
+  theme : THAX
+  agent : RICKET
 
 to_mask:
- - "THAX"
- - "RICKET"
+ - THAX
+ - RICKET

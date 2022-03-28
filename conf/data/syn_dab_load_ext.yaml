@@ -1,9 +1,8 @@
 # Synthetic constructions with dab
 
 name: syn_dab_load_ext.data
-friendly_name: syn_dab_load_ext
 description: Synthetic 'dab' tuples
-exp_type: entail
+exp_type: newarg
 
 sentence_types:
   - load theme-object active

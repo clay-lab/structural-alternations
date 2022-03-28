@@ -134,12 +134,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# R
-# *.r
-
 # old files
 *_old/
 
-# batch
-*.bat
-*.sh
+# script logs
+/scripts/logs/

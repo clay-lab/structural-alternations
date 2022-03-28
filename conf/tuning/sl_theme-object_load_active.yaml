@@ -1,9 +1,7 @@
 name: sl_theme-object_load_active
 
 reference_sentence_type: load theme-object active
-exp_type: entail
-
-which_args: ''
+exp_type: newarg
 
 to_mask:
   - GORX

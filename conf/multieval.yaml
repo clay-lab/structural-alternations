@@ -1,11 +1,11 @@
 defaults:
   - _self_
-  - data: syn_give
+  - data: syn_give_give_ext
   - override hydra/job_logging: tuner_log_conf
 
 dir: outputs
 
-k: 50 # get the subword tokens with the k most similar embeddings to the trained mask tokens
+k: 50 # get the subword tokens with the k most similar embeddings to the trained mask tokens based on cosine similarity
 num_tsne_words: 500 # plot the tsne of the first num_tsne_words embeddings + the added_tokens
 
 criteria: all
@@ -18,7 +18,7 @@ epoch: best_mean # which epoch to evaluate on?
 
 hydra:
   run:
-    dir: ${dir}/multieval-${criterianame:${criteria}}-${data.friendly_name}
+    dir: ./${dir}/multieval-${dirname:${criteria},${data.name}}
   sweep:
-    dir: ${dir}
-    subdir: multieval-${criterianame:${criteria}}-${data.friendly_name}
+    dir: ./${dir}
+    subdir: multieval-${dirname:${criteria},${data.name}}

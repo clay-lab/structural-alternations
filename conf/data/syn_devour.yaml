@@ -1,7 +1,6 @@
 # Synthetic constructions with 'devour'
 
 name: syn_devour.data
-friendly_name: syn_devour
 description: "Synthetic 'devour' active, long passive, short passive tuples"
 entail: true
 new_verb: false

@@ -1,9 +1,7 @@
 name: causative
 
 reference_sentence_type: causative past
-exp_type: entail
-
-which_args: ''
+exp_type: newarg
 
 to_mask:
   - RICKET

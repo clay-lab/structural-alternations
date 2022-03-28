@@ -1,6 +1,10 @@
+<<<<<<< HEAD
 antlr4-python3-runtime==4.8
 hydra-core==1.1.1 --upgrade
 torch==1.10.0
 torchtext==0.10.0
 sklearn
 hydra-joblib-launcher --upgrade
+=======
+torchtext==0.11.0
+>>>>>>> refactor

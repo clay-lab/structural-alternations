@@ -1,9 +1,7 @@
 name: active
 
 reference_sentence_type: active
-exp_type: entail
-
-which_args: ''
+exp_type: newarg
 
 to_mask:
   - AGEX

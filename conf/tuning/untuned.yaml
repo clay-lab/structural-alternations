@@ -3,8 +3,6 @@ name: untuned
 reference_sentence_type: ''
 exp_type: ''
 
-which_args: ''
-
 to_mask:
   na : ''
 

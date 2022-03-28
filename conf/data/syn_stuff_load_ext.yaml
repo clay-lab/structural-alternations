@@ -1,9 +1,8 @@
 # Synthetic constructions with stuff
 
 name: syn_stuff_load_ext.data
-friendly_name: syn_stuff_load_ext
 description: Synthetic 'stuff' tuples
-exp_type: entail
+exp_type: newarg
 
 sentence_types:
   - load theme-object active

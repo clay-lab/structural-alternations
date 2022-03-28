@@ -1,7 +1,6 @@
 # Synthetic constructions with 'blork'
 
 name: syn_blork_det_test.data
-friendly_name: syn_blork_det_test
 description: Synthetic 'blork' tuples
 exp_type: newverb
 

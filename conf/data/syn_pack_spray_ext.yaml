@@ -1,9 +1,8 @@
 # Synthetic constructions with pack
 
 name: syn_pack_spray_ext.data
-friendly_name: syn_pack_spray_ext
 description: Synthetic 'pack' tuples
-exp_type: entail
+exp_type: newarg
 
 sentence_types:
   - spray theme-object active

@@ -353,10 +353,9 @@ def make_data(vs: str = None):
 							
 						with open(f'conf/data/syn_{verb}_{ref_verb}_ext.yaml', 'w') as f:
 							f.write(f'# Synthetic constructions with {verb}\n\n')
-							f.write(f'name: syn_{verb}_{ref_verb}_ext.data\n')
-							f.write(f'friendly_name: syn_{verb}_{ref_verb}_ext\n')
+							f.write(f'name: syn_{verb}_{ref_verb}_ext\n')
 							f.write(f'description: Synthetic \'{verb}\' tuples\n')
-							f.write('exp_type: entail\n\n')
+							f.write('exp_type: newarg\n\n')
 							f.write('sentence_types:\n  - ')
 							f.write('\n  - '.join(stypes) + '\n\n')
 							f.write('eval_groups:\n')

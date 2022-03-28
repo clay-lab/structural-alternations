@@ -11,4 +11,4 @@ strip_punct: false # consider sentences with or without punctuation?
 
 hydra:
   run: 
-    dir: './outputs/${tuning.name}/check_args/${now:%Y-%m-%d_%H-%M-%S}'
+    dir: ./outputs/${tuning.name}/check_args/${now:%Y-%m-%d_%H-%M-%S}
