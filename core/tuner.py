@@ -822,7 +822,7 @@ class Tuner:
 				else:
 					param.requires_grad = True
 					assert param.requires_grad, f'{name} is frozen!'
-
+		
 		def save_weights(weights: Dict) -> None:
 			'''Saves dictionary of weights to disk'''
 			with gzip.open('weights.pkl.gz', 'wb') as f:
