@@ -11,12 +11,11 @@ datasets:
   bookcorpus: 0.32
 
 dataset_args:
-  wikipedia: []
+  wikipedia: [20200501.en]
   bookcorpus: []
   
 dataset_kwargs:
-  wikipedia:
-      language: en
+  wikipedia: {}
   bookcorpus: {}
 
 # what to name the dataset
