@@ -18,7 +18,7 @@ import seaborn as sns
 import torch.nn as nn
 import torch.nn.functional as F
 
-from math import floor
+from math import floor, sqrt
 from copy import deepcopy
 from tqdm import trange, tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
@@ -2046,10 +2046,19 @@ class Tuner:
 					
 					# KL(P || Q); pytorch does a weird thing where it wants Q first, rather than P
 					# it also expects the input to have been converted to log space, but not the target
+					# it also uses 'mean' as the default way of summarizing kl div for a distribution instead of sum
 					kl_div 				= F.kl_divs(input=fine_tuned_outputs, target=pre_outputs, reduction='sum')
-					kl_divs.cat(kl_div)
 					
+					kl_divs 			= torch.cat([kl_divs, kl_div])
 					t.set_postfix(file=i, ex=n, kl_div_mean=f'{torch.mean(kl_divs).item():.2f}')
+		
+		
+		mean_kl_div = torch.mean(kl_divs).item()
+		sem_kl_div 	= torch.std(kl_divs).item()/sqrt(kl_divs.shape[-1])
+		log.info(f'Mean KL divergence on {dataset_name}: {mean_kl_div:.2f} (\u00b1{sem_kl_div:.2f})')
+		
+		with gzip.open('kl_divs.pt.gz', 'wb') as out_file:
+			torch.save(kl_divs, out_file)
 	
 	
 	# wrapper/helper functions for plots/accuracies (implemented in tuner_utils and tuner_plots)
