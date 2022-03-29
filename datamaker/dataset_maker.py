@@ -1,12 +1,18 @@
 # dataset maker
 #
 # use to make a corpus of random examples from huggingface datasets
+# it is NOT recommended that you run this locally unless you want to take up
+# a lot of disk space
+import os
+import re
 import json
+import gzip
 import hydra
 import logging
 
-from tqdm import tqdm
+from tqdm import trange
 from typing import *
+from random import random
 from datasets import load_dataset
 from omegaconf import OmegaConf, DictConfig
 
@@ -34,7 +40,7 @@ def create_save_dataset(cfg: DictConfig) -> None:
 								  using information from the dictionary
 	'''
 	
-	# Collect settings
+	# Collect configuration options
 	n 				= cfg['n']
 	datasets 		= cfg['datasets']
 	dataset_args 	= cfg['dataset_args']
@@ -42,16 +48,51 @@ def create_save_dataset(cfg: DictConfig) -> None:
 	
 	assert sum(v for v in datasets.values()) == 1, 'Probabilities for all datasets must sum to 1!'
 	
-	remote_datasets = dict.fromkeys(datasets.keys())
-	for dataset in remote_datasets:
+	loaded_datasets = dict.fromkeys(datasets.keys())
+	for dataset in loaded_datasets:
 		try:
-			remote_datasets[dataset] = load_dataset(dataset, *dataset_args[dataset])
+			loaded_datasets[dataset] = load_dataset(dataset, *dataset_args[dataset], **dataset_kwargs[dataset])
 		except Exception:
-			raise ValueError(f'Unable to open a connection to dataset {dataset} on huggingface!')
+			raise ValueError(f'Unable to load dataset {dataset} on huggingface!')
 	
-	breakpoint()
+	# we need to set up the probabilities as ranges for a random number
+	# which means adding each previous probability to the next
+	previous_prob = 0
+	for dataset, prob in datasets.items():
+		previous_prob += datasets[dataset]
+		datasets[dataset] = previous_prob
 	
-	return
+	with gzip.open(f'{name}.json.gz', 'wt') as out_file:
+		for _ in trange(n):
+			r = random()
+			for dataset, prob in datasets.items():
+				if r < prob:
+					current_dataset = dataset
+					break
+			
+			# np.random.choice is sloooow with big lists
+			r = int(round(random() * (len(loaded_datasets[current_dataset]['train'])-1),0))
+			
+			ex = loaded_datasets[current_dataset]['train'][r]['text']
+			
+			# do some formatting: split on periods, remove anything with newlines
+			# newlines would sometimes be best replaced with commas, or bullet points, etc.
+			# better to just leave them out entirely
+			
+			# we split this way to retain the delimeters
+			ex = [s for s in re.sub(r'((\.) |$)|((\?) |$)|((\!) |$)', '\\2&&&', ex).split('&&&') if not '\n' in s]
+			# remove empty strings and extra leading/trailing spaces
+			ex = [s.strip() for s in ex if s.strip()]
+			
+			# get a random example from the retained sentences
+			r = int(round(random() * (len(ex)-1), 0))
+			ex = ex[r]
+			
+			# save it to the file
+			json.dump(ex, out_file, ensure_ascii=False)
+			f.write('\n')
+		
+	log.info(f'Dataset saved as {name}.json.gz in "{os.getcwd()}".')
 
 if __name__ == '__main__':
 	
