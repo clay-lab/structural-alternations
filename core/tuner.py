@@ -2034,7 +2034,7 @@ class Tuner:
 				saved_logits = pkl.load(in_file)
 			
 			with torch.no_grad(), trange(eval_cfg.compare_to_baseline.examples_per_file) as t:
-				# need to double-check that this continues rather than restarts
+				# need to double-check that this continues rather than restarts after the file switch
 				for n, batch in enumerate(dataloader):
 					fine_tuned_outputs 	= self.model(**batch).logits
 					
