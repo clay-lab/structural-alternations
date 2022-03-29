@@ -64,8 +64,9 @@ def create_save_dataset(cfg: DictConfig) -> None:
 		previous_prob += datasets[dataset]
 		datasets[dataset] = previous_prob
 	
-	with gzip.open(f'{name}.json.gz', 'wt') as out_file:
-		for _ in trange(n):
+	n_chosen = 0
+	with tqdm(total=n) as pbar, gzip.open(f'{name}.json.gz', 'wt') as out_file:
+		while n_chosen < n:
 			r = random()
 			for dataset, prob in datasets.items():
 				if r < prob:
@@ -87,13 +88,16 @@ def create_save_dataset(cfg: DictConfig) -> None:
 				# remove empty strings and extra leading/trailing spaces
 				ex = [s.strip() for s in ex if s.strip()]
 				
-				# get a random example from the retained sentences
-				r = int(round(random() * (len(ex)-1), 0))
-				ex = ex[r]
-				
-				# save it to the file
-				json.dump(ex, out_file, ensure_ascii=False)
-				out_file.write('\n')
+				if ex:
+					# get a random example from the retained sentences
+					r = int(round(random() * (len(ex)-1),0))
+					ex = ex[r]
+					
+					# save it to the file
+					json.dump(ex, out_file, ensure_ascii=False)
+					out_file.write('\n')
+					n_chosen += 1
+					pbar.update(1)
 			except Exception:
 				breakpoint()
 		
