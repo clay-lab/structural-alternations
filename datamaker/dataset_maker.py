@@ -2,7 +2,7 @@
 #
 # use to make a corpus of random examples from huggingface datasets
 # it is NOT recommended that you run this locally unless you want to take up
-# a lot of disk space
+# a lot of disk space with datasets just to generate a small one
 import os
 import re
 import json
