@@ -13,6 +13,10 @@ datasets:
 dataset_args:
   wikipedia: [20200501.en]
   bookcorpus: []
+  
+dataset_kwargs:
+  wikipedia: {}
+  bookcorpus: {}
 
 # what to name the dataset
 # default is the key=value for each k,v in ${datasets}, joined with '-'.
