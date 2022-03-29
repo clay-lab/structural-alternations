@@ -18,9 +18,10 @@ import pandas as pd
 from math import sqrt
 from tqdm import tqdm
 from glob import glob
-from typing import *
 from copy import deepcopy
+from typing import *
 from shutil import copyfileobj
+from datasets import Dataset
 from omegaconf import OmegaConf, DictConfig, ListConfig
 from transformers import AutoTokenizer
 
@@ -203,6 +204,10 @@ def apply_to_all_of_type(
 		returns = filter_none({apply_to_all_of_type(k, t, fun, *args, **kwargs): apply_to_all_of_type(v, t, fun, *args, **kwargs) for k, v in data.items()})
 	elif isinstance(data,(list,tuple,set)):
 		returns = filter_none(type(data)(apply_to_all_of_type(i, t, fun, *args, **kwargs) for i in data))
+	elif isinstance(data,Dataset):
+		# this means you have to cast the result back to a dataset afterward. I can't figure out how to do it inplace
+		# since it can only be done from a dict but the dict is one level up
+		returns = filter_none(list(apply_to_all_of_type(i, t, fun, *args, **kwargs) for i in data))
 	elif isinstance(data,(torch.Tensor,pd.Series)):
 		returns = filter_none(type(data)([apply_to_all_of_type(i, t, fun, *args, **kwargs) for i in data]))
 	elif isinstance(data,np.ndarray):
