@@ -1705,6 +1705,13 @@ class Tuner:
 		return epoch, total_epochs
 	
 	def evaluate(self, eval_cfg: DictConfig) -> None:
+		'''
+		Calls the appropriate function for model evaluation.
+		
+			params:
+				eval_cfg (dictconfig): a configuration specifying evaluation settings
+		'''
+		
 		# this is just done so we can record it in the results
 		self.__restore_original_random_seed()
 		
@@ -1713,7 +1720,9 @@ class Tuner:
 		else:
 			self.__eval(eval_cfg=eval_cfg)
 		
-		if eval_cfg.compare_to_baseline.do_comparison:
+		# we should only do the comparison if anything has been unfrozen.
+		# otherwise, it doesn't make sense since the results will be the same.
+		if eval_cfg.compare_to_baseline.do_comparison and not self.unfreezing == 'none':
 			self.compare_model_performance_to_baseline(eval_cfg)
 	
 	def load_eval_file(self, eval_cfg: DictConfig) -> Dict:
@@ -2006,27 +2015,41 @@ class Tuner:
 		breakpoint()
 		self.model.eval()
 		
+		baseline_loc 		= eval_cfg.compare_to_baseline.baseline_loc
+		dataset_name 		= eval_cfg.compare_to_baseline.dataset_name
+		
 		# Load the dataset
-		dataset_file 		= [os.path.join(baseline_loc, f) for f in os.listdir(eval_cfg.compare_to_baseline.baseline_loc) if f == eval_cfg.compare_to_baseline.dataset_name][0]
+		dataset_file 		= [os.path.join(baseline_loc, f) for f in os.listdir(baseline_loc) if f == dataset_name][0]
 		
 		with gzip.open(dataset_file, 'rt') as in_file:
 			dataset 		= pkl.load(in_file)
 		
 		dataloader 			= torch.utils.data.DataLoader(dataset, batch_size=1)
-		saved_logits_files	= sorted([f for f in os.listdir(baseline_loc) if f.endswith('.pkl.gz') and not dataset_name in f])
+		saved_logits_files	= sorted([f for f in os.listdir(baseline_loc) if f.endswith('.pkl.gz') and 'logits' in f])
+		to_exclude 			= set(self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask))
 		
-		kl_divs 			= []
-		for logits_file in saved_logits:
+		kl_divs 			= torch.tensor([])
+		for i, logits_file in enumerate(saved_logits):
 			with gzip.open(logits_file, 'rb') as in_file:
 				saved_logits = pkl.load(in_file)
 			
-			with torch.no_grad():
-				for n, batch in tqdm(enumerate(dataloader), total=eval_cfg.compare_to_baseline.examples_per_file):
-					fine_tuned_outputs 	=  F.log_softmax(self.model(**batch).logits, dim=-1)
-					to_exclude 			=  [self.tokenizer.convert_tokens_to_ids(token) for token in self.tokens_to_mask]
-					fine_tuned_outputs 	=  torch.tensor([l for l in enumerate(fine_tuned_outputs) if not l in to_exclude])
-					pre_outputs 		=  F.log_softmax(saved_logits[n], dim=-1)
-					kl_divs.append(F.kl_divs(input=fine_tuned_outputs, target=pre_outputs, log_target=True))
+			with torch.no_grad(), trange(eval_cfg.compare_to_baseline.examples_per_file) as t:
+				# need to double-check that this continues rather than restarts
+				for n, batch in enumerate(dataloader):
+					fine_tuned_outputs 	= self.model(**batch).logits
+					
+					# remove any indices associated with the new token(s)
+					fine_tuned_outputs 	= torch.tensor([l for i, l in enumerate(fine_tuned_outputs) if not i in to_exclude])
+					fine_tuned_outputs 	= F.log_softmax(fine_tuned_outputs, dim=-1)
+					
+					pre_outputs 		= saved_logits[n] # pytorch expects inputs but NOT targets in log space 
+					
+					# KL(P || Q); pytorch does a weird thing where it wants Q first, rather than P
+					# it also expects the input to have been converted to log space, but not the target
+					kl_div 				= F.kl_divs(input=fine_tuned_outputs, target=pre_outputs, reduction='sum')
+					kl_divs.cat(kl_div)
+					
+					t.set_postfix(file=i, ex=n, kl_div_mean=f'{torch.mean(kl_divs).item():.2f}')
 	
 	
 	# wrapper/helper functions for plots/accuracies (implemented in tuner_utils and tuner_plots)
