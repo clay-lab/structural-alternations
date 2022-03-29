@@ -25,6 +25,7 @@ from tqdm.contrib.logging import logging_redirect_tqdm
 from typing import *
 from .mixout.module import MixLinear
 from omegaconf import DictConfig, OmegaConf, open_dict, ListConfig
+from datasets import load_dataset
 from transformers import logging as lg
 from transformers import AutoModelForMaskedLM
 from sklearn.manifold import TSNE
@@ -1711,6 +1712,9 @@ class Tuner:
 			self.__evaluate_newtoken_experiment(eval_cfg=eval_cfg)
 		else:
 			self.__eval(eval_cfg=eval_cfg)
+		
+		if eval_cfg.compare_to_baseline.do_comparison:
+			self.compare_model_performance_to_baseline(eval_cfg)
 	
 	def load_eval_file(self, eval_cfg: DictConfig) -> Dict:
 		'''
@@ -1986,6 +1990,43 @@ class Tuner:
 		)
 		
 		return odds_ratios_summary
+	
+	def compare_model_performance_to_baseline(eval_cfg: DictConfig) -> None:
+		'''
+		Evaluates the model on a dataset that a pre-fine-tuning version of the model has been
+		trained on, and compares the probability distributions pre- and post-fine-tuning using
+		KL divergence. This is useful when unfreezing options have been used, since it provides
+		a measure of how much the model's predictions have changed in sentences where we would
+		like them to stay the same.
+		
+			params:
+				eval_cfg (DictConfig): a dictconfig specifying the directory where the preformatted
+									   dataset and logits from the pre-fine-tuning model can be found
+		'''
+		breakpoint()
+		self.model.eval()
+		
+		# Load the dataset
+		dataset_file 		= [os.path.join(baseline_loc, f) for f in os.listdir(eval_cfg.compare_to_baseline.baseline_loc) if f == eval_cfg.compare_to_baseline.dataset_name][0]
+		
+		with gzip.open(dataset_file, 'rt') as in_file:
+			dataset 		= pkl.load(in_file)
+		
+		dataloader 			= torch.utils.data.DataLoader(dataset, batch_size=1)
+		saved_logits_files	= sorted([f for f in os.listdir(baseline_loc) if f.endswith('.pkl.gz') and not dataset_name in f])
+		
+		kl_divs 			= []
+		for logits_file in saved_logits:
+			with gzip.open(logits_file, 'rb') as in_file:
+				saved_logits = pkl.load(in_file)
+			
+			with torch.no_grad():
+				for n, batch in tqdm(enumerate(dataloader), total=eval_cfg.compare_to_baseline.examples_per_file):
+					fine_tuned_outputs 	=  F.log_softmax(self.model(**batch).logits, dim=-1)
+					to_exclude 			=  [self.tokenizer.convert_tokens_to_ids(token) for token in self.tokens_to_mask]
+					fine_tuned_outputs 	=  torch.tensor([l for l in enumerate(fine_tuned_outputs) if not l in to_exclude])
+					pre_outputs 		=  F.log_softmax(saved_logits[n], dim=-1)
+					kl_divs.append(F.kl_divs(input=fine_tuned_outputs, target=pre_outputs, log_target=True))
 	
 	
 	# wrapper/helper functions for plots/accuracies (implemented in tuner_utils and tuner_plots)
