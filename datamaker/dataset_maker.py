@@ -92,7 +92,7 @@ def create_save_dataset(cfg: DictConfig) -> None:
 			
 			# save it to the file
 			json.dump(ex, out_file, ensure_ascii=False)
-			f.write('\n')
+			out_file.write('\n')
 		
 	log.info(f'Dataset saved as {name}.json.gz in "{os.getcwd()}".')
 
