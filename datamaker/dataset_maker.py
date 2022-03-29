@@ -72,27 +72,30 @@ def create_save_dataset(cfg: DictConfig) -> None:
 					current_dataset = dataset
 					break
 			
-			# np.random.choice is sloooow with big lists
-			r = int(round(random() * (len(loaded_datasets[current_dataset]['train'])-1),0))
-			
-			ex = loaded_datasets[current_dataset]['train'][r]['text']
-			
-			# do some formatting: split on periods, remove anything with newlines
-			# newlines would sometimes be best replaced with commas, or bullet points, etc.
-			# better to just leave them out entirely
-			
-			# we split this way to retain the delimeters
-			ex = [s for s in re.sub(r'((\.) |$)|((\?) |$)|((\!) |$)', '\\2&&&', ex).split('&&&') if not '\n' in s]
-			# remove empty strings and extra leading/trailing spaces
-			ex = [s.strip() for s in ex if s.strip()]
-			
-			# get a random example from the retained sentences
-			r = int(round(random() * (len(ex)-1), 0))
-			ex = ex[r]
-			
-			# save it to the file
-			json.dump(ex, out_file, ensure_ascii=False)
-			out_file.write('\n')
+			try:
+				# np.random.choice is sloooow with big lists
+				r = int(round(random() * (len(loaded_datasets[current_dataset]['train'])-1),0))
+				
+				ex = loaded_datasets[current_dataset]['train'][r]['text']
+				
+				# do some formatting: split on periods, remove anything with newlines
+				# newlines would sometimes be best replaced with commas, or bullet points, etc.
+				# better to just leave them out entirely
+				
+				# we split this way to retain the delimeters
+				ex = [s for s in re.sub(r'((\.) |$)|((\?) |$)|((\!) |$)', '\\2&&&', ex).split('&&&') if not '\n' in s]
+				# remove empty strings and extra leading/trailing spaces
+				ex = [s.strip() for s in ex if s.strip()]
+				
+				# get a random example from the retained sentences
+				r = int(round(random() * (len(ex)-1), 0))
+				ex = ex[r]
+				
+				# save it to the file
+				json.dump(ex, out_file, ensure_ascii=False)
+				out_file.write('\n')
+			except Exception:
+				breakpoint()
 		
 	log.info(f'Dataset saved as {name}.json.gz in "{os.getcwd()}".')
 
