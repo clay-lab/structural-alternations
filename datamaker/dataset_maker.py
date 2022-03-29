@@ -93,6 +93,8 @@ def create_save_dataset(cfg: DictConfig) -> None:
 					r = int(round(random() * (len(ex)-1),0))
 					ex = ex[r]
 					
+					ex = {'source': current_dataset, 'text': ex}
+					
 					# save it to the file
 					json.dump(ex, out_file, ensure_ascii=False)
 					out_file.write('\n')
