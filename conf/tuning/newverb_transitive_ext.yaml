@@ -53,6 +53,9 @@ animate_inanimate:
 inanimate_animate:
   '[subj]' : [thing, stuff, commodity, device, tool, machine]
   '[obj]'  : [man, woman, boy, girl, person, human]
+drink:
+  '[subj]' : [customer, passenger, guest, diner, worker, bride]
+  '[obj]'  : [coffee, wine, soda, juice, tea, beer]
   
 data:
   - The [subj] will BLORK the [obj].

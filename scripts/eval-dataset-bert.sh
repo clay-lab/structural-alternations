@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=salts
-#SBATCH --output=joblogs/salts_%j.txt
+#SBATCH --output=joblogs/salts_eval-dataset-bert-%j.txt
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --time=05:00:00

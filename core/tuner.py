@@ -18,13 +18,14 @@ import seaborn as sns
 import torch.nn as nn
 import torch.nn.functional as F
 
-from math import floor
+from math import floor, sqrt
 from copy import deepcopy
 from tqdm import trange, tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from typing import *
 from .mixout.module import MixLinear
 from omegaconf import DictConfig, OmegaConf, open_dict, ListConfig
+from datasets import load_dataset
 from transformers import logging as lg
 from transformers import AutoModelForMaskedLM
 from sklearn.manifold import TSNE
@@ -1704,6 +1705,13 @@ class Tuner:
 		return epoch, total_epochs
 	
 	def evaluate(self, eval_cfg: DictConfig) -> None:
+		'''
+		Calls the appropriate function for model evaluation.
+		
+			params:
+				eval_cfg (dictconfig): a configuration specifying evaluation settings
+		'''
+		
 		# this is just done so we can record it in the results
 		self.__restore_original_random_seed()
 		
@@ -1711,6 +1719,11 @@ class Tuner:
 			self.__evaluate_newtoken_experiment(eval_cfg=eval_cfg)
 		else:
 			self.__eval(eval_cfg=eval_cfg)
+		
+		# we should only do the comparison if anything has been unfrozen.
+		# otherwise, it doesn't make sense since the results will be the same.
+		if eval_cfg.compare_to_baseline.do_comparison and not self.unfreezing == 'none':
+			self.compare_model_performance_to_baseline(eval_cfg)
 	
 	def load_eval_file(self, eval_cfg: DictConfig) -> Dict:
 		'''
@@ -1986,6 +1999,66 @@ class Tuner:
 		)
 		
 		return odds_ratios_summary
+	
+	def compare_model_performance_to_baseline(eval_cfg: DictConfig) -> None:
+		'''
+		Evaluates the model on a dataset that a pre-fine-tuning version of the model has been
+		trained on, and compares the probability distributions pre- and post-fine-tuning using
+		KL divergence. This is useful when unfreezing options have been used, since it provides
+		a measure of how much the model's predictions have changed in sentences where we would
+		like them to stay the same.
+		
+			params:
+				eval_cfg (DictConfig): a dictconfig specifying the directory where the preformatted
+									   dataset and logits from the pre-fine-tuning model can be found
+		'''
+		breakpoint()
+		self.model.eval()
+		
+		baseline_loc 		= eval_cfg.compare_to_baseline.baseline_loc
+		dataset_name 		= eval_cfg.compare_to_baseline.dataset_name
+		
+		# Load the dataset
+		dataset_file 		= [os.path.join(baseline_loc, f) for f in os.listdir(baseline_loc) if f == dataset_name][0]
+		
+		with gzip.open(dataset_file, 'rt') as in_file:
+			dataset 		= pkl.load(in_file)
+		
+		dataloader 			= torch.utils.data.DataLoader(dataset, batch_size=1)
+		saved_logits_files	= sorted([f for f in os.listdir(baseline_loc) if f.endswith('.pkl.gz') and 'logits' in f])
+		to_exclude 			= set(self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask))
+		
+		kl_divs 			= torch.tensor([])
+		for i, logits_file in enumerate(saved_logits):
+			with gzip.open(logits_file, 'rb') as in_file:
+				saved_logits = pkl.load(in_file)
+			
+			with torch.no_grad(), trange(eval_cfg.compare_to_baseline.examples_per_file) as t:
+				# need to double-check that this continues rather than restarts after the file switch
+				for n, batch in enumerate(dataloader):
+					fine_tuned_outputs 	= self.model(**batch).logits
+					
+					# remove any indices associated with the new token(s)
+					fine_tuned_outputs 	= torch.tensor([l for i, l in enumerate(fine_tuned_outputs) if not i in to_exclude])
+					fine_tuned_outputs 	= F.log_softmax(fine_tuned_outputs, dim=-1)
+					
+					pre_outputs 		= saved_logits[n] # pytorch expects inputs but NOT targets in log space 
+					
+					# KL(P || Q); pytorch does a weird thing where it wants Q first, rather than P
+					# it also expects the input to have been converted to log space, but not the target
+					# it also uses 'mean' as the default way of summarizing kl div for a distribution instead of sum
+					kl_div 				= F.kl_divs(input=fine_tuned_outputs, target=pre_outputs, reduction='sum')
+					
+					kl_divs 			= torch.cat([kl_divs, kl_div])
+					t.set_postfix(file=i, ex=n, kl_div_mean=f'{torch.mean(kl_divs).item():.2f}')
+		
+		
+		mean_kl_div = torch.mean(kl_divs).item()
+		sem_kl_div 	= torch.std(kl_divs).item()/sqrt(kl_divs.shape[-1])
+		log.info(f'Mean KL divergence on {dataset_name}: {mean_kl_div:.2f} (\u00b1{sem_kl_div:.2f})')
+		
+		with gzip.open('kl_divs.pt.gz', 'wb') as out_file:
+			torch.save(kl_divs, out_file)
 	
 	
 	# wrapper/helper functions for plots/accuracies (implemented in tuner_utils and tuner_plots)

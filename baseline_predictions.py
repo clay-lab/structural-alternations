@@ -29,8 +29,7 @@ OmegaConf.register_new_resolver(
 )
 
 def formatted_dir_name(model: DictConfig, strip_punct: bool) -> str:
-	dir_name 	=	'eval'
-	dir_name 	+=	f'-{model.string_id}'
+	dir_name 	=	model.string_id
 	
 	dir_name 	+= 	'-'
 	dir_name 	+= 	'wpunc' if not strip_punct else 'npunc'
