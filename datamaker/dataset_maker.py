@@ -10,7 +10,7 @@ import gzip
 import hydra
 import logging
 
-from tqdm import trange
+from tqdm import tqdm
 from typing import *
 from random import random
 from datasets import load_dataset
@@ -88,6 +88,7 @@ def create_save_dataset(cfg: DictConfig) -> None:
 				# remove empty strings and extra leading/trailing spaces
 				ex = [s.strip() for s in ex if s.strip()]
 				
+				# if there's anything left, save an example
 				if ex:
 					# get a random example from the retained sentences
 					r = int(round(random() * (len(ex)-1),0))
