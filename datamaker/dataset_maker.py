@@ -32,19 +32,21 @@ def create_save_dataset(cfg: DictConfig) -> None:
 		params:
 			cfg (DictConfig): a dict/dictconfig with the following parameters specified:
 			
-			n (int)				: the number of sentences to go in the dataset
-			datasets (dict)		: a dictionary mapping a huggingface dataset name to
-								  the approximate proportion of examples to pull from that dataset
-			dataset_args (tuple): additional arguments to pass to load_dataset for each dataset
-			name (str)			: what to name the dataset. if not provided, the dataset will be named
-								  using information from the dictionary
+			n (int)					: the number of sentences to go in the dataset
+			datasets (dict)			: a dictionary mapping a huggingface dataset name to
+									  the approximate proportion of examples to pull from that dataset
+			dataset_args (tuple) 	: additional arguments to pass to load_dataset for each dataset
+			dataset_kwargs (dict)	: additional arguments to pass to load_dataset for each dataset
+			name (str)				: what to name the dataset. if not provided, the dataset will be named
+									  using information from the datasets dictionary
 	'''
 	
 	# Collect configuration options
-	n 				= cfg['n']
-	datasets 		= cfg['datasets']
-	dataset_args 	= cfg['dataset_args']
-	name 			= cfg['name']
+	n 				= cfg.n
+	datasets 		= cfg.datasets
+	dataset_args 	= cfg.dataset_args
+	dataset_kwargs 	= cfg.dataset_kwargs
+	name 			= cfg.name
 	
 	assert sum(v for v in datasets.values()) == 1, 'Probabilities for all datasets must sum to 1!'
 	
