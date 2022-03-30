@@ -491,7 +491,7 @@ def get_plot_title(
 	title += ', masking: ' if all(df.masked) else ' unmasked' if none(df.masked) else ', '
 	title += tuner_utils.multiplator(df.masked_tuning_style) if any(df.masked == 'multiple') or any(df.masked) else ''
 	title += ', ' + ('no punctuation' if all(df.strip_punct) else "with punctuation" if none(df.strip_punct) else 'multiple punctuation')
-	title += f', {tuner_utils.multiplator(df.unfreezing)} unfreezing' if df.unfreezing.unique().size > 1 else ''
+	title += f', {tuner_utils.multiplator(df.unfreezing)} unfreezing' if not all(df.unfreezing.unique() == 'none') else ''
 	if df.unfreezing.unique().size == 1 and df.unfreezing.unique()[0] == 'gradual':
 		title += f' ({tuner_utils.multiplator(df.unfreezing_epochs_per_layer)})'
 	
