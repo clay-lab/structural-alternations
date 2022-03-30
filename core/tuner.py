@@ -1731,9 +1731,9 @@ class Tuner:
 		
 		with torch.no_grad():
 			for token in weights[epoch]:
-				log.info(f'pre: {weights[epoch][token].device}')
+				log.info(f'pre weights: {weights[epoch][token].device}')
 				weights[epoch][token].to(self.device)
-				log.info(weights[epoch][token].device)
+				log.info(f'post weights: {weights[epoch][token].device}')
 				token_id = self.tokenizer.convert_tokens_to_ids(token)
 				self.word_embeddings[token_id] = weights[epoch][token]
 		
