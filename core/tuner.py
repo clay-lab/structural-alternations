@@ -313,7 +313,7 @@ class Tuner:
 			sentences = [
 				 'The local [MASK] will step in to help.',
 				 'The [MASK] will blork the [MASK].',
-				f'The {self.__format_strings_with_tokens_for_display(self.args["[subj]"][0])} will [MASK] the {self.__format_strings_with_tokens_for_display(self.args["[obj]"][0])}.',
+				f'The {self.__format_strings_with_tokens_for_display(self.args["[subj]"][0])} will {self.mask_token} the {self.__format_strings_with_tokens_for_display(self.args["[obj]"][0])}.',
 				 'The [MASK] will [MASK] the [MASK].',
 			], 
 			output_fun=log.info
