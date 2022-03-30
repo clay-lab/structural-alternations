@@ -62,8 +62,8 @@ def multieval(cfg: DictConfig) -> None:
 		# filter paths based on criteria
 		criteria = criteria.split(',')
 		criteria = [''] if criteria == ['all'] else criteria # if criteria is 'all', don't filter out anything
-		os_path_sep = r'\\\\' if os.name == 'nt' else '/' # windows bad >:(
-		criteria = [re.sub(r'\^', os_path_sep, c) for c in criteria]
+		# os_path_sep = r'\\\\' if os.name == 'nt' else '/' # windows bad >:(
+		criteria = [re.sub(r'\^', os.path.sep, c) for c in criteria]
 		checkpoint_dirs = sorted([d for d in checkpoint_dirs if all([re.search(c, d) for c in criteria])])
 		
 		return checkpoint_dirs

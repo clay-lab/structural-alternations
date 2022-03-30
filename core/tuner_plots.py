@@ -496,11 +496,11 @@ def get_plot_title(
 	title += f', lr={tuner_utils.multiplator(df.lr)}'
 	title += '\n'
 	
-	title += f'{tuner_utils.multiplator(df.unfreezing)} unfreezing' if not all([True if v == 'none' else False for v in df.unfreezing.unique()]) else ''
+	title += f'{tuner_utils.multiplator(df.unfreezing)} unfreezing' if not all(df.unfreezing.isna()) else ''
 	if df.unfreezing.unique().size == 1 and df.unfreezing.unique()[0] == 'gradual':
 		title += f' ({tuner_utils.multiplator(df.unfreezing_epochs_per_layer)})'
 	
-	if not all([True if v == 'none' else False for v in df.unfreezing.unique()]):
+	if not all(df.unfreezing.isna()):
 		title += ', '
 	
 	if 'args_group' in df.columns:

@@ -468,7 +468,7 @@ def transfer_hyperparameters_to_df(
 			'both_correct', 'both_incorrect', 'gen_correct', 'gen_incorrect', 
 			'ref_correct', 'ref_incorrect', 'ref_correct_gen_incorrect',
 			'ref_incorrect_gen_correct', 'specificity', 'specificity_se',
-			'gen_given_ref', 's1', 's2', 's1_ex', 's2_ex', 'arg_type', 'args_group',
+			'gen_given_ref', 's1', 's2', 's1_ex', 's2_ex', 'arg_type',
 			'predicted_arg', 'predicted_role',
 		] 
 		and not c.endswith('_ref') and not c.endswith('_gen')

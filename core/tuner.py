@@ -27,7 +27,7 @@ from .mixout.module import MixLinear
 from omegaconf import DictConfig, OmegaConf, open_dict, ListConfig
 from datasets import load_dataset
 from transformers import logging as lg
-from transformers import AutoModelForMaskedLM
+from transformers import AutoModelForMaskedLM, AutoTokenizer
 from sklearn.manifold import TSNE
 
 from . import tuner_plots
@@ -618,8 +618,9 @@ class Tuner:
 		
 		# we should only do the comparison if anything has been unfrozen.
 		# otherwise, it doesn't make sense since the results will be the same.
-		if eval_cfg.comparison_dataset_loc and not self.unfreezing == 'none':
+		if eval_cfg.comparison_dataset and not self.unfreezing == 'none':
 			log.info('Comparing model distributions to baseline')
+			_ = self.restore_weights(eval_cfg.epoch)
 			kl_divs = self.compare_model_performance_to_baseline(eval_cfg)
 			kl_divs = self.transfer_hyperparameters_to_df(summary, kl_divs)
 			kl_divs.to_csv(f'{file_prefix}-kl_divs.csv.gz', index=False, na_rep='NaN')
@@ -627,7 +628,7 @@ class Tuner:
 			log.info('Creating KL divergences plot')
 			tuner_plots.create_kl_divs_plot(kl_divs)
 			
-		elif eval_cfg.comparison_dataset_loc and self.unfreezing == 'none':
+		elif eval_cfg.comparison_dataset and self.unfreezing == 'none':
 			log.info('A baseline comparison dataset was provided, but the model parameters were not unfrozen! Probability distributions excluding new tokens would be identical; skipping comparison.')
 		
 		log.info('Evaluation complete')
@@ -1602,7 +1603,6 @@ class Tuner:
 		tsne_results.token			= tuner_utils.format_roberta_tokens_for_display(tsne_results.token) if self.model_name == 'roberta' \
 									  else self.__format_strings_with_tokens_for_display(tsne_results.token)
 		tsne_results.target_group 	= self.__format_strings_with_tokens_for_display(tsne_results.target_group)
-							  
 		
 		return tsne_results
 	
@@ -1681,24 +1681,28 @@ class Tuner:
 			log.info(f'Restoring model state from epoch {epoch}/{total_epochs}')
 			
 			with open(model_path, 'rb') as f:
-				self.model.load_state_dict(torch.load(f))
+				self.model.load_state_dict(torch.load(f, map_location=torch.device(self.device)))
+			
+			self.model.to(self.device)
 			
 			# set this so we reinitialize the model state if we later want to restore to epoch 0
 			# we only need to do this if we're restoring from the full model state, instead of just restoring the weights
 			self.load_full_model = True
 			
-		elif os.path.isfile(model_path) and epoch == 0 and self.restore_full_model:
+			return epoch, total_epochs
+			
+		elif os.path.isfile(model_path) and epoch == 0 and self.load_full_model:
 			# recreate the model's initial state if we are loading from 0
 			# we need to make sure that when we are restoring an unfrozen model to 0, we start at the initial state
 			# if we had restored to a later epoch and then tried to go back to an earlier one just
 			# by restoring the weights, that would still leave the rest of the model updates intact
 			self.tokenizer = tuner_utils.create_tokenizer_with_added_tokens(self.string_id, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)
 			self.model = AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs)
-			self.model.resize_token_embeddings(len(self.tokenizer))
+			self.model.resize_token_embeddings(len(self.tokenizer)).to(self.device)
 			
 			# if we try to re-load to 0, we don't need to bother reloading unless we've gone to a later epoch in the meantime
 			self.load_full_model = False
-			
+		
 		weights_path = os.path.join(self.checkpoint_dir, 'weights.pkl.gz')
 		with gzip.open(weights_path, 'rb') as f:
 			weights = pkl.load(f)
@@ -2009,7 +2013,7 @@ class Tuner:
 		
 		return odds_ratios_summary
 	
-	def compare_model_performance_to_baseline(eval_cfg: DictConfig) -> List[float]:
+	def compare_model_performance_to_baseline(self, eval_cfg: DictConfig) -> List[float]:
 		'''
 		Evaluates the model on a dataset that a pre-fine-tuning version of the model has been
 		trained on, and compares the probability distributions pre- and post-fine-tuning using
@@ -2025,17 +2029,19 @@ class Tuner:
 			returns:
 				kl_divs (pd.DataFrame)	: a dataframe with the kl divergences for each example in the dataset for the current model compared to the baseline
 		'''
-		log.info(f'Initializing Baseline Tokenizer:\t{self.cfg.model.base_class} ({self.string_id})')
-		baseline_tokenizer 			= AutoTokenizer.from_pretrained(self.string_id, use_fast=False, **self.cfg.model.tokenizer_kwargs)
-
-		log_info(f'Initializing Baseline Model:\t{self.cfg.model.base_class}   ({self.string_id})')
+		
+		log.info(f'Initializing Baseline Model:\t{self.cfg.model.base_class}   ({self.string_id})')
 		baseline_model				= AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs).to(self.device)
 		baseline_model.eval()
 		
-		dataset_file 				= os.path.join(hydra.utils.get_original_cwd(), eval_cfg.comparison_dataset_loc)
+		log.info(f'Initializing Baseline Tokenizer:\t{self.cfg.model.base_class} ({self.string_id})')
+		baseline_tokenizer 			= AutoTokenizer.from_pretrained(self.string_id, use_fast=False, **self.cfg.model.tokenizer_kwargs)
+		
+		dataset_loc 				= eval_cfg.comparison_dataset.replace(f'{hydra.utils.get_original_cwd()}{os.path.sep}', '')
+		dataset_file 				= os.path.join(hydra.utils.get_original_cwd(), dataset_loc)
 		dataset_name 				= os.path.split(dataset_file)[-1].replace('.json.gz', '')
 		
-		log_info(f'Loading dataset {dataset_name}')
+		log.info(f'Loading dataset {dataset_name}')
 		dataset 					= load_dataset('json', data_files={'baseline_comp': dataset_file})
 		dataset 					= self.__format_data_for_tokenizer(data=dataset)
 		dataset['baseline_comp'] 	= {k: [i[k] for i in dataset['baseline_comp']] for k in dataset['baseline_comp'][0]}
@@ -2060,7 +2066,7 @@ class Tuner:
 		to_include 					= torch.LongTensor([idx for idx in self.tokenizer.get_vocab().values() if not idx in to_exclude]).to(self.device)
 
 		if self.model.training:
-			log_warning('Model performance will not be compared to baseline in training mode. Model will be set to eval mode.')
+			log.warning('Model performance will not be compared to baseline in training mode. Model will be set to eval mode.')
 			self.model.eval()
 
 		kl_divs 		= []
@@ -2082,14 +2088,14 @@ class Tuner:
 				
 				t.set_postfix(kl_div_mean=f'{np.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
 
-		log_info(f'Mean KL divergence on {dataset_name}: {np.mean(kl_divs): >.2f} (\u00b1{tuner_utils.sem(kl_divs): >.2f})')
+		log.info(f'Mean KL divergence on {dataset_name}: {np.mean(kl_divs): >.2f} (\u00b1{tuner_utils.sem(kl_divs): >.2f})')
 		
-		kl_divs 				= pd.DataFrame(kl_divs, columns=['kl_div']).assign(
-									dataset_name 	= dataset_name,
-									source 			= sources,
-									text 			= texts,
-									sentence_num 	= list(range(len(kl_divs))),
-								)
+		kl_divs 					= pd.DataFrame(kl_divs, columns=['kl_div']).assign(
+										dataset_name 	= dataset_name,
+										source 			= sources,
+										text 			= texts,
+										sentence_num 	= list(range(len(kl_divs))),
+									)
 
 		return kl_divs
 	

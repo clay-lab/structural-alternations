@@ -15,7 +15,7 @@ k: 50 # get the k subword tokens with the most similar embeddings to the trained
 num_tsne_words: 500 # plot the tsne of the first num_tsne_words embeddings + the novel tokens
 
 # if provided, and the model used unfreezing, compare the model's performance to a baseline on a dataset
-comparison_dataset_loc: ''
+comparison_dataset: ''
 
 checkpoint_dir: ''
 
