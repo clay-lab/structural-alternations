@@ -1652,9 +1652,11 @@ class Tuner:
 		
 		sentences 	= self.__format_data_for_tokenizer(tuner_utils.listify(sentences))
 		inputs 		= self.tokenizer(sentences, return_tensors='pt', padding=True)
-		log.info(self.device)
-		sys.exit(1)
+		log.info(f'Model: {self.model.device}')
+		log.info(f'Inputs pre: {inputs['input_ids'].device}')
 		inputs.to(self.device)
+		log.info(f'Inputs post: {inputs['input_ids'].device}')
+		sys.exit(1)
 		
 		with torch.no_grad():
 			outputs = self.model(**inputs)
@@ -2084,7 +2086,7 @@ class Tuner:
 		kl_divs 		= []
 		with torch.no_grad(), tqdm(dataloader) as t:
 			for batch in t:
-				batch 				= {k: v.to(self.device) for k, v in batch.items()}
+				batch 				= batch.to(self.device)
 				fine_tuned_outputs 	= self.model(**batch).logits.index_select(-1, to_include)
 				fine_tuned_outputs 	= F.log_softmax(fine_tuned_outputs, dim=-1)
 				
