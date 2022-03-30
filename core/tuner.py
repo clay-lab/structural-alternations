@@ -1653,9 +1653,9 @@ class Tuner:
 		sentences 	= self.__format_data_for_tokenizer(tuner_utils.listify(sentences))
 		inputs 		= self.tokenizer(sentences, return_tensors='pt', padding=True)
 		log.info(f'Model: {self.model.device}')
-		log.info(f'Inputs pre: {inputs['input_ids'].device}')
+		log.info(f'Inputs pre: {inputs["input_ids"].device}')
 		inputs.to(self.device)
-		log.info(f'Inputs post: {inputs['input_ids'].device}')
+		log.info(f'Inputs post: {inputs["input_ids"].device}')
 		sys.exit(1)
 		
 		with torch.no_grad():
