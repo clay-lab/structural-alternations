@@ -1241,7 +1241,7 @@ class Tuner:
 					
 					# debug
 					if 'debug' in self.cfg and self.cfg.debug and self.exp_type == 'newverb':
-						self.__log_debug_predictions(epoch, total_epochs)
+						self.__log_debug_predictions(epoch, epochs)
 					
 					self.model.train()
 					
@@ -1336,7 +1336,7 @@ class Tuner:
 		
 		# debug
 		if 'debug' in self.cfg and self.cfg.debug and self.exp_type == 'newverb':
-			self.__log_debug_predictions(epoch, total_epochs)
+			self.__log_debug_predictions(epoch, epochs)
 			log.info('')
 		
 		if not self.save_full_model:
