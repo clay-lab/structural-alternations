@@ -1689,6 +1689,7 @@ class Tuner:
 			log.info(f'Restoring model state from epoch {epoch}/{total_epochs}')
 			
 			with open(model_path, 'rb') as f:
+				breakpoint()
 				self.model.load_state_dict(torch.load(f, map_location=torch.device(self.device)))
 			
 			self.model.to(self.device)
