@@ -3,6 +3,7 @@
 # Tunes a model on training data and provides functions for evaluation
 import os
 import re
+import sys
 import gzip
 import hydra
 import torch
@@ -1651,7 +1652,8 @@ class Tuner:
 		
 		sentences 	= self.__format_data_for_tokenizer(tuner_utils.listify(sentences))
 		inputs 		= self.tokenizer(sentences, return_tensors='pt', padding=True)
-		breakpoint()
+		log.info(self.device)
+		sys.exit(1)
 		inputs.to(self.device)
 		
 		with torch.no_grad():
