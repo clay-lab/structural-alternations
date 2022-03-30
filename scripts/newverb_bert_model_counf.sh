@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=salts
-#SBATCH --output=logs/salts_newverb_model_counf_%j.txt
+#SBATCH --output=joblogs/salts_newverb_model_counf_%j.txt
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --gpus=p100:1
@@ -15,7 +15,7 @@ module load miniconda
 
 source activate salts
 
-python tune.py -m \
+python tune.py \
 	model=bert \
 	tuning=newverb_transitive_ext \
 	tuning.which_args=model \
