@@ -468,17 +468,18 @@ class Tuner:
 				path = f'{os.path.sep}..{os.path.sep}'.join(os.path.split(path))
 		
 			try:
-				breakpoint()
 				if f == 'tune.log':
 					with open(path, 'r') as logfile_stream:
 						logfile = logfile_stream.read()
 					
 					self.random_seed = int(re.findall(r'Seed set to ([0-9]*)\n', logfile)[0])
+					break
 				elif f == 'weights.pkl.gz':
 					with gzip.open(path, 'rb') as weightsfile_stream:
 						weights = pkl.load(weightsfile_stream)
 			
 					self.random_seed = weights['random_seed']
+					break
 			except (IndexError, FileNotFoundError):
 				pass
 		
