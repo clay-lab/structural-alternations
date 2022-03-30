@@ -1649,10 +1649,12 @@ class Tuner:
 			sentences = f'The local {self.mask_token} will step in to help.'
 			log.info(f'No sentence was provided. Using default sentence "{sentences}"')
 		
-		sentences = self.__format_data_for_tokenizer(tuner_utils.listify(sentences))
+		sentences 	= self.__format_data_for_tokenizer(tuner_utils.listify(sentences))
+		inputs 		= self.tokenizer(sentences, return_tensors='pt', padding=True)
+		inputs.to(self.device)
 		
 		with torch.no_grad():
-			outputs = self.model(**self.tokenizer(sentences, return_tensors='pt', padding=True).to(self.device))
+			outputs = self.model(**inputs)
 		
 		logprobs 			= F.log_softmax(outputs.logits, dim=-1)
 		predicted_ids 		= torch.argmax(logprobs, dim=-1)
