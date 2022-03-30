@@ -468,6 +468,7 @@ class Tuner:
 				path = f'{os.path.sep}..{os.path.sep}'.join(os.path.split(path))
 		
 			try:
+				breakpoint()
 				if f == 'tune.log':
 					with open(path, 'r') as logfile_stream:
 						logfile = logfile_stream.read()
@@ -893,8 +894,11 @@ class Tuner:
 		
 		def save_weights(weights: Dict) -> None:
 			'''Saves dictionary of weights to disk'''
+			# always save the weights on cpu for ease of use
+			weights_cpu = deepcopy(weights)
+			weights_cpu.to('cpu')
 			with gzip.open('weights.pkl.gz', 'wb') as f:
-				pkl.dump(weights, f)
+				pkl.dump(weights_cpu, f)
 		
 		def get_tuner_inputs_labels() -> Tuple:
 			'''
@@ -1689,7 +1693,6 @@ class Tuner:
 			log.info(f'Restoring model state from epoch {epoch}/{total_epochs}')
 			
 			with open(model_path, 'rb') as f:
-				breakpoint()
 				self.model.load_state_dict(torch.load(f, map_location=torch.device(self.device)))
 			
 			self.model.to(self.device)
@@ -1705,8 +1708,8 @@ class Tuner:
 			# we need to make sure that when we are restoring an unfrozen model to 0, we start at the initial state
 			# if we had restored to a later epoch and then tried to go back to an earlier one just
 			# by restoring the weights, that would still leave the rest of the model updates intact
-			self.tokenizer = tuner_utils.create_tokenizer_with_added_tokens(self.string_id, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)
-			self.model = AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs)
+			self.tokenizer 	= tuner_utils.create_tokenizer_with_added_tokens(self.string_id, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)
+			self.model 		= AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs)
 			self.model.resize_token_embeddings(len(self.tokenizer)).to(self.device)
 			
 			# if we try to re-load to 0, we don't need to bother reloading unless we've gone to a later epoch in the meantime
@@ -1725,6 +1728,7 @@ class Tuner:
 		
 		with torch.no_grad():
 			for token in weights[epoch]:
+				weights[epoch][token].to(self.device)
 				token_id = self.tokenizer.convert_tokens_to_ids(token)
 				self.word_embeddings[token_id] = weights[epoch][token]
 		
