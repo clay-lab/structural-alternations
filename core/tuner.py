@@ -1656,7 +1656,6 @@ class Tuner:
 		log.info(f'Inputs pre: {inputs["input_ids"].device}')
 		inputs.to(self.device)
 		log.info(f'Inputs post: {inputs["input_ids"].device}')
-		sys.exit(1)
 		
 		with torch.no_grad():
 			outputs = self.model(**inputs)
