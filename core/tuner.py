@@ -772,7 +772,7 @@ class Tuner:
 		if self.device == 'cuda':
 			log.info(f'Using GPU: {torch.cuda.get_device_name(torch.cuda.current_device())}')
 		
-		self.checkpoint_dir 		= cfg_or_path if isinstance(cfg_or_path, str) else os.getcwd()
+		self.checkpoint_dir 		= os.path.join(hydra.utils.get_original_cwd(), cfg_or_path) if isinstance(cfg_or_path, str) else os.getcwd()
 		self.save_full_model 		= False
 		self.load_full_model 		= False
 		
