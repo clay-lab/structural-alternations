@@ -1304,6 +1304,38 @@ def create_odds_ratios_plots(
 			plt.close('all')
 			del fig
 
+def create_kl_divs_plot(
+	kl_divs: List[float],
+	hist_kwargs: Dict = {},
+	label_kwargs: Dict = {},
+) -> None:
+	'''
+	Create a histogram of kl divergences
+	
+		params:
+			kl_divs (pd.DataFrame)	: a dataframe containing information about kl divergences
+			hist_kwargs (dict)		: passed to sns.histplot
+			label_kwargs (dict)		: passed to ax.set_xlabel
+	'''
+	file_prefix = tuner_utils.get_file_prefix(kl_divs)
+	kl_divs 	= kl_divs.copy()
+	
+	fig, ax = plt.subplots(1)
+	fig.set_size_inches(12, 10)
+	
+	sns.histplot(kl_divs.kl_div.tolist(), ax=ax, binwidth=1, **hist_kwargs)
+	ax.set_xlabel('KL Divergence', **label_kwargs)
+	
+	metric 		= f'histogram of KL divergences compared to baseline on {tuner_utils.multiplator(kl_divs.dataset_name)} (size {len(kl_divs)})'
+	title 		= get_plot_title(df, metric)
+	
+	fig.suptitle(title)
+	fig.tight_layout()
+	
+	plt.savefig(f'{file_prefix}-kl_divs-hist.pdf')
+	plt.close()
+	del fig
+
 def graph_results(
 	summary: Dict, 
 	eval_cfg: DictConfig

@@ -147,6 +147,18 @@ def z_transform(x: np.ndarray) -> np.ndarray:
 	diffs = x - np.mean(x)
 	return diffs/np.std(x)
 
+def sem(x: Union[List,np.ndarray]) -> float:
+	'''
+	Calculate the standard error of the mean for a list of numbers
+	
+		params:
+			x (list) 		: a list of numbers for which to calculate the standard error of the mean
+		
+		returns:
+			sem_x (float)	: the standard error of the mean of x
+	'''
+	return np.std(x)/sqrt(len(x))
+
 def set_seed(seed: int) -> None:
 	'''
 	Set all random seeds
