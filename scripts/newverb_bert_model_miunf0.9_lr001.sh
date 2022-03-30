@@ -22,7 +22,7 @@ python tune.py \
 	tuning.which_args=model \
 	hyperparameters.max_epochs=100 \
 	hyperparameters.unfreezing=mixout.9 \
-	hyperparameters.lr=.001 \
+	hyperparameters.lr=.0001 \
 	hyperparameters.mask_args=true \
 	+debug=true \
 	+use_gpu=true

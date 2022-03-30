@@ -864,9 +864,7 @@ class Tuner:
 					assert param.requires_grad, f'{name} is frozen!'
 		
 		def set_mixout_layers() -> None:
-			self.save_full_model = True
-			log.warning(f'You are using mixout unfreezing, which requires saving the full model state instead of just the weights of the new tokens.')
-			log.warning('Only the initial model state and the state with the lowest mean dev loss will be retained and available for evaluation.')
+			unfreeze_all_params()
 			
 			mixout_prob = float(re.search(r'(([0-9]+)?\.[0-9]+$)', self.unfreezing)[0])
 			assert 0 < mixout_prob < 1, f'Mixout probability must be between 0 and 1, but you specified {mixout_prob}!'
@@ -876,7 +874,6 @@ class Tuner:
 				if isinstance(module, nn.Dropout):
 					setattr(self.model, name, nn.Dropout(0))
 					assert getattr(self.model, name).p == 0, f'Dropout was not disabled for {name}!'
-				
 				elif isinstance(module, nn.Linear):
 					target_state_dict 	= deepcopy(module.state_dict())
 					bias 				= True if module.bias is not None else False
