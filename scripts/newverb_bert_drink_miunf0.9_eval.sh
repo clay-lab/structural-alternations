@@ -3,6 +3,7 @@
 #SBATCH --job-name=salts
 #SBATCH --output=joblogs/salts_%j.txt
 #SBATCH --ntasks=1
+#SBATCH --mem=8G
 #SBATCH --cpus-per-task=1
 #SBATCH --gpus=p100:1
 #SBATCH --partition=gpu
@@ -21,8 +22,8 @@ source activate salts
 
 # fill in what you want after 'python'
 # note that when running on grace, use of hydra's glob resolver does not work, nor does using joblib for multithreading
-py eval.py \
+python eval.py \
 	data=syn_blork_ext \
 	comparison_dataset=datamaker/datasets/miniboki-2022-03-28_22-06-50/miniboki.json.gz \
-	checkpoint_dir=outputs/newverb_transitive_ext/bbert-amask-wpunc-miunf0.9-lr0.0001/drink_args-margs/2022-03-30_15-35-02 \
+	checkpoint_dir=outputs/newverb_transitive_ext/bbert-amask-wpunc-miunf0.9-lr0.0001/drink_args-margs/2022-03-30_16-08-23 \
 	+debug=true
