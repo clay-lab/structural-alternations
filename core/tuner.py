@@ -1640,9 +1640,9 @@ class Tuner:
 				results (dict)	 : dict with inputs sentences, predicted_sentences, and model outputs 
 								   for each sentence in sentences
 		'''
-		restore_training 	= False
+		restore_training 		= False
 		if self.model.training:
-			restore_training = True
+			restore_training 	= True
 			log.warning('Cannot predict in training mode. Setting to eval mode temporarily.')
 			self.model.eval()
 		
@@ -1651,10 +1651,9 @@ class Tuner:
 			log.info(f'No sentence was provided. Using default sentence "{sentences}"')
 		
 		sentences 	= self.__format_data_for_tokenizer(tuner_utils.listify(sentences))
-		inputs 		= self.tokenizer(sentences, return_tensors='pt', padding=True).to(self.device)
 		
 		with torch.no_grad():
-			outputs = self.model(**inputs)
+			outputs = self.model(**self.tokenizer(sentences, return_tensors='pt', padding=True).to(self.device))
 		
 		logprobs 			= F.log_softmax(outputs.logits, dim=-1)
 		predicted_ids 		= torch.argmax(logprobs, dim=-1)
@@ -1731,9 +1730,7 @@ class Tuner:
 		
 		with torch.no_grad():
 			for token in weights[epoch]:
-				log.info(f'pre weights: {weights[epoch][token].device}')
 				weights[epoch][token].to(self.device)
-				log.info(f'post weights: {weights[epoch][token].device}')
 				token_id = self.tokenizer.convert_tokens_to_ids(token)
 				self.word_embeddings[token_id] = weights[epoch][token]
 		
@@ -2083,7 +2080,7 @@ class Tuner:
 		kl_divs 		= []
 		with torch.no_grad(), tqdm(dataloader) as t:
 			for batch in t:
-				batch.to(self.device)
+				batch 				= batch.to(self.device)
 				fine_tuned_outputs 	= self.model(**batch).logits.index_select(-1, to_include)
 				fine_tuned_outputs 	= F.log_softmax(fine_tuned_outputs, dim=-1)
 				
