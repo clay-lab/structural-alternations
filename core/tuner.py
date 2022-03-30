@@ -25,7 +25,11 @@ from tqdm.contrib.logging import logging_redirect_tqdm
 from typing import *
 from .mixout.module import MixLinear
 from omegaconf import DictConfig, OmegaConf, open_dict, ListConfig
-from datasets import load_dataset
+
+from datasets import load_dataset, Dataset, DatasetDict
+from datasets.utils import logging as dataset_utils_logging
+dataset_utils_logging.set_verbosity_error()
+
 from transformers import logging as lg
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 from sklearn.manifold import TSNE
