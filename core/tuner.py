@@ -626,7 +626,7 @@ class Tuner:
 			log.info('Comparing model distributions to baseline')
 			_ = self.restore_weights(eval_cfg.epoch)
 			kl_divs = self.compare_model_performance_to_baseline(eval_cfg)
-			kl_divs = self.transfer_hyperparameters_to_df(summary, kl_divs)
+			kl_divs = tuner_utils.transfer_hyperparameters_to_df(summary, kl_divs)
 			kl_divs.to_csv(f'{file_prefix}-kl_divs.csv.gz', index=False, na_rep='NaN')
 			
 			log.info('Creating KL divergences plot')
@@ -1646,7 +1646,7 @@ class Tuner:
 			outputs = self.model(**self.tokenizer(sentences, return_tensors='pt', padding=True).to(self.device))
 		
 		logprobs 			= F.log_softmax(outputs.logits, dim=-1)
-		predicted_ids 		= torch.squeeze(torch.argmax(logprobs, dim=-1))
+		predicted_ids 		= torch.argmax(logprobs, dim=-1)
 		predicted_sentences = [self.tokenizer.decode(predicted_sentence_ids) for predicted_sentence_ids in predicted_ids]
 		
 		if output_fun is not None:
@@ -2050,18 +2050,11 @@ class Tuner:
 		dataset 					= self.__format_data_for_tokenizer(data=dataset)
 		dataset['baseline_comp'] 	= {k: [i[k] for i in dataset['baseline_comp']] for k in dataset['baseline_comp'][0]}
 		dataset 					= DatasetDict({'baseline_comp': Dataset.from_dict(dataset['baseline_comp'])})
-
-		# save the formatted dataset for later inspection
-		filename 					= f'{dataset_name}-{self.string_id}-{"wpunc" if not self.strip_punct else "npunc"}'
-		with gzip.open(f'{filename}.pkl.gz', 'wb') as out_file:
-			pkl.dump(dataset, out_file)
-
 		dataset['baseline_comp'] 	= dataset['baseline_comp'].map(lambda ex: baseline_tokenizer(ex['text']), batched=True)
 		sources 					= dataset['baseline_comp']['source']
 		texts						= dataset['baseline_comp']['text']
 		dataset 					= dataset.remove_columns(['source', 'text'])
 		dataset.set_format(type='torch')
-
 		dataloader 					= torch.utils.data.DataLoader(dataset['baseline_comp'], batch_size=1)
 
 		# to compare performance to baseline, we are interested in what has changed with regards to the original tokens
@@ -2072,7 +2065,7 @@ class Tuner:
 		if self.model.training:
 			log.warning('Model performance will not be compared to baseline in training mode. Model will be set to eval mode.')
 			self.model.eval()
-
+		
 		kl_divs 		= []
 		with torch.no_grad(), tqdm(dataloader) as t:
 			for batch in t:
@@ -2087,12 +2080,11 @@ class Tuner:
 				# it also uses 'mean' as the default way of summarizing kl div for a distribution 
 				# instead of sum (as in the standard definition)
 				kl_div 				= F.kl_div(input=fine_tuned_outputs, target=baseline_outputs, reduction='sum').item()
-				
 				kl_divs.append(kl_div)
 				
 				t.set_postfix(kl_div_mean=f'{np.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
 
-		log.info(f'Mean KL divergence on {dataset_name}: {np.mean(kl_divs): >.2f} (\u00b1{tuner_utils.sem(kl_divs): >.2f})')
+		log.info(f'Mean KL divergence on {dataset_name}: {np.mean(kl_divs):.2f} (\u00b1{tuner_utils.sem(kl_divs):.2f})')
 		
 		kl_divs 					= pd.DataFrame(kl_divs, columns=['kl_div']).assign(
 										dataset_name 	= dataset_name,
