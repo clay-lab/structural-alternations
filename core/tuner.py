@@ -1625,7 +1625,7 @@ class Tuner:
 		sentences = self.__format_data_for_tokenizer(tuner_utils.listify(sentences))
 		
 		with torch.no_grad():
-			outputs = self.model(**self.tokenizer(sentences, return_tensors='pt', padding=True))
+			outputs = self.model(**self.tokenizer(sentences, return_tensors='pt', padding=True).to(self.device))
 		
 		logprobs 			= F.log_softmax(outputs.logits, dim=-1)
 		predicted_ids 		= torch.squeeze(torch.argmax(logprobs, dim=-1))
