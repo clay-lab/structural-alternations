@@ -1628,7 +1628,7 @@ class Tuner:
 			outputs = self.model(**self.tokenizer(sentences, return_tensors='pt', padding=True))
 		
 		logprobs 			= F.log_softmax(outputs.logits, dim=-1)
-		predicted_ids 		= tuner_utils.listify(torch.squeeze(torch.argmax(logprobs, dim=-1)))
+		predicted_ids 		= torch.squeeze(torch.argmax(logprobs, dim=-1))
 		predicted_sentences = [self.tokenizer.decode(predicted_sentence_ids) for predicted_sentence_ids in predicted_ids]
 		
 		if output_fun is not None:
