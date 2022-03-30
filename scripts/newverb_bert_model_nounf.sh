@@ -3,6 +3,7 @@
 #SBATCH --job-name=salts
 #SBATCH --output=joblogs/salts_newverb_model_nounf_%j.txt
 #SBATCH --ntasks=1
+#SBATCH --mem=8G
 #SBATCH --cpus-per-task=1
 #SBATCH --gpus=p100:1
 #SBATCH --partition=gpu
