@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --gpus=p100:1
 #SBATCH --partition=gpu
-#SBATCH --time=02:00:00
+#SBATCH --time=00:30:00
 #SBATCH --mail-type=ALL
 
 module load CUDA
