@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=salts
-#SBATCH --output=logs/salts_%j.txt
+#SBATCH --output=joblogs/salts_%j.txt
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --gpus=p100:1
