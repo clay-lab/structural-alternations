@@ -643,13 +643,14 @@ class Tuner:
 	
 	# START Class Functions
 	
-	def __init__(self, cfg_or_path: Union[DictConfig,str]) -> 'Tuner':
+	def __init__(self, cfg_or_path: Union[DictConfig,str], use_gpu: bool = None) -> 'Tuner':
 		'''
 		Creates a tuner object, loads argument/dev sets, and sets class attributes
 		
 			params:
-				cfg_or_path (DictConfig or str): if dictconfig, a dictconfig specifying a Tuner configuration
-												 if str, a directory created by a Tuner when tune() is run
+				cfg_or_path (DictConfig or str)	: if dictconfig, a dictconfig specifying a Tuner configuration
+												  if str, a directory created by a Tuner when tune() is run
+				use_gpu	(bool)					: used during evaluation. useful when loading a model trained on cpu on gpu, or vice versa
 			
 			returns:
 				the created Tuner object
@@ -758,16 +759,22 @@ class Tuner:
 				self.masked_dev_argument_data 		= self.__get_formatted_datasets(mask_args=True, masking_style='always', datasets=self.cfg.dev)
 				self.args_group 					= self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.model_name
 			
-		self.cfg 				= OmegaConf.load(os.path.join(cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
+		self.cfg 					= OmegaConf.load(os.path.join(cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
+		
+		# allowing an optional argument to specify the gpu when calling Tuner helps us when evaluating with/without a gpu regardless of the tuning setup
+		if use_gpu is not None:
+			with open_dict(self.cfg):
+				self.cfg.use_gpu 	= use_gpu
 		
 		# too little memory to use gpus locally, but we can specify to use them on the cluster with +use_gpu
-		self.device 			= 'cuda' if torch.cuda.is_available() and 'use_gpu' in self.cfg and self.cfg.use_gpu else 'cpu'
+		self.device					= 'cuda' if torch.cuda.is_available() and 'use_gpu' in self.cfg and self.cfg.use_gpu else 'cpu'
+		
 		if self.device == 'cuda':
 			log.info(f'Using GPU: {torch.cuda.get_device_name(torch.cuda.current_device())}')
 		
-		self.checkpoint_dir 	= cfg_or_path if isinstance(cfg_or_path, str) else os.getcwd()
-		self.save_full_model 	= False
-		self.load_full_model 	= False
+		self.checkpoint_dir 		= cfg_or_path if isinstance(cfg_or_path, str) else os.getcwd()
+		self.save_full_model 		= False
+		self.load_full_model 		= False
 		
 		load_dev_sets()
 		load_args()

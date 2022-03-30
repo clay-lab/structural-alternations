@@ -15,7 +15,7 @@ OmegaConf.register_new_resolver('name', lambda data: data.split('.')[0])
 @hydra.main(config_path='conf', config_name='eval')
 def eval(cfg: DictConfig) -> None:
 	print(OmegaConf.to_yaml(cfg, resolve=True))
-	tuner = Tuner(cfg.checkpoint_dir)
+	tuner = Tuner(cfg.checkpoint_dir, use_gpu=cfg.use_gpu if 'use_gpu' in cfg else None)
 	tuner.evaluate(cfg)
 
 if __name__ == '__main__':
