@@ -759,7 +759,7 @@ class Tuner:
 				self.masked_dev_argument_data 		= self.__get_formatted_datasets(mask_args=True, masking_style='always', datasets=self.cfg.dev)
 				self.args_group 					= self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.model_name
 			
-		self.cfg 					= OmegaConf.load(os.path.join(cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
+		self.cfg 					= OmegaConf.load(os.path.join(hydra.utils.get_original_cwd(), cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
 		
 		# allowing an optional argument to specify the gpu when calling Tuner helps us when evaluating with/without a gpu regardless of the tuning setup
 		if use_gpu is not None:
