@@ -1321,17 +1321,21 @@ def create_kl_divs_plot(
 			hist_kwargs (dict)		: passed to sns.histplot
 			label_kwargs (dict)		: passed to ax.set_xlabel
 	'''
+	def get_kl_divs_plot_title(df: pd.DataFrame):
+		metric 		= f'histogram of KL divergences compared to baseline on {tuner_utils.multiplator(kl_divs.dataset_name)} (size {len(kl_divs)})'
+		title 		= get_plot_title(df, metric)
+		title 		+= f'\nmean: {np.mean(df.kl_div):.2f} (\u00b1{tuner_utils.sem(df.kl_div):.2f})'
+	
 	file_prefix = tuner_utils.get_file_prefix(kl_divs)
 	kl_divs 	= kl_divs.copy()
 	
-	fig, ax = plt.subplots(1)
+	fig, ax 	= plt.subplots(1)
 	fig.set_size_inches(12, 10)
 	
 	sns.histplot(kl_divs.kl_div.tolist(), ax=ax, binwidth=1, **hist_kwargs)
 	ax.set_xlabel('KL Divergence', **label_kwargs)
 	
-	metric 		= f'histogram of KL divergences compared to baseline on {tuner_utils.multiplator(kl_divs.dataset_name)} (size {len(kl_divs)})'
-	title 		= get_plot_title(df, metric)
+	title 		= get_kl_divs_plot_title(kl_divs)
 	
 	fig.suptitle(title)
 	fig.tight_layout()

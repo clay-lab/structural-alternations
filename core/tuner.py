@@ -618,7 +618,7 @@ class Tuner:
 		
 		# we should only do the comparison if anything has been unfrozen.
 		# otherwise, it doesn't make sense since the results will be the same.
-		if eval_cfg.compare_to_baseline.do_comparison and not self.unfreezing == 'none':
+		if eval_cfg.comparison_dataset_loc and not self.unfreezing == 'none':
 			log.info('Comparing model distributions to baseline')
 			kl_divs = self.compare_model_performance_to_baseline(eval_cfg)
 			kl_divs = self.transfer_hyperparameters_to_df(summary, kl_divs)
@@ -627,8 +627,8 @@ class Tuner:
 			log.info('Creating KL divergences plot')
 			tuner_plots.create_kl_divs_plot(kl_divs)
 			
-		elif eval_cfg.compare_to_baseline.do_comparison and self.unfreezing == 'none':
-			log.info('do_comparison was set to true, but the model was not unfrozen! Distributions excluding new tokens would be identical; skipping comparison.')
+		elif eval_cfg.comparison_dataset_loc and self.unfreezing == 'none':
+			log.info('A baseline comparison dataset was provided, but the model parameters were not unfrozen! Probability distributions excluding new tokens would be identical; skipping comparison.')
 		
 		log.info('Evaluation complete')
 		print('')
@@ -2023,65 +2023,74 @@ class Tuner:
 				dataset_name (str)		: the name of the dataset file (without the extension) containing the dataset tokenized for use with the model
 			
 			returns:
-				kl_divs (pd.DataFrame)	: a list of the kl divergences for each example in the dataset for the current model compared to the baseline
+				kl_divs (pd.DataFrame)	: a dataframe with the kl divergences for each example in the dataset for the current model compared to the baseline
 		'''
-		if self.model.training:
-			log.warning('Model performance will not be compared to baseline in training mode. Model will be set to eval mode.')
+		log.info(f'Initializing Baseline Tokenizer:\t{self.cfg.model.base_class} ({self.string_id})')
+		baseline_tokenizer 			= AutoTokenizer.from_pretrained(self.string_id, use_fast=False, **self.cfg.model.tokenizer_kwargs)
+
+		log_info(f'Initializing Baseline Model:\t{self.cfg.model.base_class}   ({self.string_id})')
+		baseline_model				= AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs).to(self.device)
+		baseline_model.eval()
 		
-		self.model.eval()
+		dataset_file 				= os.path.join(hydra.utils.get_original_cwd(), eval_cfg.comparison_dataset_loc)
+		dataset_name 				= os.path.split(dataset_file)[-1].replace('.json.gz', '')
 		
-		# collect variables		
-		baseline_loc 		= eval_cfg.compare_to_baseline.baseline_loc
-		dataset_name 		= eval_cfg.compare_to_baseline.dataset_name
-		dataset_file 		= os.path.join(hydra.utils.get_original_cwd(), baseline_loc, dataset_name + '.pkl.gz')
-		saved_logits_files	= sorted([os.path.join(hydra.utils.get_original_cwd(), baseline_loc, f) for f in os.listdir(os.path.join(hydra.utils.get_original_cwd(), baseline_loc)) if f.endswith('.pkl.gz') and 'logits' in f])
-		
+		log_info(f'Loading dataset {dataset_name}')
+		dataset 					= load_dataset('json', data_files={'baseline_comp': dataset_file})
+		dataset 					= self.__format_data_for_tokenizer(data=dataset)
+		dataset['baseline_comp'] 	= {k: [i[k] for i in dataset['baseline_comp']] for k in dataset['baseline_comp'][0]}
+		dataset 					= DatasetDict({'baseline_comp': Dataset.from_dict(dataset['baseline_comp'])})
+
+		# save the formatted dataset for later inspection
+		filename 					= f'{dataset_name}-{self.string_id}-{"wpunc" if not self.strip_punct else "npunc"}'
+		with gzip.open(f'{filename}.pkl.gz', 'wb') as out_file:
+			pkl.dump(dataset, out_file)
+
+		dataset['baseline_comp'] 	= dataset['baseline_comp'].map(lambda ex: baseline_tokenizer(ex['text']), batched=True)
+		sources 					= dataset['baseline_comp']['source']
+		texts						= dataset['baseline_comp']['text']
+		dataset 					= dataset.remove_columns(['source', 'text'])
+		dataset.set_format(type='torch')
+
+		dataloader 					= torch.utils.data.DataLoader(dataset['baseline_comp'], batch_size=1)
+
 		# to compare performance to baseline, we are interested in what has changed with regards to the original tokens
 		# so we set this up to exclude predictions about the new tokens from the comparison
-		to_exclude 			= set(self.tokenizer.convert_tokens_to_ids(tokens_to_mask))
-		to_include 			= torch.LongTensor([idx for idx in self.tokenizer.get_vocab().values() if not idx in to_exclude])
-		
-		# load the dataset and split into batches of 1
-		with gzip.open(dataset_file, 'rb') as in_file:
-			dataset 		= pkl.load(in_file)
-		
-		dataloader 			= torch.utils.data.DataLoader(dataset, batch_size=1)
-		
-		file_count 			= 0
-		kl_divs 			= []
-		
-		with torch.no_grad(), trange(len(dataloader)) as t, logging_redirect_tqdm():
-			for n, batch in enumerate(dataloader):
-				# load the next file if we need and set the appropriate index
-				if n % examples_per_file == 0:
-					log_info(f'Loading saved logits file {file_count+1}/{len(saved_logits_files)}')
-					with gzip.open(saved_logits_files[file_count], 'rb') as in_file:
-						saved_logits = pkl.load(in_file)
-					
-					n_index 		= 0
-					file_count 		+= 1
-				
+		to_exclude 					= set(self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask))
+		to_include 					= torch.LongTensor([idx for idx in self.tokenizer.get_vocab().values() if not idx in to_exclude]).to(self.device)
+
+		if self.model.training:
+			log_warning('Model performance will not be compared to baseline in training mode. Model will be set to eval mode.')
+			self.model.eval()
+
+		kl_divs 		= []
+		with torch.no_grad(), tqdm(dataloader) as t:
+			for batch in t:
+				batch 				= {k: v.to(self.device) for k, v in batch.items()}
 				fine_tuned_outputs 	= self.model(**batch).logits.index_select(-1, to_include)
 				fine_tuned_outputs 	= F.log_softmax(fine_tuned_outputs, dim=-1)
-				baseline_outputs	= F.softmax(saved_logits[n_index], dim=-1) # torch.nn.function.kl_div expects inputs but NOT targets in log space
+				
+				baseline_outputs	= F.softmax(baseline_model(**batch).logits, dim=-1) # torch.nn.function.kl_div expects inputs but NOT targets in log space
 				
 				# KL(P || Q); torch.nn.functional.kl_div does a counterintuitive thing where it wants Q first, rather than P
 				# it also expects the input to have been converted to log space, but not the target
 				# it also uses 'mean' as the default way of summarizing kl div for a distribution 
 				# instead of sum (as in the standard definition)
 				kl_div 				= F.kl_div(input=fine_tuned_outputs, target=baseline_outputs, reduction='sum').item()
+				
 				kl_divs.append(kl_div)
 				
-				t.set_postfix(file=f'{file_count}/{len(saved_logits_files)}', kl_div_mean=f'{np.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
-				n_index 			+= 1
-				_ = t.update() # using "_ = " prevents printing 'True' every update
+				t.set_postfix(kl_div_mean=f'{np.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
+
+		log_info(f'Mean KL divergence on {dataset_name}: {np.mean(kl_divs): >.2f} (\u00b1{tuner_utils.sem(kl_divs): >.2f})')
 		
-		log.info(f'Mean KL divergence on {dataset_name}: {np.mean(kl_divs):.2f} (\u00b1{tuner_utils.sem(kl_divs):.2f})')
-		
-		kl_divs 				= pd.DataFrame(kl_divs, columns=['kl_div'])
-		kl_divs['dataset_name'] = dataset_name
-		kl_divs['baseline_loc'] = baseline_loc
-		
+		kl_divs 				= pd.DataFrame(kl_divs, columns=['kl_div']).assign(
+									dataset_name 	= dataset_name,
+									source 			= sources,
+									text 			= texts,
+									sentence_num 	= list(range(len(kl_divs))),
+								)
+
 		return kl_divs
 	
 	# wrapper/helper functions for plots/accuracies (implemented in tuner_utils and tuner_plots)
