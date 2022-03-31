@@ -2158,7 +2158,7 @@ class Tuner:
 		kl_divs 		= []
 		with torch.no_grad(), tqdm(dataloader) as t:
 			for batch in t:
-				batch 				= batch.to(self.device)
+				batch 				= {k: v.to(self.device) for k, v in batch.items()}
 				fine_tuned_outputs 	= self.model(**batch).logits.index_select(-1, to_include)
 				fine_tuned_outputs 	= F.log_softmax(fine_tuned_outputs, dim=-1)
 				
