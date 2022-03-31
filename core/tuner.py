@@ -2148,8 +2148,6 @@ class Tuner:
 		
 		comparison_n_exs 				= min(eval_cfg.comparison_n_exs, len(dataset['baseline_comp']))
 		original_texts 					= self.__format_data_for_tokenizer(data=dataset['baseline_comp']['text'])
-		original_texts 					= dict(enumerate(original_texts))
-		original_texts 					= {v: k for k, v in original_texts.items()}
 		
 		if comparison_n_exs < len(dataset['baseline_comp']):
 			log.info(f'Drawing {eval_cfg.comparison_n_exs} random examples')
@@ -2199,11 +2197,12 @@ class Tuner:
 		
 		log.info(f'Mean KL divergence on {dataset_name}: {np.mean(kl_divs):.2f} (\u00b1{tuner_utils.sem(kl_divs):.2f})')
 		
+		breakpoint()
 		kl_divs 					= pd.DataFrame(kl_divs, columns=['kl_div']).assign(
 										dataset_name 	= dataset_name,
 										source 			= sources[:len(kl_divs)],
 										text 			= texts[:len(kl_divs)],
-										sentence_num 	= lambda df: [original_texts[s] for s in df.text],
+										sentence_num 	= lambda df: [original_texts.index(s) for s in df.text],
 									)
 
 		return kl_divs
