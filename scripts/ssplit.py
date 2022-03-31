@@ -35,7 +35,7 @@ def split_scripts(cfg: DictConfig) -> None:
 	header += '\n'
 	
 	for i, sweep in enumerate(all_sweeps):
-		file = header + cfg.command + ' ' + sweep
+		file = header + cfg.command + ' ' + path + ' ' + sweep
 		filename = sweep.split(' \\\n\t')
 		filename = '-'.join([f.split('=')[0] + '=' + os.path.split(f.split('=')[-1])[-1] for f in filename]) + '.sh'
 		filename = filename.replace(os.path.sep, '-')

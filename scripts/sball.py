@@ -13,7 +13,7 @@ def sbatch_all(s):
 	for script in scripts:
 		globbed.append(glob(script))
 	
-	globbed = [script for l in globbed for script in l]
+	globbed = [script for l in globbed for script in l if script.endswith('.sh')]
 	
 	for script in globbed:
 		subprocess.Popen(['sbatch', script])

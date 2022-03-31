@@ -110,15 +110,15 @@ hydra:
     hydra: []
     task:
     - name=miunf_fix
-    - s.jobname=miunf_fix
     - s.time=00:10:00
-    - sweep='tune.py model=bert hyperparameters.lr=.0001 hyperparameters.max_epochs=100
-      tuning=newverb_transitive_ext tuning.which_args=model,drink hyperparameters.unfreezing=mixout.9'
+    - sweep='tune.py model=bert tuning=newverb_transitive_ext tuning.which_args=model,drink
+      hyperparameters.unfreezing=mixout.9 hyperparameters.max_epochs=100 +debug=true
+      +use_gpu=true'
   job:
     name: ssplit
-    override_dirname: name=miunf_fix,s.jobname=miunf_fix,s.time=00:10:00,sweep='tune.py
-      model=bert hyperparameters.lr=.0001 hyperparameters.max_epochs=100 tuning=newverb_transitive_ext
-      tuning.which_args=model,drink hyperparameters.unfreezing=mixout.9'
+    override_dirname: name=miunf_fix,s.time=00:10:00,sweep='tune.py model=bert tuning=newverb_transitive_ext
+      tuning.which_args=model,drink hyperparameters.unfreezing=mixout.9 hyperparameters.max_epochs=100
+      +debug=true +use_gpu=true'
     id: ???
     num: ???
     config_name: ssplit
