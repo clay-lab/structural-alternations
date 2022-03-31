@@ -866,6 +866,7 @@ class Tuner:
 		load_dev_sets()
 		load_args()
 		setattrs()
+		self.set_model_freezing()
 	
 	def __repr__(self) -> str:
 		'''Return a string that eval() can be called on to create an identical Tuner object'''
@@ -894,148 +895,6 @@ class Tuner:
 		Fine-tunes the model on the provided tuning data. 
 		Saves updated weights/model state, metrics, and plots of metrics to disk.
 		'''
-		def unfreeze_all_params() -> None:
-			'''Unfreezes all model parameters, ensures full model is saved to disk'''
-			self.save_full_model = True
-			log.warning(f'You are using {self.unfreezing} unfreezing, which requires saving the full model state instead of just the weights of the new tokens.')
-			log.warning('Only the initial model state and the state with the lowest mean dev loss will be retained and available for evaluation.')
-			
-			for name, param in self.model.named_parameters():
-				param.requires_grad = True
-				assert param.requires_grad, f'{name} is frozen!'
-		
-		def freeze_to_layer(n: int = None) -> None:
-			'''
-			Freezes model layers up to n
-			
-				params:
-					n (int): if positive, the highest layer to freeze
-							 if negative, freezes to model.num_hidden_layers - n
-			'''
-			if n is None:
-				n = self.model.config.num_hidden_layers
-			
-			if abs(n) > self.model.config.num_hidden_layers:
-				log.warning(f'You are trying to freeze to hidden layer {n}, but the model only has {self.model.config.num_hidden_layers}. Freezing all hidden layers.')
-				n = self.model.config.num_hidden_layers
-			
-			# allow specifying from the end of the model
-			n = self.model.config.num_hidden_layers + n if n < 0 else n
-			
-			layers_to_freeze = [f'layer.{x}.' for x in range(n)]
-			layers_to_unfreeze = [f'layer.{x}.' for x in range(n,self.model.config.num_hidden_layers)]
-			
-			if any(layers_to_unfreeze):
-				if not self.save_full_model:
-					self.save_full_model = True
-					log.warning(f'You are using {"layer " + str(self.unfreezing) if isinstance(self.unfreezing,int) else self.unfreezing} unfreezing, which requires saving the full model state instead of just the weights of the new tokens.')
-					log.warning('Only the initial model state and the state with the lowest mean dev loss will be retained and available for evaluation.')
-			
-			# this is so we only print the log message if we are actually changing parameters
-			if (
-				any(	param.requires_grad for name, param in self.model.named_parameters() if any(layer in name for layer in layers_to_freeze  )) or
-				any(not param.requires_grad for name, param in self.model.named_parameters() if any(layer in name for layer in layers_to_unfreeze))
-			): 
-				if len(layers_to_freeze) == self.model.config.num_hidden_layers:
-					log.info('Freezing model parameters')
-				else:	
-					log.info(f'Freezing model parameters to layer {n}')
-			
-			for name, param in self.model.named_parameters():
-				# always freeze everything except the word embeddings and the layers, and also freeze the specified layers
-				if ('word_embeddings' not in name and 'layer' not in name) or ('layer' in name and any(layer in name for layer in layers_to_freeze)):
-					param.requires_grad = False
-					assert not param.requires_grad, f'{name} is not frozen!'
-				else:
-					param.requires_grad = True
-					assert param.requires_grad, f'{name} is frozen!'
-		
-		def set_mixout_layers() -> None:
-			'''
-			Replaces all Linear layers in self.model with MixLinear layers. 
-			Sets all dropout layers to have probability 0.
-			'''
-			unfreeze_all_params()
-			
-			mixout_prob = float(re.search(r'(([0-9]+)?\.[0-9]+$)', self.unfreezing)[0])
-			assert 0 < mixout_prob < 1, f'Mixout probability must be between 0 and 1, but you specified {mixout_prob}!'
-			
-			def replace_layer_for_mixout(module: nn.Module) -> nn.Module:
-				'''
-				Replaces a Linear layer with a Mixout Layer.
-				Replaces a Dropout layer with a 0 probability Dropout Layer.
-				Returns other Layers/objects unchanged.
-				
-					params:
-						module (nn.Module)	: the module to (potentially) replace
-					
-					returns:
-						module (nn.Module)	: a module for use with Mixout, based on the passed module
-				'''
-				if isinstance(module, nn.Dropout):
-					return nn.Dropout(0)
-				elif isinstance(module, nn.Linear):
-					target_state_dict   = deepcopy(module.state_dict())
-					bias				= True if module.bias is not None else False
-					new_module		  	= MixLinear(
-											module.in_features,
-											module.out_features,
-											bias,
-											target_state_dict['weight'],
-											mixout_prob
-										)
-					new_module.load_state_dict(target_state_dict)
-					return new_module
-				else:
-					return module
-			
-			def recursive_setattr(obj: 'any', attr: str, value: 'any') -> None:
-				'''
-				Recursively sets attributes of child objects
-				
-					params:
-						obj (any)	: an object to set an attribute for
-						attr (str)	: a name of a (nested) attribute, where levels are indicated by a period.
-									  For instance, 'bert.encoder.layer.0.attention.self.query'
-									  In this case, bert has a child object, 'encoder', which has an attribute
-									  'layer', and so on. Regular setattr won't work for these cases
-									  because bert does not have any attribute 'encoder.layer' itself
-						value (any)	: the value to set attr to
-				'''
-				attr = attr.split('.', 1)
-				if len(attr) == 1:
-					setattr(obj, attr[0], value)
-				else:
-					recursive_setattr(getattr(obj, attr[0]), attr[1], value)
-			
-			# use tuple to avoid ordereddict warning
-			for name, module in tuple(self.model.named_modules()):
-				if name:
-					recursive_setattr(self.model, name, replace_layer_for_mixout(module))
-			
-			"""
-			# use deepcopy to avoid error with changing modules while looping through them
-			for name, module in tuple(self.model.named_modules()):
-				if isinstance(module, nn.Dropout):
-					setattr(self.model, name, nn.Dropout(0))
-					assert getattr(self.model, name).p == 0, f'Dropout was not disabled for {name}!'
-				elif isinstance(module, nn.Linear):
-					target_state_dict 	= deepcopy(module.state_dict())
-					bias 				= True if module.bias is not None else False
-					new_module 			= MixLinear(
-											module.in_features, 
-											module.out_features, 
-											bias,
-											target_state_dict['weight'],
-											mixout_prob
-										)
-					new_module.load_state_dict(target_state_dict)
-					setattr(self.model, name, new_module)
-					
-					assert isinstance(getattr(self.model, name), MixLinear), f'{name} was not correctly changed to use mixout!'
-			"""
-			log.info(f'Linear layers have been replaced with MixLinear, mixout_prob={mixout_prob}. Dropout layers have been disabled.')
-		
 		def save_weights(weights: Dict) -> None:
 			'''Saves dictionary of weights to disk'''
 			# always save the weights on cpu for ease of use
@@ -1342,17 +1201,6 @@ class Tuner:
 					seed=self.random_seed,
 				)
 		
-		def set_model_freezing() -> None:
-			'''Freezes or unfreezes the model in accordance with the config settings'''
-			if self.unfreezing == 'complete':
-				unfreeze_all_params()
-			elif 'mixout' in str(self.unfreezing):
-				set_mixout_layers()
-			elif not isinstance(self.unfreezing, int):
-				freeze_to_layer(self.model.config.num_hidden_layers)
-			elif isinstance(self.unfreezing, int):
-				freeze_to_layer(self.unfreezing)
-		
 		initialize_added_token_weights()
 		
 		# store weights pre-training so we can inspect the initial status later
@@ -1374,8 +1222,6 @@ class Tuner:
 		
 		# store the old embeddings so we can verify that only the new ones get updated
 		self.old_embeddings = self.word_embeddings.clone()
-		
-		set_model_freezing()
 		
 		inputs, labels, dev_inputs, dev_labels, masked_inputs, masked_dev_inputs = get_tuner_inputs_labels()
 		
@@ -1533,6 +1379,137 @@ class Tuner:
 		log.info('Creating fine-tuning metrics plots')
 		self.create_metrics_plots(metrics)
 	
+	def set_model_freezing(self) -> None:
+		'''Freezes or unfreezes the model in accordance with the config settings'''
+		if self.unfreezing == 'complete':
+			self.unfreeze_all_params()
+		elif 'mixout' in str(self.unfreezing):
+			self.set_mixout_layers()
+		elif not isinstance(self.unfreezing, int):
+			self.freeze_to_layer(self.model.config.num_hidden_layers)
+		elif isinstance(self.unfreezing, int):
+			self.freeze_to_layer(self.unfreezing)
+	
+	def unfreeze_all_params(self) -> None:
+		'''Unfreezes all model parameters, ensures full model is saved to disk'''
+		self.save_full_model = True
+		log.warning(f'You are using {self.unfreezing} unfreezing, which requires saving the full model state instead of just the weights of the new tokens.')
+		log.warning('Only the initial model state and the state with the lowest mean dev loss are retained and available for evaluation.')
+		
+		for name, param in self.model.named_parameters():
+			param.requires_grad = True
+			assert param.requires_grad, f'{name} is frozen!'
+	
+	def set_mixout_layers(self) -> None:
+		'''
+		Replaces all Linear layers in self.model with MixLinear layers. 
+		Sets all dropout layers to have probability 0.
+		'''
+		self.unfreeze_all_params()
+		
+		mixout_prob = float(re.search(r'(([0-9]+)?\.[0-9]+$)', self.unfreezing)[0])
+		assert 0 < mixout_prob < 1, f'Mixout probability must be between 0 and 1, but you specified {mixout_prob}!'
+		
+		def replace_layer_for_mixout(module: nn.Module) -> nn.Module:
+			'''
+			Replaces a Linear layer with a Mixout Layer.
+			Replaces a Dropout layer with a 0 probability Dropout Layer.
+			Returns other Layers/objects unchanged.
+			
+				params:
+					module (nn.Module)	: the module to (potentially) replace
+				
+				returns:
+					module (nn.Module)	: a module for use with Mixout, based on the passed module
+			'''
+			if isinstance(module, nn.Dropout):
+				return nn.Dropout(0)
+			elif isinstance(module, nn.Linear):
+				target_state_dict   = deepcopy(module.state_dict())
+				bias				= True if module.bias is not None else False
+				new_module		  	= MixLinear(
+										module.in_features,
+										module.out_features,
+										bias,
+										target_state_dict['weight'],
+										mixout_prob
+									)
+				new_module.load_state_dict(target_state_dict)
+				return new_module
+			else:
+				return module
+		
+		def recursive_setattr(obj: 'any', attr: str, value: 'any') -> None:
+			'''
+			Recursively sets attributes of child objects
+			
+				params:
+					obj (any)	: an object to set an attribute for
+					attr (str)	: a name of a (nested) attribute, where levels are indicated by a period.
+								  For instance, 'bert.encoder.layer.0.attention.self.query'
+								  In this case, bert has a child object, 'encoder', which has an attribute
+								  'layer', and so on. Regular setattr won't work for these cases
+								  because bert does not have any attribute 'encoder.layer' itself
+					value (any)	: the value to set attr to
+			'''
+			attr = attr.split('.', 1)
+			if len(attr) == 1:
+				setattr(obj, attr[0], value)
+			else:
+				recursive_setattr(getattr(obj, attr[0]), attr[1], value)
+		
+		# use tuple to avoid ordereddict warning
+		for name, module in tuple(self.model.named_modules()):
+			if name:
+				recursive_setattr(self.model, name, replace_layer_for_mixout(module))
+		
+		log.info(f'Linear layers have been replaced with MixLinear, mixout_prob={mixout_prob}. Dropout layers have been disabled.')
+	
+	def freeze_to_layer(self, n: int = None) -> None:
+		'''
+		Freezes model layers up to n
+		
+			params:
+				n (int): if positive, the highest layer to freeze
+						 if negative, freezes to model.num_hidden_layers - n
+		'''
+		if n is None:
+			n = self.model.config.num_hidden_layers
+		
+		if abs(n) > self.model.config.num_hidden_layers:
+			log.warning(f'You are trying to freeze to hidden layer {n}, but the model only has {self.model.config.num_hidden_layers}. Freezing all hidden layers.')
+			n = self.model.config.num_hidden_layers
+		
+		# allow specifying from the end of the model
+		n = self.model.config.num_hidden_layers + n if n < 0 else n
+		
+		layers_to_freeze = [f'layer.{x}.' for x in range(n)]
+		layers_to_unfreeze = [f'layer.{x}.' for x in range(n,self.model.config.num_hidden_layers)]
+		
+		if any(layers_to_unfreeze):
+			if not self.save_full_model:
+				self.save_full_model = True
+				log.warning(f'You are using {"layer " + str(self.unfreezing) if isinstance(self.unfreezing,int) else self.unfreezing} unfreezing, which requires saving the full model state instead of just the weights of the new tokens.')
+				log.warning('Only the initial model state and the state with the lowest mean dev loss are retained and available for evaluation.')
+		
+		# this is so we only print the log message if we are actually changing parameters
+		if (
+			any(	param.requires_grad for name, param in self.model.named_parameters() if any(layer in name for layer in layers_to_freeze  )) or
+			any(not param.requires_grad for name, param in self.model.named_parameters() if any(layer in name for layer in layers_to_unfreeze))
+		): 
+			if len(layers_to_freeze) == self.model.config.num_hidden_layers:
+				log.info('Freezing model parameters')
+			else:	
+				log.info(f'Freezing model parameters to layer {n}')
+		
+		for name, param in self.model.named_parameters():
+			# always freeze everything except the word embeddings and the layers, and also freeze the specified layers
+			if ('word_embeddings' not in name and 'layer' not in name) or ('layer' in name and any(layer in name for layer in layers_to_freeze)):
+				param.requires_grad = False
+				assert not param.requires_grad, f'{name} is not frozen!'
+			else:
+				param.requires_grad = True
+				assert param.requires_grad, f'{name} is frozen!'
 	
 	# word embedding analysis
 	def get_cossims(
