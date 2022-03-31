@@ -201,7 +201,7 @@ class Tuner:
 				# we're manually replacing the arguments with mask tokens and adding them back later to speed up evaluation
 				# this is how we're evaluating anyway, so it doesn't make sense to ask the model for its thoughts on the same
 				# input 36 different times.
-				to_mask 				= self.mask_token
+				to_mask 				= self.mask_token # + self.tokens_to_mask
 				gf_regex 				= re.sub(r'(\[|\])', '\\ \\1', '|'.join([arg for arg in args])).replace(' ', '')
 				masked_arg_indices 		= {dataset: [re.findall(rf'({gf_regex})', sentence) for sentence in datasets[dataset]['data']] for dataset in datasets}
 				for dataset in datasets:
@@ -217,7 +217,8 @@ class Tuner:
 		if ((not np.isnan(self.mask_args) and self.mask_args) or mask_args) and masking_style == 'eval':
 			for dataset in formatted_data:
 				gf_masked_token_indices = []
-				for token_indices_map, gfs in zip(formatted_data[dataset]['masked_token_indices'], masked_arg_indices[dataset]):
+				masked_token_indices = [{k: v for k, v in masked_token_indices.items() if self.mask_token in k} for masked_token_indices in formatted_data[dataset]['masked_token_indices']]
+				for token_indices_map, gfs in zip(masked_token_indices, masked_arg_indices[dataset]):
 					gf_masked_token_indices.append({gfs[i]: token_indices_map[key] for i, key in enumerate(token_indices_map)})
 				
 				formatted_data[dataset]['masked_token_indices'] = gf_masked_token_indices
