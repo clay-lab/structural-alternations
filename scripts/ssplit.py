@@ -20,10 +20,7 @@ def split_scripts(cfg: DictConfig) -> None:
 	all_sweeps = list(itertools.product(*all_sweeps))
 	all_sweeps = [' \\\n\t'.join(sweep) for sweep in all_sweeps]
 	
-	header = (
-		'#!/bin/bash'
-		''
-	)
+	header = '#!/bin/bash\n\n'
 	
 	for slurm_option in cfg.s:
 		header += f'#SBATCH --{slurm_option}={cfg.s[slurm_option]}\n'

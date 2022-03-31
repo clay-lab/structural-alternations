@@ -16,8 +16,8 @@ s:
 sweep: ''
 
 header: ['module load CUDA', 'module load cuDNN', 'module load miniconda', 'source activate salts']
-command: python eval.py
+command: python
 
 hydra:
   run:
-    dir: ./${s.name}
+    dir: scripts/${name}
