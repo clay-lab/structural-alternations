@@ -65,6 +65,7 @@ def create_save_dataset(cfg: DictConfig) -> None:
 		datasets[dataset] = previous_prob
 	
 	n_chosen = 0
+	exs 	 = [] # so we don't repeat sentences
 	with tqdm(total=n) as pbar, gzip.open(f'{name}.json.gz', 'wt') as out_file:
 		while n_chosen < n:
 			r = random()
@@ -88,12 +89,16 @@ def create_save_dataset(cfg: DictConfig) -> None:
 			ex = [s.strip() for s in ex if s.strip()]
 			
 			# if there's anything left, save an example
-			if ex:
+			if ex and not all(ex in exs for ex in ex):
 				# get a random example from the retained sentences
 				r = int(round(random() * (len(ex)-1),0))
-				ex = ex[r]
+				e = ex[r]
+				while e in exs:
+					r = int(round(random() * (len(ex)-1),0))
+					e = ex[r]
 				
-				ex = {'source': current_dataset, 'text': ex}
+				exs.append(e)				
+				ex = {'source': current_dataset, 'text': e}
 				
 				# save it to the file
 				json.dump(ex, out_file, ensure_ascii=False)
