@@ -619,10 +619,13 @@ class Tuner:
 		self.model.eval()
 		
 		data 				= self.load_eval_file(eval_cfg)
-		summary 			= self.get_odds_ratios_summary(epoch=eval_cfg.epoch, eval_cfg=eval_cfg, data=data)
 		
 		if eval_cfg.data.exp_type == 'newverb':
 			summary_zero 	= self.get_odds_ratios_summary(epoch=0, eval_cfg=eval_cfg, data=data)
+		
+		summary				= self.get_odds_ratios_summary(epoch=eval_cfg.epoch, eval_cfg=eval_cfg, data=data)
+		
+		if eval_cfg.data.exp_type == 'newverb':
 			summary 		= pd.concat([summary_zero, summary], ignore_index=True)
 			summary 		= add_odds_ratios_differences_to_summary(summary)
 		
@@ -699,18 +702,19 @@ class Tuner:
 		
 		# we should only do the comparison if anything has been unfrozen.
 		# otherwise, it doesn't make sense since the results will be the same.
-		if eval_cfg.comparison_dataset and not self.unfreezing == 'none':
+		if eval_cfg.comparison_dataset:
+			if isinstance(self.unfreezing,float) and np.isnan(self.unfreezing):
+				log.warning('A baseline comparison dataset was provided, but the model parameters were not unfrozen!')
+				log.warning('Because probability distributions will be identical when comparing without new tokens, this is probably not what you meant to do.')
+				log.warning('Proceeding anyway, but maybe change your command next time?')
+			
 			log.info('Comparing model distributions to baseline')
-			_ = self.restore_weights(eval_cfg.epoch)
 			kl_divs = self.compare_model_performance_to_baseline(eval_cfg)
 			kl_divs = tuner_utils.transfer_hyperparameters_to_df(summary, kl_divs)
 			kl_divs.to_csv(f'{file_prefix}-kl_divs.csv.gz', index=False, na_rep='NaN')
 			
 			log.info('Creating KL divergences plot')
-			tuner_plots.create_kl_divs_plot(kl_divs)
-			
-		elif eval_cfg.comparison_dataset and self.unfreezing == 'none':
-			log.info('A baseline comparison dataset was provided, but the model parameters were not unfrozen! Probability distributions excluding new tokens would be identical; skipping comparison.')
+			tuner_plots.create_kl_divs_plot(kl_divs)	
 		
 		log.info('Evaluation complete')
 		print('')
