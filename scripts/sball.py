@@ -6,9 +6,9 @@ def sbatch_all(s: str) -> None:
 	'''
 	Submit all scripts matching glob expressions as sbatch jobs
 	'''
-	breakpoint()
 	scripts = s.split()
 	
+	# this isn't really necessary on bash, but just in case
 	globbed = []
 	for script in scripts:
 		globbed.append(glob(script))
