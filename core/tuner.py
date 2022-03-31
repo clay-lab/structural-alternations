@@ -2197,7 +2197,6 @@ class Tuner:
 		
 		log.info(f'Mean KL divergence on {dataset_name}: {np.mean(kl_divs):.2f} (\u00b1{tuner_utils.sem(kl_divs):.2f})')
 		
-		breakpoint()
 		kl_divs 					= pd.DataFrame(kl_divs, columns=['kl_div']).assign(
 										dataset_name 	= dataset_name,
 										source 			= sources[:len(kl_divs)],
