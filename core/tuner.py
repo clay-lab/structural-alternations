@@ -1433,7 +1433,7 @@ class Tuner:
 										bias,
 										target_state_dict['weight'],
 										mixout_prob
-									)
+									).to(self.device)
 				new_module.load_state_dict(target_state_dict)
 				return new_module
 			else:
