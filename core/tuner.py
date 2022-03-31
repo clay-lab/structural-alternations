@@ -951,13 +951,71 @@ class Tuner:
 					assert param.requires_grad, f'{name} is frozen!'
 		
 		def set_mixout_layers() -> None:
+			'''
+			Replaces all Linear layers in self.model with MixLinear layers. 
+			Sets all dropout layers to have probability 0.
+			'''
 			unfreeze_all_params()
 			
 			mixout_prob = float(re.search(r'(([0-9]+)?\.[0-9]+$)', self.unfreezing)[0])
 			assert 0 < mixout_prob < 1, f'Mixout probability must be between 0 and 1, but you specified {mixout_prob}!'
 			
+			def replace_layer_for_mixout(module: nn.Module) -> nn.Module:
+				'''
+				Replaces a Linear layer with a Mixout Layer.
+				Replaces a Dropout layer with a 0 probability Dropout Layer.
+				Returns other Layers/objects unchanged.
+				
+					params:
+						module (nn.Module)	: the module to (potentially) replace
+					
+					returns:
+						module (nn.Module)	: a module for use with Mixout, based on the passed module
+				'''
+				if isinstance(module, nn.Dropout):
+					return nn.Dropout(0)
+				elif isinstance(module, nn.Linear):
+					target_state_dict   = deepcopy(module.state_dict())
+					bias				= True if module.bias is not None else False
+					new_module		  	= MixLinear(
+											module.in_features,
+											module.out_features,
+											bias,
+											target_state_dict['weight'],
+											mixout_prob
+										)
+					new_module.load_state_dict(target_state_dict)
+					return new_module
+				else:
+					return module
+			
+			def recursive_setattr(obj: 'any', attr: str, value: 'any') -> None:
+				'''
+				Recursively sets attributes of child objects
+				
+					params:
+						obj (any)	: an object to set an attribute for
+						attr (str)	: a name of a (nested) attribute, where levels are indicated by a period.
+									  For instance, 'bert.encoder.layer.0.attention.self.query'
+									  In this case, bert has a child object, 'encoder', which has an attribute
+									  'layer', and so on. Regular setattr won't work for these cases
+									  because bert does not have any attribute 'encoder.layer' itself
+						value (any)	: the value to set attr to
+				'''
+				attr = attr.split('.', 1)
+				if len(attr) == 1:
+					setattr(obj, attr[0], value)
+				else:
+					recursive_setattr(getattr(obj, attr[0]), attr[1], value)
+			
+			# use tuple to avoid ordereddict warning
+			for name, module in tuple(self.model.named_modules()):
+				if name:
+					recursive_setattr(self.model, name, replace_layer_for_mixout(module))
+			
+			"""
 			# use deepcopy to avoid error with changing modules while looping through them
-			for name, module in deepcopy(tuple(self.model.named_modules())):
+			for name, module in tuple(self.model.named_modules()):
 				if isinstance(module, nn.Dropout):
 					setattr(self.model, name, nn.Dropout(0))
 					assert getattr(self.model, name).p == 0, f'Dropout was not disabled for {name}!'
@@ -975,7 +1033,7 @@ class Tuner:
 					setattr(self.model, name, new_module)
 					
 					assert isinstance(getattr(self.model, name), MixLinear), f'{name} was not correctly changed to use mixout!'
-			
+			"""
 			log.info(f'Linear layers have been replaced with MixLinear, mixout_prob={mixout_prob}. Dropout layers have been disabled.')
 		
 		def save_weights(weights: Dict) -> None:
