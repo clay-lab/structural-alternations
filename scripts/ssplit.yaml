@@ -4,8 +4,8 @@ defaults:
 name: salts
 
 s:
-  job-name: salts
-  output: joblogs/${s.job-name}_%j.txt
+  jobname: salts
+  output: joblogs/${s.jobname}_%j.txt
   ntasks: 1
   cpus-per-task: 1
   mem: 8G

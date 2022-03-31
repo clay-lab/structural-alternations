@@ -24,7 +24,8 @@ def split_scripts(cfg: DictConfig) -> None:
 	header = '#!/bin/bash\n\n'
 	
 	for slurm_option in cfg.s:
-		header += f'#SBATCH --{slurm_option}={cfg.s[slurm_option]}\n'
+		# we can't have dashes in hydra config options
+		header += f'#SBATCH --{"job-name" if slurm_option == "jobname" else slurm_option}={cfg.s[slurm_option]}\n'
 	
 	header += '\n'
 	
