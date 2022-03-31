@@ -897,10 +897,8 @@ class Tuner:
 		def save_weights(weights: Dict) -> None:
 			'''Saves dictionary of weights to disk'''
 			# always save the weights on cpu for ease of use
-			weights_cpu = deepcopy(weights)
-			weights_cpu.to('cpu')
 			with gzip.open('weights.pkl.gz', 'wb') as f:
-				pkl.dump(weights_cpu, f)
+				pkl.dump({k: v.to('cpu') if isinstance(v, torch.Tensor) else v for k,v in weights.items()}, f)
 		
 		def get_tuner_inputs_labels() -> Tuple:
 			'''

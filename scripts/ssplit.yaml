@@ -1,0 +1,23 @@
+defaults:
+  - _self_
+
+name: salts
+
+s:
+  job-name: salts
+  output: joblogs/${s.job-name}_%j.txt
+  ntasks: 1
+  cpus-per-task: 1
+  gpus: p100:1
+  partition: gpu
+  time: 01:00:00
+  mail-type: ALL
+
+sweep: ''
+
+header: ['module load CUDA', 'module load cuDNN', 'module load miniconda', 'source activate salts']
+command: python eval.py
+
+hydra:
+  run:
+    dir: ./${s.name}

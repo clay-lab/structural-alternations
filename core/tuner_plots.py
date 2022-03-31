@@ -730,27 +730,35 @@ def create_metrics_plots(
 				sns.lineplot(data=dev_sets_df[dev_sets_df.metric == metric], x='epoch', y='value', ax=ax, color=palette[-1], ci=68)
 				ax.lines[-1].set_linestyle(':')
 			
-			dont_plot_sep_like_metrics = [m for m in dont_plot_separately if m in get_like_metrics(metric, ignore_strs=ignore_for_ylims, all_metrics=metrics.metric.unique())]
-			dont_plot_sep_like_metrics = [m for m in dont_plot_sep_like_metrics if re.sub(r'\[(.*)\].*', '[\\1]', metric) in m]
-			
-			if any(dont_plot_sep_like_metrics):
-				# this occurs when we're doing a newverb exp and we want to plot the individual tokens in addition to the overall mean
-				tokens_df = df[df.metric.isin(dont_plot_sep_like_metrics)][plot_cols]
+			# set the ylimits for comparisons
+			like_metrics = get_like_metrics(metric, ignore_strs=ignore_for_ylims, all_metrics=metrics.metric.unique())
+			if like_metrics:
+				_, ymargin = ax.margins()
+				yllim, yulim = metrics[metrics.metric.isin(like_metrics + [metric])].value.min(), metrics[metrics.metric.isin(like_metrics + [metric])].value.max()
+				yllim, yulim = yllim - ymargin * (yulim - yllim), yulim + ymargin * (yulim - yllim)
+				ax.set_ylim((yllim, yulim))
 				
-				if not tokens_df.empty:
-					tokens_df['token'] = [re.sub(r'^([^\s]+).*', '\\1', m) for m in tokens_df.metric]
+				dont_plot_sep_like_metrics = [m for m in dont_plot_separately if m in like_metrics]
+				dont_plot_sep_like_metrics = [m for m in dont_plot_sep_like_metrics if re.sub(r'\[(.*)\].*', '[\\1]', metric) in m]
+				
+				if any(dont_plot_sep_like_metrics):
+					# this occurs when we're doing a newverb exp and we want to plot the individual tokens in addition to the overall mean
+					tokens_df = df[df.metric.isin(dont_plot_sep_like_metrics)][plot_cols]
 					
-					v_adjust = (ax.get_ylim()[1] - ax.get_ylim()[0])/100
-					common_kwargs.update(dict(linewidth=.5, legend=False, alpha=.3))
-					text_kwargs = dict(size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15, alpha=.3)
-					
-					for (token, dataset), token_dataset_df in tokens_df.groupby(['token', 'dataset']):
-						token_dataset_df = token_dataset_df[~token_dataset_df.value.isnull()].reset_index(drop=True)
-						sns.lineplot(data=token_dataset_df, **common_kwargs)
+					if not tokens_df.empty:
+						tokens_df['token'] = [re.sub(r'^([^\s]+).*', '\\1', m) for m in tokens_df.metric]
 						
-						x_text_pos = floor(token_dataset_df.epoch.max() * .8)
-						y_text_pos = token_dataset_df[token_dataset_df.epoch == x_text_pos].value - v_adjust
-						ax.text(x_text_pos, y_text_pos, token, **text_kwargs)
+						v_adjust = (ax.get_ylim()[1] - ax.get_ylim()[0])/100
+						common_kwargs.update(dict(linewidth=.5, legend=False, alpha=.3))
+						text_kwargs = dict(size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15, alpha=.3)
+						
+						for (token, dataset), token_dataset_df in tokens_df.groupby(['token', 'dataset']):
+							token_dataset_df = token_dataset_df[~token_dataset_df.value.isnull()].reset_index(drop=True)
+							sns.lineplot(data=token_dataset_df, **common_kwargs)
+							
+							x_text_pos = floor(token_dataset_df.epoch.max() * .8)
+							y_text_pos = token_dataset_df[token_dataset_df.epoch == x_text_pos].value - v_adjust
+							ax.text(x_text_pos, y_text_pos, token, **text_kwargs)
 			
 			ax.set_ylabel(metric)
 			
