@@ -201,7 +201,7 @@ class Tuner:
 				# we're manually replacing the arguments with mask tokens and adding them back later to speed up evaluation
 				# this is how we're evaluating anyway, so it doesn't make sense to ask the model for its thoughts on the same
 				# input 36 different times.
-				to_mask 				= self.mask_token # + self.tokens_to_mask
+				to_mask 				= self.mask_token # + self.tokens_to_mask. not masking the new verb is more like the eval context, so the metrics are more useful
 				gf_regex 				= re.sub(r'(\[|\])', '\\ \\1', '|'.join([arg for arg in args])).replace(' ', '')
 				masked_arg_indices 		= {dataset: [re.findall(rf'({gf_regex})', sentence) for sentence in datasets[dataset]['data']] for dataset in datasets}
 				for dataset in datasets:
