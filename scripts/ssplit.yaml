@@ -8,6 +8,7 @@ s:
   output: joblogs/${s.job-name}_%j.txt
   ntasks: 1
   cpus-per-task: 1
+  mem: 8G
   gpus: p100:1
   partition: gpu
   time: 01:00:00
