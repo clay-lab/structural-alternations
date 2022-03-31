@@ -178,6 +178,7 @@ class Tuner:
 		if datasets is None:
 			datasets = {self.tuning: {'data': OmegaConf.to_container(self.cfg.tuning.data)}}
 		
+		breakpoint()
 		if (not np.isnan(self.mask_args) and self.mask_args) or mask_args:
 			args 	=  tuner_utils.flatten(list(self.args.values()))
 			to_mask += self.tokenizer.convert_tokens_to_ids(args)
@@ -1027,16 +1028,16 @@ class Tuner:
 			
 			metrics.append({**metrics_dict, 'metric': 'remaining patience', 'value': patience_counters[dataset_name]})
 			
-			train_results = self.__collect_results(outputs=outputs, masked_token_indices=self.masked_tuning_data['masked_token_indices'])
-			epoch_metrics = get_mean_epoch_metrics(results=train_results)
+			results 		= self.__collect_results(outputs=outputs, masked_token_indices=self.masked_tuning_data['masked_token_indices'])
+			epoch_metrics 	= get_mean_epoch_metrics(results=results)
 			
 			if self.exp_type == 'newverb' and masked_argument_inputs is not None:
 				newverb_outputs 		= self.model(**masked_argument_inputs)
 				newverb_results 		= self.__collect_results(
-					outputs=newverb_outputs, 
-					masked_token_indices=self.masked_argument_data['masked_token_indices'], 
-					eval_groups=self.args
-				)
+											outputs=newverb_outputs, 
+											masked_token_indices=self.masked_argument_data['masked_token_indices'], 
+											eval_groups=self.args
+										)
 				newverb_epoch_metrics 	= get_mean_epoch_metrics(results=newverb_results, eval_groups=self.args)
 				epoch_metrics 			= {metric: {**epoch_metrics.get(metric, {}), **newverb_epoch_metrics.get(metric, {})} for metric in set(epoch_metrics.keys()).union(set(newverb_epoch_metrics.keys()))}
 			
@@ -1779,7 +1780,7 @@ class Tuner:
 			
 			# we're manually replacing the arguments with mask tokens and adding them back later to speed up evaluation
 			# this is how we're evaluating anyway, so it doesn't make sense to ask the model for its thoughts on the same
-			# input 6 different times.
+			# input 36 different times.
 			gf_regex 				= re.sub(r'(\[|\])', '\\ \\1', '|'.join([arg for arg in args])).replace(' ', '')
 			masked_arg_indices 		= [re.findall(rf'({gf_regex})', sentence) for sentences in transposed_sentences for sentence in sentences]
 			
@@ -1832,7 +1833,7 @@ class Tuner:
 		):
 			raise ValueError('The number of sentences and inputs does not match!')
 		
-		# safely unflatten the dict (if we have only a single sentence type as in the PTB experiments)
+		# safely flatten the dict (if we have only a single sentence type as in the PTB experiments)
 		types_sentences = tuner_utils.unlistify(types_sentences)
 		
 		return types_sentences
