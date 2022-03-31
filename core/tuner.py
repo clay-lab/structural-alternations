@@ -362,7 +362,10 @@ class Tuner:
 			returns:
 				df (pd.DataFrame): the dataframe with hyperparameters added in columns
 		'''
-		exclude = ['mask_token', 'mask_token_id', 'unk_token_id', 'save_full_model', 'checkpoint_dir', 'load_full_model', 'device']
+		exclude = [
+			'mask_token', 'mask_token_id', 'unk_token_id', 
+			'save_full_model', 'checkpoint_dir', 'load_full_model', 'device'
+		]
 		
 		included_vars = [var for var in vars(self) if not var in exclude]
 		included_vars = [var for var in included_vars if type(vars(self)[var]) in (str,int,float,bool,np.nan)]
@@ -2124,55 +2127,71 @@ class Tuner:
 		'''
 		
 		log.info(f'Initializing Baseline Model:\t{self.cfg.model.base_class}   ({self.string_id})')
-		baseline_model				= AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs).to(self.device)
+		baseline_model					= AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs).to(self.device)
 		baseline_model.eval()
 		
 		log.info(f'Initializing Baseline Tokenizer:\t{self.cfg.model.base_class} ({self.string_id})')
-		baseline_tokenizer 			= AutoTokenizer.from_pretrained(self.string_id, use_fast=False, **self.cfg.model.tokenizer_kwargs)
+		baseline_tokenizer 				= AutoTokenizer.from_pretrained(self.string_id, use_fast=False, **self.cfg.model.tokenizer_kwargs)
 		
-		dataset_loc 				= eval_cfg.comparison_dataset.replace(f'{hydra.utils.get_original_cwd()}{os.path.sep}', '')
-		dataset_file 				= os.path.join(hydra.utils.get_original_cwd(), dataset_loc)
-		dataset_name 				= os.path.split(dataset_file)[-1].replace('.json.gz', '')
+		dataset_loc 					= eval_cfg.comparison_dataset.replace(f'{hydra.utils.get_original_cwd()}{os.path.sep}', '')
+		dataset_file 					= os.path.join(hydra.utils.get_original_cwd(), dataset_loc)
+		dataset_name 					= os.path.split(dataset_file)[-1].replace('.json.gz', '')
 		
 		log.info(f'Loading dataset {dataset_name}')
-		dataset 					= load_dataset('json', data_files={'baseline_comp': dataset_file})
-		dataset 					= self.__format_data_for_tokenizer(data=dataset)
-		dataset['baseline_comp'] 	= {k: [i[k] for i in dataset['baseline_comp']] for k in dataset['baseline_comp'][0]}
-		dataset 					= DatasetDict({'baseline_comp': Dataset.from_dict(dataset['baseline_comp'])})
-		dataset['baseline_comp'] 	= dataset['baseline_comp'].map(lambda ex: baseline_tokenizer(ex['text']), batched=True)
-		sources 					= dataset['baseline_comp']['source']
-		texts						= dataset['baseline_comp']['text']
-		dataset 					= dataset.remove_columns(['source', 'text'])
+		dataset 						= load_dataset('json', data_files={'baseline_comp': dataset_file})
+		
+		if not eval_cfg.comparison_n_exs:
+			# use the full dataset if we haven't said not to
+			eval_cfg.comparison_n_exs 	= len(dataset['baseline_comp'])
+		
+		comparison_n_exs 				= min(eval_cfg.comparison_n_exs, len(dataset['baseline_comp']))
+		
+		if comparison_n_exs < len(dataset['baseline_comp']):
+			log.info(f'Drawing {eval_cfg.comparison_n_exs} random examples')
+			dataset['baseline_comp'] 	= dataset['baseline_comp'].shuffle()[:comparison_n_exs]
+			# we need to do this because the later stuff expect this to be a list of dicts
+			dataset['baseline_comp']	= [dict(zip(dataset['baseline_comp'], t)) for t in zip(*dataset['baseline_comp'].values())]
+		
+		dataset 						= self._Tuner__format_data_for_tokenizer(data=dataset)
+		dataset['baseline_comp'] 		= {k: [i[k] for i in dataset['baseline_comp']] for k in dataset['baseline_comp'][0]}
+		dataset 						= DatasetDict({'baseline_comp': Dataset.from_dict(dataset['baseline_comp'])})
+		dataset['baseline_comp'] 		= dataset['baseline_comp'].map(lambda ex: baseline_tokenizer(ex['text']), batched=True)
+		sources 						= dataset['baseline_comp']['source']
+		texts							= dataset['baseline_comp']['text']
+		dataset 						= dataset.remove_columns(['source', 'text'])
 		dataset.set_format(type='torch')
-		dataloader 					= torch.utils.data.DataLoader(dataset['baseline_comp'], batch_size=1)
-
+		dataloader 						= torch.utils.data.DataLoader(dataset['baseline_comp'], batch_size=1)
+		
 		# to compare performance to baseline, we are interested in what has changed with regards to the original tokens
 		# so we set this up to exclude predictions about the new tokens from the comparison
-		to_exclude 					= set(self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask))
-		to_include 					= torch.LongTensor([idx for idx in self.tokenizer.get_vocab().values() if not idx in to_exclude]).to(self.device)
-
+		to_exclude 						= set(self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask))
+		to_include 						= torch.LongTensor([idx for idx in self.tokenizer.get_vocab().values() if not idx in to_exclude]).to(self.device)
+		
 		if self.model.training:
 			log.warning('Model performance will not be compared to baseline in training mode. Model will be set to eval mode.')
 			self.model.eval()
 		
 		kl_divs 		= []
 		with torch.no_grad(), tqdm(dataloader) as t:
-			for batch in t:
-				batch 				= {k: v.to(self.device) for k, v in batch.items()}
-				fine_tuned_outputs 	= self.model(**batch).logits.index_select(-1, to_include)
-				fine_tuned_outputs 	= F.log_softmax(fine_tuned_outputs, dim=-1)
-				
-				baseline_outputs	= F.softmax(baseline_model(**batch).logits, dim=-1) # torch.nn.function.kl_div expects inputs but NOT targets in log space
-				
-				# KL(P || Q); torch.nn.functional.kl_div does a counterintuitive thing where it wants Q first, rather than P
-				# it also expects the input to have been converted to log space, but not the target
-				# it also uses 'mean' as the default way of summarizing kl div for a distribution 
-				# instead of sum (as in the standard definition)
-				kl_div 				= F.kl_div(input=fine_tuned_outputs, target=baseline_outputs, reduction='sum').item()
-				kl_divs.append(kl_div)
-				
-				t.set_postfix(kl_div_mean=f'{np.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
-
+			try:
+				for batch in t:
+					batch 				= {k: v.to(self.device) for k, v in batch.items()}
+					fine_tuned_outputs 	= self.model(**batch).logits.index_select(-1, to_include)
+					fine_tuned_outputs 	= F.log_softmax(fine_tuned_outputs, dim=-1)
+					
+					baseline_outputs	= F.softmax(baseline_model(**batch).logits, dim=-1) # torch.nn.function.kl_div expects inputs but NOT targets in log space
+					
+					# KL(P || Q); torch.nn.functional.kl_div does a counterintuitive thing where it wants Q first, rather than P
+					# it also expects the input to have been converted to log space, but not the target
+					# it also uses 'mean' as the default way of summarizing kl div for a distribution 
+					# instead of sum (as in the standard definition)
+					kl_div 				= F.kl_div(input=fine_tuned_outputs, target=baseline_outputs, reduction='sum').item()
+					kl_divs.append(kl_div)
+					
+					t.set_postfix(kl_div_mean=f'{np.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
+			except KeyboardInterrupt:
+				log.warning('Baseline comparison halted manually')
+		
 		log.info(f'Mean KL divergence on {dataset_name}: {np.mean(kl_divs):.2f} (\u00b1{tuner_utils.sem(kl_divs):.2f})')
 		
 		kl_divs 					= pd.DataFrame(kl_divs, columns=['kl_div']).assign(
