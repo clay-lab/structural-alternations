@@ -16,7 +16,7 @@ def sbatch_all(s):
 	globbed = [script for l in globbed for script in l]
 	
 	for script in globbed:
-		subprocess.run(['sbatch', script])
+		subprocess.Popen(['sbatch', script])
 
 if __name__ == '__main__':
 	

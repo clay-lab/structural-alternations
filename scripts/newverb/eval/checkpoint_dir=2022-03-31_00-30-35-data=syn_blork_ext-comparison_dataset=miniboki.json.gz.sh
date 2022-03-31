@@ -17,4 +17,4 @@ source activate salts
 
 python eval.py checkpoint_dir=outputs/newverb_transitive_ext/bbert-amask-wpunc-miunf0.9-lr0.0001/bert_args-margs/2022-03-31_00-30-35 \
 	data=syn_blork_ext \
-	comparison_dataset=datamaker/datasets/miniboki-2022-03-28_22-06-50/miniboki.json.gz
+	comparison_dataset=datamaker/datasets/miniboki-2022-03-31_10-42-40/miniboki.json.gz
