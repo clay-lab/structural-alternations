@@ -1345,6 +1345,9 @@ def create_kl_divs_plot(
 	sns.histplot(kl_divs.kl_div.tolist(), ax=ax, **hist_kwargs)
 	ax.set_xlabel('KL Divergence', **label_kwargs)
 	
+	# sometimes we have very small values, and we want to show that directly
+	plt.ticklabel_format(style='plain')
+	
 	title 		= get_kl_divs_plot_title(kl_divs)
 	
 	fig.suptitle(title)
