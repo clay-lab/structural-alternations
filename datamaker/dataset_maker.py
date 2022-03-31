@@ -89,15 +89,15 @@ def create_save_dataset(cfg: DictConfig) -> None:
 			ex = [s.strip() for s in ex if s.strip()]
 			
 			# if there's anything left, save an example
-			if ex and not all(ex in exs for ex in ex):
+			if ex and not all(ex.lower() in exs for ex in ex):
 				# get a random example from the retained sentences
 				r = int(round(random() * (len(ex)-1),0))
 				e = ex[r]
-				while e in exs:
+				while e.lower() in exs:
 					r = int(round(random() * (len(ex)-1),0))
 					e = ex[r]
 				
-				exs.append(e)				
+				exs.append(e.lower())				
 				ex = {'source': current_dataset, 'text': e}
 				
 				# save it to the file

@@ -2158,7 +2158,7 @@ class Tuner:
 			dataset['baseline_comp']	= [dict(zip(dataset['baseline_comp'], t)) for t in zip(*dataset['baseline_comp'].values())]
 		
 		dataset 						= self._Tuner__format_data_for_tokenizer(data=dataset)
-		dataset['baseline_comp'] 		= {k: [i[k] for i in dataset['baseline_comp']] for k in dataset['baseline_comp'][0]}
+		dataset['basfieline_comp'] 		= {k: [i[k] for i in dataset['baseline_comp']] for k in dataset['baseline_comp'][0]}
 		dataset 						= DatasetDict({'baseline_comp': Dataset.from_dict(dataset['baseline_comp'])})
 		dataset['baseline_comp'] 		= dataset['baseline_comp'].map(lambda ex: baseline_tokenizer(ex['text']), batched=True)
 		sources 						= dataset['baseline_comp']['source']
