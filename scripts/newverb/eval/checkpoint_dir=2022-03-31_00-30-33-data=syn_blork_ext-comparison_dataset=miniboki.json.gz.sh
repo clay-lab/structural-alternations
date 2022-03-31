@@ -15,6 +15,6 @@ module load cuDNN
 module load miniconda
 source activate salts
 
-python checkpoint_dir=outputs/newverb_transitive_ext/bbert-amask-wpunc-counf-lr0.0001/bert_args-margs/2022-03-31_00-30-33 \
+python eval.py checkpoint_dir=outputs/newverb_transitive_ext/bbert-amask-wpunc-counf-lr0.0001/bert_args-margs/2022-03-31_00-30-33 \
 	data=syn_blork_ext \
 	comparison_dataset=datamaker/datasets/miniboki-2022-03-28_22-06-50/miniboki.json.gz

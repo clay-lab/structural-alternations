@@ -2,7 +2,7 @@ import sys
 from glob import glob
 import subprocess
 
-def sbatch_all(s: str) -> None:
+def sbatch_all(s):
 	'''
 	Submit all scripts matching glob expressions as sbatch jobs
 	'''
