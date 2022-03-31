@@ -159,6 +159,77 @@ class Tuner:
 		self, 
 		mask_args: bool = False, 
 		masking_style: str = None, 
+		datasets: Union[Dict, DictConfig] = None,
+	) -> Dict:
+		'''
+		Returns a dictionary with formatted inputs, labels, and mask_token_indices (if they exist) for datasets
+		
+			params:
+				mask_args (bool)		: whether to mask arguments (only used in newverb experiments)
+				masking_style (str)		: 'always' to mask all tokens in [self.tokens_to_mask] (+ arguments if mask_args)
+									  	  'none' to return unmasked data
+									  	  'eval' is equivalent to 'always' for newarg experiments. for new verb experiments, it produces a dataset where each unique masked sentence is used only once
+									  	  this speeds up eval since it means we don't need to run the model on identical sentences repeatedl
+				datasets (Dict-like)	: which datasets to generated formatted data for
+			
+			returns:
+				formatted_data (dict)	: a dict with, for each dataset, sentences, inputs, (+ masked_token_indices if masking_style != 'none')
+		'''
+		to_mask = self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask)
+		
+		if datasets is None:
+			if self.exp_type != 'newverb' or masking_style != 'eval':
+				datasets = {self.tuning: {'data': OmegaConf.to_container(self.cfg.tuning.data)}}
+			else:
+				datasets = {self.tuning: {'data': OmegaConf.to_container(self.original_verb_tuning_data)}}
+		
+		# this is so we don't overwrite the original datasets as we do this
+		datasets = deepcopy(datasets)
+		
+		# we need to convert everything to primitive types to feed them to the tokenizer
+		if isinstance(datasets, DictConfig):
+			datasets = OmegaConf.to_container(datasets)
+		
+		if (not np.isnan(self.mask_args) and self.mask_args) or mask_args:
+			if masking_style != 'eval':
+				args 	=  tuner_utils.flatten(list(self.args.values()))
+				to_mask += self.tokenizer.convert_tokens_to_ids(args)
+				assert none(token_id == self.mask_token_id for token_id in to_mask), 'The selected arguments were not tokenized correctly!'
+			else:
+				args 					= self.__format_strings_with_tokens_for_display(self.args)
+				
+				# we're manually replacing the arguments with mask tokens and adding them back later to speed up evaluation
+				# this is how we're evaluating anyway, so it doesn't make sense to ask the model for its thoughts on the same
+				# input 36 different times.
+				to_mask 				= self.mask_token
+				gf_regex 				= re.sub(r'(\[|\])', '\\ \\1', '|'.join([arg for arg in args])).replace(' ', '')
+				masked_arg_indices 		= {dataset: [re.findall(rf'({gf_regex})', sentence) for sentence in datasets[dataset]['data']] for dataset in datasets}
+				for dataset in datasets:
+					for j, _ in enumerate(datasets[dataset]['data']):
+						for gf in args:
+							datasets[dataset]['data'][j] = datasets[dataset]['data'][j].replace(gf, self.mask_token)
+		
+		formatted_data = {}
+		for dataset in datasets:
+			inputs, labels, masked_token_indices = self.__create_inputs(sentences=datasets[dataset]['data'], to_mask=to_mask, masking_style=masking_style if masking_style != 'eval' else 'always')
+			formatted_data.update({dataset: {'sentences': datasets[dataset]['data'], 'inputs': inputs, 'labels': labels, 'masked_token_indices': masked_token_indices}})
+		
+		if ((not np.isnan(self.mask_args) and self.mask_args) or mask_args) and masking_style == 'eval':
+			for dataset in formatted_data:
+				gf_masked_token_indices = []
+				for token_indices_map, gfs in zip(formatted_data[dataset]['masked_token_indices'], masked_arg_indices[dataset]):
+					gf_masked_token_indices.append({gfs[i]: token_indices_map[key] for i, key in enumerate(token_indices_map)})
+				
+				formatted_data[dataset]['masked_token_indices'] = gf_masked_token_indices
+		
+		return formatted_data
+	
+	
+	"""
+	def __get_formatted_datasets(
+		self, 
+		mask_args: bool = False, 
+		masking_style: str = None, 
 		datasets: Union[Dict, DictConfig] = None
 	) -> Dict:
 		'''
@@ -197,6 +268,7 @@ class Tuner:
 			formatted_data.update({dataset: {'sentences': datasets[dataset]['data'], 'inputs': inputs, 'labels': labels, 'masked_token_indices': masked_token_indices}})
 		
 		return formatted_data
+	"""
 	
 	def __generate_filled_verb_data(self, sentences: List[str], to_replace: Dict[str,List[str]]) -> List[str]:
 		'''
@@ -456,7 +528,7 @@ class Tuner:
 							})
 					else:
 						results.append({**common_args})
-		
+		breakpoint()
 		return results
 	
 	def __restore_original_random_seed(self) -> None:
@@ -747,6 +819,7 @@ class Tuner:
 			
 			mask_args 								= True if not np.isnan(self.mask_args) and self.mask_args else False
 			if self.exp_type == 'newverb':
+				self.original_verb_tuning_data		= deepcopy(self.cfg.tuning.data)
 				with open_dict(self.cfg):
 					self.cfg.tuning.data 			= self.__generate_filled_verb_data(self.cfg.tuning.data, self.cfg.tuning.args)
 				
@@ -759,8 +832,8 @@ class Tuner:
 			
 			# even if we are not masking arguments for training, we need them for dev sets
 			if self.exp_type == 'newverb':
-				self.masked_argument_data 			= self.__get_formatted_datasets(mask_args=True, masking_style='always')[self.tuning]
-				self.masked_dev_argument_data 		= self.__get_formatted_datasets(mask_args=True, masking_style='always', datasets=self.cfg.dev)
+				self.masked_argument_data 			= self.__get_formatted_datasets(mask_args=True, masking_style='eval')[self.tuning]
+				self.masked_dev_argument_data 		= self.__get_formatted_datasets(mask_args=True, masking_style='eval', datasets=self.cfg.dev)
 				self.args_group 					= self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.model_name
 			
 		self.cfg 					= OmegaConf.load(os.path.join(hydra.utils.get_original_cwd(), cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
@@ -1034,7 +1107,8 @@ class Tuner:
 			if self.exp_type == 'newverb' and masked_argument_inputs is not None:
 				newverb_outputs 		= self.model(**masked_argument_inputs)
 				newverb_results 		= self.__collect_results(
-											outputs=newverb_outputs, 
+											outputs=newverb_outputs,
+											sentences=self.masked_argument_data['sentences'],
 											masked_token_indices=self.masked_argument_data['masked_token_indices'], 
 											eval_groups=self.args
 										)
@@ -1812,7 +1886,7 @@ class Tuner:
 				gf_masked_token_indices.append({gfs[i]: token_indices_map[key] for i, key in enumerate(token_indices_map)})
 			
 			masked_token_indices = gf_masked_token_indices
-			
+		
 		types_sentences 						= {}
 		for sentence_type, n_sentences, sentence_group in zip(sentence_types, lens, transposed_sentences):
 			types_sentences[sentence_type]								= {}
