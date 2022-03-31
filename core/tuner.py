@@ -2152,11 +2152,11 @@ class Tuner:
 		if comparison_n_exs < len(dataset['baseline_comp']):
 			log.info(f'Drawing {eval_cfg.comparison_n_exs} random examples')
 			dataset['baseline_comp'] 	= dataset['baseline_comp'].shuffle()[:comparison_n_exs]
-			# we need to do this because the later stuff expect this to be a list of dicts
+			# we need to do this because the later stuff expects this to be a list of dicts
 			dataset['baseline_comp']	= [dict(zip(dataset['baseline_comp'], t)) for t in zip(*dataset['baseline_comp'].values())]
 		
 		dataset 						= self._Tuner__format_data_for_tokenizer(data=dataset)
-		dataset['basfieline_comp'] 		= {k: [i[k] for i in dataset['baseline_comp']] for k in dataset['baseline_comp'][0]}
+		dataset['baseline_comp'] 		= {k: [i[k] for i in dataset['baseline_comp']] for k in dataset['baseline_comp'][0]}
 		dataset 						= DatasetDict({'baseline_comp': Dataset.from_dict(dataset['baseline_comp'])})
 		dataset['baseline_comp'] 		= dataset['baseline_comp'].map(lambda ex: baseline_tokenizer(ex['text']), batched=True)
 		sources 						= dataset['baseline_comp']['source']
