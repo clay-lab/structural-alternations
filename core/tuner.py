@@ -29,6 +29,8 @@ from omegaconf import DictConfig, OmegaConf, open_dict, ListConfig
 
 from datasets import load_dataset, Dataset, DatasetDict
 from datasets.utils import logging as dataset_utils_logging
+from datasets.utils import disable_progress_bar
+disable_progress_bar()
 dataset_utils_logging.set_verbosity_error()
 
 from transformers import logging as lg
