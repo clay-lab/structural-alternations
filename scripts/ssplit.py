@@ -1,3 +1,4 @@
+import os
 import hydra
 import itertools
 
@@ -34,7 +35,9 @@ def split_scripts(cfg: DictConfig) -> None:
 	
 	for i, sweep in enumerate(all_sweeps):
 		file = header + cfg.command + ' ' + sweep
-		filename = '-'.join(sweep.split(' \\\n\t')) + '.sh'
+		filename = sweep.split(' \\\n\t')
+		filename = '-'.join([f.split('=')[0] + '=' + os.path.split(f.split('=')[-1])[-1] for f in filename]) + '.sh'
+		filename = filename.replace(os.path.sep, '-')
 		with open(filename, 'w') as out_file:
 			out_file.write(file)
 
