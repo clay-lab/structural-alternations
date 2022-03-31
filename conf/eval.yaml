@@ -17,6 +17,7 @@ num_tsne_words: 500 # plot the tsne of the first num_tsne_words embeddings + the
 # if provided, and the model used unfreezing, compare the model's performance to a baseline on a dataset
 comparison_dataset: ''
 comparison_n_exs: 1000 # how many sentences from the comparison dataset to use? blank means all
+                       # otherwise, pull this many random examples from the dataset to use
 
 checkpoint_dir: ''
 
