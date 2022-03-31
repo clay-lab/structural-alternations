@@ -143,7 +143,6 @@ dmypy.json
 # results
 *.tar.gz
 joblogs/
-datamaker/datasets
 *.pkl.gz
 *.pkl
 *.pt
