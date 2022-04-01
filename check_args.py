@@ -318,7 +318,7 @@ def load_tuning_verb_data(
 	cfg: DictConfig,
 	model_cfg: DictConfig, 
 	mask_token: str
-):
+) -> Tuple[List[str]]:
 	# we might be able to integrate this with how tuner loads these data, and then use that to integrate the arg predictions with collects results
 	# though this may not be possible directly because we don't have specified eval groups
 	sentences = [strip_punct(line).strip() if cfg.strip_punct else line.strip() for line in cfg.tuning.data] + \
