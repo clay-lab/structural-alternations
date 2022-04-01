@@ -2156,19 +2156,19 @@ class Tuner:
 		like them to stay the same.
 		
 			params:
-				eval_cfg (DictConfig)	: a dictconfig specifying the following:
-				baseline_loc (str)	 	: the directory where the logits and dataset for the baseline performance can be found
-				dataset_name (str)		: the name of the dataset file (without the extension) containing the dataset tokenized for use with the model
+				eval_cfg (DictConfig)	: a dictconfig specifying a comparison_dataset (via file location)
+										  to use as a benchmark for MLM performance
 			
 			returns:
-				kl_divs (pd.DataFrame)	: a dataframe with the kl divergences for each example in the dataset for the current model compared to the baseline
+				kl_divs (pd.DataFrame)	: a dataframe with the kl divergences for each of eval_cfg.comparison_n_exs
+										  examples in the dataset for the current model compared to a pre-fine-tuning baseline
 		'''
 		
-		log.info(f'Initializing Baseline Model:\t{self.cfg.model.base_class}   ({self.string_id})')
+		log.info(f'Initializing Baseline Model:\t{self.cfg.model.base_class} ({self.string_id})')
 		baseline_model					= AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs).to(self.device)
 		baseline_model.eval()
 		
-		log.info(f'Initializing Baseline Tokenizer:\t{self.cfg.model.base_class} ({self.string_id})')
+		log.info(f'Initializing Baseline Tokenizer:\t{self.cfg.model.tokenizer}   ({self.string_id})')
 		baseline_tokenizer 				= AutoTokenizer.from_pretrained(self.string_id, use_fast=False, **self.cfg.model.tokenizer_kwargs)
 		
 		dataset_loc 					= eval_cfg.comparison_dataset.replace(f'{hydra.utils.get_original_cwd()}{os.path.sep}', '')
@@ -2191,7 +2191,7 @@ class Tuner:
 			# we need to do this because the later stuff expects this to be a list of dicts
 			dataset['baseline_comp']	= [dict(zip(dataset['baseline_comp'], t)) for t in zip(*dataset['baseline_comp'].values())]
 		
-		dataset 						= self._Tuner__format_data_for_tokenizer(data=dataset)
+		dataset 						= self.__format_data_for_tokenizer(data=dataset)
 		dataset['baseline_comp'] 		= {k: [i[k] for i in dataset['baseline_comp']] for k in dataset['baseline_comp'][0]}
 		dataset 						= DatasetDict({'baseline_comp': Dataset.from_dict(dataset['baseline_comp'])})
 		dataset['baseline_comp'] 		= dataset['baseline_comp'].map(lambda ex: baseline_tokenizer(ex['text']), batched=True)
