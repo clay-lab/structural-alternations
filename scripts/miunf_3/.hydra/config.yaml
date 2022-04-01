@@ -1,0 +1,20 @@
+name: miunf_3
+s:
+  jobname: miunf_3
+  output: joblogs/${s.jobname}_%j.txt
+  ntasks: 1
+  cpus-per-task: 1
+  mem: 8G
+  gpus: p100:1
+  partition: gpu
+  time: 00:10:00
+  mail-type: ALL
+sweep: tune.py model=bert tuning=newverb_transitive_ext tuning.which_args=model,drink
+  hyperparameters.mask_args=true hyperparameters.lr=.0001 hyperparameters.max_epochs=100
+  hyperparameters.unfreezing=mixout.95,mixout.99  +debug=true +use_gpu=true
+header:
+- module load CUDA
+- module load cuDNN
+- module load miniconda
+- source activate salts
+command: python

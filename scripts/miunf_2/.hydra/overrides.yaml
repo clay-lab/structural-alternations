@@ -1,0 +1,6 @@
+- name=miunf_2
+- s.jobname=miunf_2
+- s.time=00:10:00
+- sweep='tune.py model=bert tuning=newverb_transitive_ext tuning.which_args=model,drink
+  hyperparameters.unfreezing=mixout.9 hyperparameters.lr=.0001 hyperparameters.mask_args=false,true
+  hyperparameters.max_epochs=100 +debug=true +use_gpu=true'
