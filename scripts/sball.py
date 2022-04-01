@@ -9,7 +9,6 @@ def sbatch_all(s):
 	'''
 	scripts = s.split()
 	
-	# this isn't really necessary on bash, but just in case
 	globbed = []
 	for script in scripts:
 		globbed.append(glob(script))
