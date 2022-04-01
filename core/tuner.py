@@ -162,6 +162,7 @@ class Tuner:
 		mask_args: bool = False, 
 		masking_style: str = None, 
 		datasets: Union[Dict, DictConfig] = None,
+		eval_cfg: DictConfig = None,
 	) -> Dict:
 		'''
 		Returns a dictionary with formatted inputs, labels, and mask_token_indices (if they exist) for datasets
@@ -173,6 +174,7 @@ class Tuner:
 									  	  'eval' is equivalent to 'always' for newarg experiments. for new verb experiments, it produces a dataset where each unique masked sentence is used only once
 									  	  this speeds up eval since it means we don't need to run the model on identical sentences repeatedl
 				datasets (Dict-like)	: which datasets to generated formatted data for
+				eval_cfg (DictConfig)	: used during evaluation to add generalization arguments to the newverb experiments
 			
 			returns:
 				formatted_data (dict)	: a dict with, for each dataset, sentences, inputs, (+ masked_token_indices if masking_style != 'none')
@@ -199,7 +201,9 @@ class Tuner:
 				assert none(token_id == self.mask_token_id for token_id in to_mask), 'The selected arguments were not tokenized correctly!'
 			else:
 				args 					= self.__format_strings_with_tokens_for_display(self.args)
-				
+				if eval_cfg is not None and 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
+					args 				= {arg_type: args[arg_type] + eval_cfg.data.added_args[self.args_group][arg_type] for arg_type in args}
+								
 				# we're manually replacing the arguments with mask tokens and adding them back later to speed up evaluation
 				# this is how we're evaluating anyway, so it doesn't make sense to ask the model for its thoughts on the same
 				# input 36 different times.
@@ -216,6 +220,8 @@ class Tuner:
 			inputs, labels, masked_token_indices = self.__create_inputs(sentences=datasets[dataset]['data'], to_mask=to_mask, masking_style=masking_style if masking_style != 'eval' else 'always')
 			formatted_data.update({dataset: {'sentences': datasets[dataset]['data'], 'inputs': inputs, 'labels': labels, 'masked_token_indices': masked_token_indices}})
 		
+		# if we are doing a newverb experiment, we only gave the model the masked data once to avoid reevaluating it redundantly.
+		# now we determine the correct mapping of grammatical functions to masked token positions for evaluation
 		if ((not np.isnan(self.mask_args) and self.mask_args) or mask_args) and masking_style == 'eval':
 			for dataset in formatted_data:
 				gf_masked_token_indices = []
@@ -226,7 +232,6 @@ class Tuner:
 				formatted_data[dataset]['masked_token_indices'] = gf_masked_token_indices
 		
 		return formatted_data
-	
 	
 	"""
 	def __get_formatted_datasets(
@@ -1874,7 +1879,9 @@ class Tuner:
 	
 	def load_eval_file(self, eval_cfg: DictConfig) -> Dict:
 		'''
-		Loads a file from the specified path, returning a Dict of sentence types for model evaluation.
+		Loads a file specified in the eval cfg, returning a Dict of 
+		sentences, inputs, and masked token indices grouped by 
+		sentence type for model evaluation.
 			
 			params: 
 				eval_cfg (DictConfig) : dictconfig containing evaluation configuration options
@@ -1883,57 +1890,45 @@ class Tuner:
 				types_sentences (dict): dict with sentences, inputs, and arg_indices 
 										for each sentence type in the eval data file
 		'''
-		resolved_path = os.path.join(hydra.utils.get_original_cwd(), 'data', eval_cfg.data.name)
+		resolved_path 			= os.path.join(hydra.utils.get_original_cwd(), 'data', eval_cfg.data.name)
 		
 		with open(resolved_path, 'r') as f:
-			raw_input = [line.strip() for line in f]
+			raw_input 			= [line.strip() for line in f]
 		
-		sentences 					= [[s.strip() for s in r.split(' , ')] for r in raw_input]
-		sentences 					= self.__format_data_for_tokenizer(sentences)
-		transposed_sentences 		= list(map(list, zip(*sentences)))
+		sentences 				= [[s.strip() for s in r.split(' , ')] for r in raw_input]
+		sentences 				= self.__format_data_for_tokenizer(sentences)
+		transposed_sentences 	= list(map(list, zip(*sentences)))
 		
-		# get the experiment-type specific evaluation groups
-		if eval_cfg.data.exp_type == 'newverb':
-			args 					= self.__format_strings_with_tokens_for_display(self.args)
-			if 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
-				args				= {arg_type: args[arg_type] + eval_cfg.data.added_args[self.args_group][arg_type] for arg_type in args}
-			
-			# we're manually replacing the arguments with mask tokens and adding them back later to speed up evaluation
-			# this is how we're evaluating anyway, so it doesn't make sense to ask the model for its thoughts on the same
-			# input 36 different times.
-			gf_regex 				= re.sub(r'(\[|\])', '\\ \\1', '|'.join([arg for arg in args])).replace(' ', '')
-			masked_arg_indices 		= [re.findall(rf'({gf_regex})', sentence) for sentences in transposed_sentences for sentence in sentences]
-			
-			for i, _ in enumerate(transposed_sentences):
-				for j, _ in enumerate(transposed_sentences[i]):
-					for gf in args:
-						transposed_sentences[i][j] = transposed_sentences[i][j].replace(gf, self.mask_token)
-			
 		if self.exp_type in ['newverb', 'newarg']:
-			sentence_types = eval_cfg.data.sentence_types
+			sentence_types 		= eval_cfg.data.sentence_types
 		else:
-			# dummy value
-			sentence_types = range(len(sentences))
+			sentence_types 		= list(range(len(transposed_sentences))) # dummy value just in case
 		
-		assert len(eval_cfg.data.sentence_types) == len(transposed_sentences), 'Number of sentence types does not match in data config and data!'
+		assert len(sentence_types) == len(transposed_sentences), 'Number of sentence types does not match in data config and data!'
 		
-		to_mask 								= self.mask_token if self.exp_type == 'newverb' else self.tokens_to_mask
-		lens 									= [len(sentence_group) for sentence_group in transposed_sentences]
+		lens 					= [len(sentence_group) for sentence_group in transposed_sentences]
 		
 		# way faster to flatten the inputs and then restore instead of looping
-		flattened_sentences 					= tuner_utils.flatten(transposed_sentences)
-		masked_inputs, _, masked_token_indices 	= self.__create_inputs(sentences=flattened_sentences, to_mask=to_mask, masking_style='always')
+		flattened_sentences 	= tuner_utils.flatten(transposed_sentences)
 		
-		# if we are doing a newverb experiment, we only gave the model the masked data once to avoid reevaluating it redundantly.
-		# now we determine the correct mapping of grammatical functions to masked token positions for evaluation
-		if self.exp_type == 'newverb':
-			gf_masked_token_indices = []
-			for token_indices_map, gfs in zip(masked_token_indices, masked_arg_indices):
-				gf_masked_token_indices.append({gfs[i]: token_indices_map[key] for i, key in enumerate(token_indices_map)})
-			
-			masked_token_indices = gf_masked_token_indices
+		# formatting for __get_formatted_datasets
+		flattened_sentences 	= {'eval_data': {'data': flattened_sentences}}
 		
-		types_sentences 						= {}
+		mask_args 				= True if eval_cfg.data.exp_type == 'newverb' else False
+		
+		inputs_dict 			= self.__get_formatted_datasets(
+									mask_args 		= mask_args, 
+									masking_style 	= 'eval', 
+									datasets 		= flattened_sentences, 
+									eval_cfg 		= eval_cfg
+								)
+		
+		# unpack the results to group by sentence type
+		flattened_sentences		= inputs_dict['eval_data']['sentences']
+		masked_inputs 			= inputs_dict['eval_data']['inputs']
+		masked_token_indices 	= inputs_dict['eval_data']['masked_token_indices']
+		
+		types_sentences 		= {}
 		for sentence_type, n_sentences, sentence_group in zip(sentence_types, lens, transposed_sentences):
 			types_sentences[sentence_type]								= {}
 			types_sentences[sentence_type]['sentences'] 				= sentence_group
@@ -2186,7 +2181,7 @@ class Tuner:
 		original_texts 					= self.__format_data_for_tokenizer(data=dataset['baseline_comp']['text'])
 		
 		if comparison_n_exs < len(dataset['baseline_comp']):
-			log.info(f'Drawing {eval_cfg.comparison_n_exs} random examples')
+			log.info(f'Drawing {eval_cfg.comparison_n_exs} random examples from {len(dataset["baseline_comp"])} total')
 			dataset['baseline_comp'] 	= dataset['baseline_comp'].shuffle()[:comparison_n_exs]
 			# we need to do this because the later stuff expects this to be a list of dicts
 			dataset['baseline_comp']	= [dict(zip(dataset['baseline_comp'], t)) for t in zip(*dataset['baseline_comp'].values())]
