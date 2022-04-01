@@ -679,7 +679,7 @@ class Tuner:
 			kl_divs.to_csv(f'{file_prefix}-kl_divs.csv.gz', index=False, na_rep='NaN')
 			
 			log.info('Creating KL divergences plot')
-			tuner_plots.create_kl_divs_plot(kl_divs)	
+			self.create_kl_divs_plot(kl_divs)
 		
 		log.info('Evaluation complete')
 		print('')
@@ -2239,6 +2239,7 @@ class Tuner:
 		tuner_plots.create_tsnes_plots(*args, **kwargs)
 	
 	def create_odds_ratios_plots(self, *args: Tuple, **kwargs: Dict) -> None:
+		
 		'''
 		Calls tuner_plots.create_odds_ratios_plots
 		
@@ -2247,6 +2248,16 @@ class Tuner:
 				**kwargs (dict)	: passed to tuner_plots.create_odds_ratios_plots
 		'''
 		tuner_plots.create_odds_ratios_plots(*args, **kwargs)
+	
+	def create_kl_divs_plot(self, *args: Tuple, **kwargs: Dict) -> None:
+		'''
+		Calls tuner_plots.create_kl_divs_plot
+		
+			params:
+				*args (tuple)	: passed to tuner_plots.create_kl_divs_plot
+				**kwargs (dict)	: passed to tuner_plots.create_kl_divs_plot
+		'''
+		tuner_plots.create_kl_divs_plot(*args, **kwargs)
 	
 	def get_odds_ratios_accuracies(self, *args: Tuple, **kwargs: Dict) -> pd.DataFrame:
 		'''
