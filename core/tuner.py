@@ -187,13 +187,6 @@ class Tuner:
 			else:
 				datasets = {self.tuning: {'data': OmegaConf.to_container(self.original_verb_tuning_data)}}
 		
-		# this is so we don't overwrite the original datasets as we do this
-		datasets = deepcopy(datasets)
-		
-		# we need to convert everything to primitive types to feed them to the tokenizer
-		if isinstance(datasets, DictConfig):
-			datasets = OmegaConf.to_container(datasets)
-		
 		if (not np.isnan(self.mask_args) and self.mask_args) or mask_args:
 			if masking_style != 'eval':
 				args 	=  tuner_utils.flatten(list(self.args.values()))
@@ -215,6 +208,13 @@ class Tuner:
 						for gf in args:
 							datasets[dataset]['data'][j] = datasets[dataset]['data'][j].replace(gf, self.mask_token)
 		
+		# this is so we don't overwrite the original datasets as we do this
+		datasets = deepcopy(datasets)
+		
+		# we need to convert everything to primitive types to feed them to the tokenizer
+		if isinstance(datasets, DictConfig):
+			datasets = OmegaConf.to_container(datasets)
+		
 		formatted_data = {}
 		for dataset in datasets:
 			inputs, labels, masked_token_indices = self.__create_inputs(sentences=datasets[dataset]['data'], to_mask=to_mask, masking_style=masking_style if masking_style != 'eval' else 'always')
@@ -232,51 +232,6 @@ class Tuner:
 				formatted_data[dataset]['masked_token_indices'] = gf_masked_token_indices
 		
 		return formatted_data
-	
-	"""
-	def __get_formatted_datasets(
-		self, 
-		mask_args: bool = False, 
-		masking_style: str = None, 
-		datasets: Union[Dict, DictConfig] = None
-	) -> Dict:
-		'''
-		Returns a dictionary with formatted inputs, labels, and mask_token_indices (if they exist) for datasets
-		
-			params:
-				mask_args (bool)		: whether to mask arguments (only used in newverb experiments)
-				masking_style (str)		: 'always' to mask all tokens in [self.tokens_to_mask] (+ arguments if mask_args)
-									  	  'none' to return unmasked data
-				datasets (Dict-like)	: which datasets to generated formatted data for
-			
-			returns:
-				formatted_data (dict)	: a dict with, for each dataset, sentences, inputs, (+ masked_token_indices if masking_style != 'none')
-		'''
-		to_mask = self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask)
-		
-		if datasets is None:
-			datasets = {self.tuning: {'data': OmegaConf.to_container(self.cfg.tuning.data)}}
-		
-		breakpoint()
-		if (not np.isnan(self.mask_args) and self.mask_args) or mask_args:
-			args 	=  tuner_utils.flatten(list(self.args.values()))
-			to_mask += self.tokenizer.convert_tokens_to_ids(args)
-			assert none(token_id == self.mask_token_id for token_id in to_mask), 'The selected arguments were not tokenized correctly!'
-		
-		# this is so we don't overwrite the original datasets as we do this
-		datasets = deepcopy(datasets)
-		
-		# we need to convert everything to primitive types to feed them to the tokenizer
-		if isinstance(datasets, DictConfig):
-			datasets = OmegaConf.to_container(datasets)
-		
-		formatted_data = {}
-		for dataset in datasets:
-			inputs, labels, masked_token_indices = self.__create_inputs(sentences=datasets[dataset]['data'], to_mask=to_mask, masking_style=masking_style)
-			formatted_data.update({dataset: {'sentences': datasets[dataset]['data'], 'inputs': inputs, 'labels': labels, 'masked_token_indices': masked_token_indices}})
-		
-		return formatted_data
-	"""
 	
 	def __generate_filled_verb_data(self, sentences: List[str], to_replace: Dict[str,List[str]]) -> List[str]:
 		'''
