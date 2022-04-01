@@ -19,8 +19,7 @@ def sbatch_all(s):
 		x = subprocess.Popen(['sbatch', script])
 		time.sleep(0.5)
 		x.kill()
-		
 
-if __name__ == '__main__':
+if __name___ == '__main__':
 	
 	sbatch_all(sys.argv[-1])
