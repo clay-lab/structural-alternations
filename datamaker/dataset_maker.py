@@ -64,12 +64,14 @@ def create_save_dataset(cfg: DictConfig) -> None:
 		datasets[dataset] = previous_prob
 	
 	new_dataset = dict.fromkeys(cfg.splits)
-	exs 	 	= [] # so we don't repeat sentences
+	exs 	 	= [None for _ in sum(cfg.splits.values())] # so we don't repeat sentences
 	for split in cfg.splits:
-		new_dataset[split] = {}
-		new_dataset[split]['text'] = []
-		new_dataset[split]['source'] = []
 		n = cfg.splits[split]
+		new_dataset[split] = {}
+		
+		# preallocate
+		new_dataset[split]['text'] = [None for _ in range(n)]
+		new_dataset[split]['source'] = [None for _ in range(n)]
 		n_chosen = 0
 		
 		# we don't just shuffle the dataset and choose the first n examples,
@@ -109,8 +111,9 @@ def create_save_dataset(cfg: DictConfig) -> None:
 					
 					# use lower case here because we want sentences that are distinguished by more than case
 					# this is because we are using some uncased models
-					exs.append(e.lower())				
-					new_dataset[split].append({'source': current_dataset, 'text': e})
+					exs[n_chosen] = e.lower()
+					new_dataset[split]['source'][n_chosen] = current_dataset
+					new_dataset[split]['text'][n_chosen] = e
 					
 					n_chosen += 1
 					pbar.set_postfix(split=split)
