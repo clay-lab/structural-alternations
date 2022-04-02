@@ -1,4 +1,3 @@
 - name=test
-- command=python
-- sweep='tune.py model=bert tuning=newverb_transitive_ext tuning.which_args=model
-  hyperparameters.max_epochs=100'
+- sweep='c x=testing,tasting blah=blah,blah'
+- runafter=true

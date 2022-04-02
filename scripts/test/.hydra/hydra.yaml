@@ -110,13 +110,11 @@ hydra:
     hydra: []
     task:
     - name=test
-    - command=python
-    - sweep='tune.py model=bert tuning=newverb_transitive_ext tuning.which_args=model
-      hyperparameters.max_epochs=100'
+    - sweep='c x=testing,tasting blah=blah,blah'
+    - runafter=true
   job:
     name: ssplit
-    override_dirname: command=python,name=test,sweep='tune.py model=bert tuning=newverb_transitive_ext
-      tuning.which_args=model hyperparameters.max_epochs=100'
+    override_dirname: name=test,runafter=true,sweep='c x=testing,tasting blah=blah,blah'
     id: ???
     num: ???
     config_name: ssplit
@@ -129,12 +127,12 @@ hydra:
         exclude_keys: []
   runtime:
     version: 1.1.1
-    cwd: /gpfs/loomis/project/frank/maw244/structural-alternations
+    cwd: C:\Users\mawilson\OneDrive\Documents\Dropbox\CLAY\structural-alternations
     config_sources:
     - path: hydra.conf
       schema: pkg
       provider: hydra
-    - path: /gpfs/loomis/project/frank/maw244/structural-alternations/scripts
+    - path: C:\Users\mawilson\OneDrive\Documents\Dropbox\CLAY\structural-alternations\scripts
       schema: file
       provider: main
     - path: ''

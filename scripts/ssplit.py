@@ -16,7 +16,7 @@ def split_scripts(cfg: DictConfig) -> None:
 	path, sweeps = cfg.sweep.split()[0], cfg.sweep.split()[1:]
 	all_sweeps = []
 	for sweep in sweeps:
-		key, values = sweep.split('=')[0], sweep.split('=')[1].split(',')
+		key, values = sweep.split('=')[0], list(set(sweep.split('=')[1].split(',')))
 		all_sweeps.append([key + '=' + value for value in values])
 	
 	all_sweeps = list(itertools.product(*all_sweeps))
@@ -52,7 +52,9 @@ def split_scripts(cfg: DictConfig) -> None:
 			out_file.write(file)
 	
 	if cfg.runafter:
+		filenames = [os.path.join(os.getcwd().replace(hydra.utils.get_original_cwd() + os.path.sep, ''), f) for f in filenames]
 		expr = ' '.join(filenames)
+		os.chdir(hydra.utils.get_original_cwd())
 		sball.sbatch_all(expr)
 
 if __name__ == '__main__':
