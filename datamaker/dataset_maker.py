@@ -42,7 +42,6 @@ def create_save_dataset(cfg: DictConfig) -> None:
 	'''
 	
 	# Collect configuration options
-	n 				= cfg.n
 	datasets 		= cfg.datasets
 	dataset_args 	= cfg.dataset_args
 	dataset_kwargs 	= cfg.dataset_kwargs
@@ -67,6 +66,8 @@ def create_save_dataset(cfg: DictConfig) -> None:
 	new_dataset = dict.fromkeys(cfg.splits)
 	exs 	 	= [] # so we don't repeat sentences
 	for split in cfg.splits:
+		new_dataset[split] = []
+		n = cfg.splits[split]
 		n_chosen = 0
 		with tqdm(total=n) as pbar:
 			while n_chosen < n:
@@ -105,6 +106,7 @@ def create_save_dataset(cfg: DictConfig) -> None:
 					new_dataset[split].append({'source': current_dataset, 'text': e})
 					
 					n_chosen += 1
+					pbar.set_postfix(split=split)
 					pbar.update(1)
 	
 	breakpoint()
