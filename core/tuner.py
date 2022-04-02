@@ -2196,7 +2196,7 @@ class Tuner:
 		dataset_name 			= os.path.split(dataset_loc)[-1]
 		
 		log.info(f'Loading dataset {dataset_name}')
-		dataset 				= self.__load_format_dataset(dataset_loc=dataset_loc, split='test', n_examples=100)
+		dataset 				= self.__load_format_dataset(dataset_loc=dataset_loc, split='test', n_examples=eval_cfg.comparison_n_exs)
 		
 		if self.model.training:
 			log.warning('Model performance will not be compared to baseline in training mode. Model will be set to eval mode.')
