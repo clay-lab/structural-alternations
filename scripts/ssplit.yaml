@@ -4,7 +4,7 @@ defaults:
 name: salts
 
 s:
-  jobname: salts
+  jobname: ${name}
   output: joblogs/${s.jobname}_%j.txt
   ntasks: 1
   cpus-per-task: 1
