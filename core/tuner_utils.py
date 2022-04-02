@@ -21,7 +21,7 @@ from glob import glob
 from copy import deepcopy
 from typing import *
 from shutil import copyfileobj
-from datasets import Dataset
+from datasets import Dataset, DatasetDict
 from omegaconf import OmegaConf, DictConfig, ListConfig
 from transformers import AutoTokenizer
 
@@ -1157,12 +1157,11 @@ def reinitialize_token_weights(
 		return word_embeddings
 
 def load_format_dataset(
-	dataset_file: str,
+	dataset_loc: str,
 	split: str,
 	data_field: str,
 	string_id: str,
 	n_examples: int = None,
-	fmt: str = 'json',
 	remove_punct: bool = False,
 	tokenizer_kwargs: Dict = {},
 ) -> Dataset:
@@ -1170,7 +1169,8 @@ def load_format_dataset(
 	Loads and formats a huggingface dataset according to the passed options
 	
 		params:
-			dataset_file (str)		: the location of the dataset
+			dataset_loc (str)		: the location of the dataset
+			split (str)				: the split to load from the dataset
 			data_field (str)		: the field in the dataset that contains the actual examples
 			string_id (str)			: a string_id corresponding to a huggingface pretrained tokenizer
 									  used to determine appropriate formatting
@@ -1184,19 +1184,24 @@ def load_format_dataset(
 			dataset (Dataset)		: a dataset that has been formatted for use with the tokenizer,
 									  possible with punctuation stripped
 	'''
-	dataset 				= load_dataset(fmt, data_files=dataset_file)[split]
+	dataset 				= DatasetDict.load_from_disk(dataset_loc)[split]
+	
+	# gather these so we know the position of items prior to shuffling 
+	# and we can figure out what to convert to torch.Tensors later
 	original_cols 			= list(dataset.features.keys())
 	original_pos			= list(range(dataset.num_rows))
+	
+	# cast to dict since datasets cannot be directly modified
 	dataset 				= dataset.to_dict()
 	dataset['original_pos']	= original_pos
 	original_cols.append('original_pos')
 	
 	baseline_tokenizer 		= AutoTokenizer.from_pretrained(string_id, **tokenizer_kwargs)
 	mask_token 				= baseline_tokenizer.mask_token
-	
 	dataset[data_field]		= format_data_for_tokenizer(data=dataset[data_field], mask_token=mask_token, string_id=string_id, remove_punct=remove_punct)
-	dataset 				= Dataset.from_dict(dataset)
 	
+	# now cast back to a dataset
+	dataset 				= Dataset.from_dict(dataset)
 	dataset 				= sample_from_dataset(dataset, n_examples)
 	dataset 				= dataset.map(lambda ex: baseline_tokenizer(ex[data_field]))
 	
@@ -1225,10 +1230,10 @@ def sample_from_dataset(
 	n_examples	= dataset.num_rows if n_examples is None else min(n_examples, dataset.num_rows)
 	
 	if n_examples < dataset.num_rows:
-		if log_message == True:
+		if log_message:
 			log.info(f'Drawing {n_examples} random examples from {len(dataset)} total')
 		
-		dataset 	= dataset.shuffle().select(range(n_examples))
+		dataset = dataset.shuffle().select(range(n_examples))
 	
 	return dataset
 

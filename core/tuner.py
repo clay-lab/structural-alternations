@@ -523,17 +523,16 @@ class Tuner:
 			
 	def __load_format_dataset(
 		self, 
-		dataset_file: str,
+		dataset_loc: str,
 		split: str = 'train', 
 		data_field: str = 'text',
-		fmt: str = 'json', 
 		n_examples: int = None
 	) -> Tuple:
 		'''
 		Loads and formats a huggingface dataset for use with the Tuner
 		
 			params:
-				dataset_file (str)		: the location of the dataset
+				dataset_loc (str)		: the location of the dataset
 				data_field (str)		: the field in the dataset that contains the actual examples
 				string_id (str)			: a string_id corresponding to a huggingface pretrained tokenizer
 										  used to determine appropriate formatting
@@ -546,11 +545,10 @@ class Tuner:
 										  possible with punctuation stripped
 		'''
 		return tuner_utils.load_format_dataset(
-			dataset_file 		= dataset_file,
+			dataset_loc 		= dataset_loc,
 			split 				= split,
 			data_field 			= data_field,
 			n_examples 			= n_examples,
-			fmt 				= fmt, 
 			string_id 			= self.string_id, 
 			remove_punct 		= self.strip_punct,
 			tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs,
@@ -836,7 +834,7 @@ class Tuner:
 				self.masked_dev_argument_data 		= self.__get_formatted_datasets(mask_args=True, masking_style='eval', datasets=self.cfg.dev)
 				self.args_group 					= self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.model_name
 			
-			if self.use_kl_baseline_loss:
+			if hasattr(self, 'use_kl_baseline_loss') and self.use_kl_baseline_loss:
 				if not (isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing)):
 					for k, v in self.cfg.kl_loss_params.items():
 						
@@ -846,10 +844,11 @@ class Tuner:
 															model 				= self.model, 
 															tokenizer 			= self.tokenizer, 
 															dataset 			= self.__load_format_dataset(
-																					os.path.join(
+																					dataset_loc = os.path.join(
 																						hydra.utils.get_original_cwd(),
 																						self.kl_dataset
-																					)
+																					),
+																					split = 'train'
 																				),
 															scaleby 			= self.kl_scaleby,
 															n_examples_per_step	= self.kl_n_examples_per_step,
@@ -859,7 +858,7 @@ class Tuner:
 				else:
 					log.warning('You set "use_kl_baseline_loss=True", but you are not unfreezing any model parameters!')
 					log.warning('Model predictions when excluding new tokens would not change compared to baseline.')
-					log.warning('For this reason, not using KL baseline loss.')
+					log.warning('For this reason, not using KL baseline loss to avoid wasting time.')
 				
 		self.cfg 					= OmegaConf.load(os.path.join(hydra.utils.get_original_cwd(), cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
 		
@@ -1225,11 +1224,11 @@ class Tuner:
 				params:
 					outputs (MaskedLMOutput): outputs from a masked language model
 					eval (bool)				: whether the model is being evaluated or trained on the basis of
-											  the loss. for eval, we never use the KL baseline loss,
-											  since we are interested in overfitting to the generalization sets
+											  the loss. for eval/dev sets, we never use the KL baseline loss,
+											  since we are interested in measuring overfitting to the generalization sets
 				
 				returns:
-					loss (torch.Tensor)		: if using KL divergence loss, add KL divergence loss to the original model outputs loss
+					loss (torch.Tensor)		: if using KL divergence loss, add KL divergence loss to the original model's outputs loss
 											  KL divergence loss is defined at class initialization according to passed options
 											  otherwise, return the original model loss
 			'''
@@ -2191,13 +2190,13 @@ class Tuner:
 				kl_divs (pd.DataFrame)	: a dataframe with the kl divergences for each of eval_cfg.comparison_n_exs
 										  examples in the dataset for the current model compared to a pre-fine-tuning baseline
 		'''
-		
-		dataset_loc 			= eval_cfg.comparison_dataset.replace(f'{hydra.utils.get_original_cwd()}{os.path.sep}', '')
-		dataset_file 			= os.path.join(hydra.utils.get_original_cwd(), dataset_loc)
-		dataset_name 			= os.path.split(dataset_file)[-1].replace('.json.gz', '')
+		# doing this lets us use either absolute paths or paths relative to the starting dir
+		dataset_loc 			= eval_cfg.comparison_dataset.replace(hydra.utils.get_original_cwd(), '')
+		dataset_loc 			= os.path.join(hydra.utils.get_original_cwd(), eval_cfg.comparison_dataset)
+		dataset_name 			= os.path.split(dataset_loc)[-1]
 		
 		log.info(f'Loading dataset {dataset_name}')
-		dataset 				= self.__load_format_dataset(dataset_file=dataset_file, split='test', n_examples=eval_cfg.comparison_n_exs)
+		dataset 				= self.__load_format_dataset(dataset_loc=dataset_loc, split='test', n_examples=100)
 		
 		if self.model.training:
 			log.warning('Model performance will not be compared to baseline in training mode. Model will be set to eval mode.')
@@ -2213,7 +2212,8 @@ class Tuner:
 									reduction 			= 'sum',
 								)
 		
-		mean_kl_div, kl_divs 	= KL_baseline_loss(progress_bar=True, return_all=True)
+		with torch.no_grad():
+			mean_kl_div, kl_divs = KL_baseline_loss(progress_bar=True, return_all=True)
 		
 		log.info(f'Mean KL divergence from baseline on {dataset_name}: {mean_kl_div:.2f} (\u00b1{tuner_utils.sem(kl_divs):.2f})')
 		
@@ -2223,7 +2223,7 @@ class Tuner:
 									text 			= dataset['text'],
 									sentence_num 	= dataset['original_pos'],
 								)
-
+		
 		return kl_divs
 	
 	
