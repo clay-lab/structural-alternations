@@ -39,8 +39,14 @@ def split_scripts(cfg: DictConfig) -> None:
 	for i, sweep in enumerate(all_sweeps):
 		file = header + cfg.command + ' ' + path + ' ' + sweep
 		filename = sweep.split(' \\\n\t')
-		filename = '-'.join([f.split('=')[0] + '=' + os.path.split(f.split('=')[-1])[-1] for f in filename]) + '.sh'
+		filename = '-'.join([f.split('=')[0][0] + '=' + os.path.split(f.split('=')[-1])[-1][0] for f in filename])
 		filename = filename.replace(os.path.sep, '-')
+		
+		n = 0
+		while os.path.isfile(filename + '.sh'):
+			filename += str(n)
+		
+		filename += '.sh'
 		filenames.append(filename)
 		with open(filename, 'w') as out_file:
 			out_file.write(file)
