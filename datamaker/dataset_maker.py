@@ -77,7 +77,7 @@ def create_save_dataset(cfg: DictConfig) -> None:
 		# we don't just shuffle the dataset and choose the first n examples,
 		# because some datasets contain multiple sentences per row. we want
 		# n sentences, which means getting the row, and then splitting and getting a random (good)
-		# sentence from that row
+		# sentence from that row. we also don't want repeats that are identical except for case
 		with tqdm(total=n) as pbar:
 			while n_chosen < n:
 				r = random()
@@ -95,7 +95,7 @@ def create_save_dataset(cfg: DictConfig) -> None:
 				# newlines would sometimes be best replaced with commas, or bullet points, etc.
 				# better to just leave them out entirely
 				
-				# we split this way to retain the delimeters
+				# we split this way to retain the delimiters
 				ex = [s for s in re.sub(r'((\.) |$)|((\?) |$)|((\!) |$)', '\\2&&&', ex).split('&&&') if not '\n' in s]
 				# remove empty strings and extra leading/trailing spaces
 				ex = [s.strip() for s in ex if s.strip()]
@@ -119,9 +119,9 @@ def create_save_dataset(cfg: DictConfig) -> None:
 					pbar.set_postfix(split=split)
 					pbar.update(1)
 	
-	breakpoint()
-			
-	log.info(f'Dataset saved as {name}.json.gz in "{os.getcwd()}".')
+	new_dataset = DatasetDict({k: Dataset.from_dict(v) for k, v in new_dataset.items()})
+	new_dataset.save_to_disk(name)
+	log.info(f'Dataset saved in directory {name} in "{os.getcwd()}".')
 
 if __name__ == '__main__':
 	
