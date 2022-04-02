@@ -66,7 +66,9 @@ def create_save_dataset(cfg: DictConfig) -> None:
 	new_dataset = dict.fromkeys(cfg.splits)
 	exs 	 	= [] # so we don't repeat sentences
 	for split in cfg.splits:
-		new_dataset[split] = []
+		new_dataset[split] = {}
+		new_dataset[split]['text'] = []
+		new_dataset[split]['source'] = []
 		n = cfg.splits[split]
 		n_chosen = 0
 		
