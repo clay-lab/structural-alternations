@@ -45,7 +45,6 @@ def split_scripts(cfg: DictConfig) -> None:
 		with open(filename, 'w') as out_file:
 			out_file.write(file)
 	
-	# note that this submits all scripts in the current directory, even if they were there before. use caution
 	if cfg.runafter:
 		expr = ' '.join(filenames)
 		sball.sbatch_all(expr)
