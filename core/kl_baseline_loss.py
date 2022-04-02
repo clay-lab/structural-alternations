@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn.modules.loss import KLDivLoss
 
-from tqdm import trange
+from tqdm import tqdm
 from typing import *
 
 from transformers import AutoModelForMaskedLM, AutoTokenizer
@@ -139,12 +139,11 @@ class KLBaselineLoss(KLDivLoss):
 		# haven't figure out a way to actually do batches > 1 yet
 		# the issue is setting up the padding of the inputs correctly. As it turns out
 		# this is not actually that slow, so we'll just do it 1 at a time for now
-		
 		if progress_bar:
 			dataloader 	= tqdm(dataloader)
 		
 		if progress_bar or return_all:
-			kl_divs 	= torch.tensor(()).to(self.device)
+			kl_divs 	= []
 		
 		try:
 			for i, batch in enumerate(dataloader):
@@ -162,16 +161,16 @@ class KLBaselineLoss(KLDivLoss):
 				mean_kl_div 			+= kl_div/comp_dataset.num_rows
 						
 				if progress_bar or return_all:
-					kl_divs 			= torch.cat((kl_divs, torch.unsqueeze(kl_div, dim=0)), dim=0)
+					kl_divs.append(kl_div)
 					
 					if progress_bar:
-						dataloader.set_postfix(kl_div_mean=f'{torch.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
+						dataloader.set_postfix(kl_div_mean=f'{np.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
 					
 		except KeyboardInterrupt:
 			log.warning('KLBaselineLoss computation halted manually')
 			mean_kl_div = (mean_kl_div * comp_dataset.num_rows)/i
 		
 		if return_all:
-			return mean_kl_div * self.scaleby, kl_divs
+			return mean_kl_div * self.scaleby, torch.tensor(kl_divs).to(self.device)
 		else:
 			return mean_kl_div * self.scaleby
