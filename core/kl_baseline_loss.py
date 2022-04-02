@@ -4,6 +4,8 @@
 
 import logging
 
+import numpy as np
+
 import torch
 import torch.nn.functional as F
 from torch.nn.modules.loss import KLDivLoss
@@ -37,7 +39,7 @@ class KLBaselineLoss(KLDivLoss):
 	
 	See torch.
 	
-	Adapted from torch.nn.modules.loss.CrossEntropyLoss
+	Adapted from torch.nn.modules.loss.KLDivLoss
 	'''
 	
 	def __init__(
