@@ -2,7 +2,9 @@ defaults:
   - _self_
 
 # how many sentences to include in the dataset
-n: 10000
+splits:
+  train: 10000
+  test:  10000
 
 # mapping between huggingface dataset name and the approximate proportion of sentences to pull from that dataset
 # values must sum to 1.

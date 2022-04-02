@@ -25,6 +25,12 @@ from datasets import Dataset
 from omegaconf import OmegaConf, DictConfig, ListConfig
 from transformers import AutoTokenizer
 
+from datasets import load_dataset, Dataset
+from datasets.utils import logging as dataset_utils_logging
+from datasets.utils import disable_progress_bar
+disable_progress_bar()
+dataset_utils_logging.set_verbosity_error()
+
 log = logging.getLogger(__name__)
 
 # grammatical functions in order of prominence for sorting things
@@ -147,7 +153,7 @@ def z_transform(x: np.ndarray) -> np.ndarray:
 	diffs = x - np.mean(x)
 	return diffs/np.std(x)
 
-def sem(x: Union[List,np.ndarray]) -> float:
+def sem(x: Union[List,np.ndarray,torch.Tensor]) -> float:
 	'''
 	Calculate the standard error of the mean for a list of numbers
 	
@@ -157,7 +163,8 @@ def sem(x: Union[List,np.ndarray]) -> float:
 		returns:
 			sem_x (float)	: the standard error of the mean of x
 	'''
-	return np.std(x)/sqrt(len(x))
+	namespace = torch if isinstance(x,torch.Tensor) else np
+	return namespace.std(x)/sqrt(len(x))
 
 def set_seed(seed: int) -> None:
 	'''
@@ -183,7 +190,7 @@ def strip_punct(sentence: str) -> str:
 			sentence (str)	: the sentence with punctuation removed
 	'''
 	return re.sub(r'[^\[\]\<\>\w\s,]', '', sentence)
-	
+
 def apply_to_all_of_type(
 	data: 'any', 
 	t: Type, 
@@ -444,7 +451,7 @@ def get_data_for_pairwise_comparisons(
 	pairs 				= get_pairs(summary, eval_cfg, cossims)
 	
 	return summary, tuple(colnames), pairs
-	
+
 def transfer_hyperparameters_to_df(
 	source: pd.DataFrame, 
 	target: pd.DataFrame
@@ -587,7 +594,6 @@ def get_odds_ratios_accuracies(
 		returns:
 			acc (pd.DataFrame)				: a dataframe containing accuracy information
 	'''
-	
 	def update_acc(acc: List[Dict], refs: pd.DataFrame, gens: pd.DataFrame, colname: str, **addl_columns) -> None:
 		'''
 		Update the accuracy list
@@ -635,7 +641,7 @@ def get_odds_ratios_accuracies(
 			f'position_ratio_name_ref'	: multiplator(x_data.position_ratio_name),
 			f'position_ratio_name_gen'	: multiplator(y_data.position_ratio_name),
 		}
-
+		
 		if eval_cfg.data.exp_type == 'newverb':
 			common_args.update({'args_group': multiplator(x_data.args_group, multstr='any')})
 		elif eval_cfg.data.exp_type == 'newarg':
@@ -752,7 +758,7 @@ def create_bert_tokenizer_with_added_tokens(
 		returns:
 			tokenizer (berttokenizer)		: a BertTokenizer with the tokens_to_mask added to the vocabulary
 	'''
-
+	
 	if 'uncased' in model_id:
 		tokens_to_mask = [t.lower() for t in tokens_to_mask]
 	
@@ -1149,6 +1155,82 @@ def reinitialize_token_weights(
 		return word_embeddings, seed
 	else:
 		return word_embeddings
+
+def load_format_dataset(
+	dataset_file: str,
+	split: str,
+	data_field: str,
+	string_id: str,
+	n_examples: int = None,
+	fmt: str = 'json',
+	remove_punct: bool = False,
+	tokenizer_kwargs: Dict = {},
+) -> Dataset:
+	'''
+	Loads and formats a huggingface dataset according to the passed options
+	
+		params:
+			dataset_file (str)		: the location of the dataset
+			data_field (str)		: the field in the dataset that contains the actual examples
+			string_id (str)			: a string_id corresponding to a huggingface pretrained tokenizer
+									  used to determine appropriate formatting
+			n_examples (int)		: how many (random) examples to draw from the dataset
+									  if not set, the full dataset is returned
+			fmt (str)				: the file format the dataset is saved in
+			remove_punct (bool)		: whether to remove punctuation from formatted sentences
+			tokenizer_kwargs (dict)	: passed to AutoTokenizer.from_pretrained
+		
+		returns:
+			dataset (Dataset)		: a dataset that has been formatted for use with the tokenizer,
+									  possible with punctuation stripped
+	'''
+	dataset 				= load_dataset(fmt, data_files=dataset_file)[split]
+	original_cols 			= list(dataset.features.keys())
+	original_pos			= list(range(dataset.num_rows))
+	dataset 				= dataset.to_dict()
+	dataset['original_pos']	= original_pos
+	original_cols.append('original_pos')
+	
+	baseline_tokenizer 		= AutoTokenizer.from_pretrained(string_id, **tokenizer_kwargs)
+	mask_token 				= baseline_tokenizer.mask_token
+	
+	dataset[data_field]		= format_data_for_tokenizer(data=dataset[data_field], mask_token=mask_token, string_id=string_id, remove_punct=remove_punct)
+	dataset 				= Dataset.from_dict(dataset)
+	
+	dataset 				= sample_from_dataset(dataset, n_examples)
+	dataset 				= dataset.map(lambda ex: baseline_tokenizer(ex[data_field]))
+	
+	dataset.set_format(type='torch', columns=[f for f in dataset.features if not f in original_cols])
+	
+	return dataset
+
+def sample_from_dataset(
+	dataset: Union[Dataset,Dict], 
+	n_examples: int = None, 
+	log_message: bool = True
+) -> Dataset:
+	'''
+	Draws n_examples random examples from a dataset.
+	Does not shuffle if the number of examples >= the length of the dataset
+	
+		params:
+			dataset (Dataset)	: the dataset to draw examples from
+			n_examples (int)	: how many examples to draw
+			log_message (bool)	: whether to display a message logging the number of examples drawn
+								  compared to the size of the full dataset
+		
+		returns:
+			dataset (Dataset)	: a dataset with n_examples random selections from the passed dataset
+	'''
+	n_examples	= dataset.num_rows if n_examples is None else min(n_examples, dataset.num_rows)
+	
+	if n_examples < dataset.num_rows:
+		if log_message == True:
+			log.info(f'Drawing {n_examples} random examples from {len(dataset)} total')
+		
+		dataset 	= dataset.shuffle().select(range(n_examples))
+	
+	return dataset
 
 
 # analysis

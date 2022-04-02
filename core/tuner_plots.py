@@ -1,6 +1,7 @@
 # tuner_plots.py
 #
 # plotting functions for tuner.py
+import os
 import re
 import torch
 import logging
@@ -496,15 +497,21 @@ def get_plot_title(
 	title += f', lr={tuner_utils.multiplator(df.lr)}'
 	title += '\n'
 	
+	if any([c for c in df.columns if c.startswith('kl_')]):
+		kl_loss_str = 'KL loss'
+		kl_loss_str += f' \u00d7 {tuner_utils.multiplator(df.kl_scaleby)} ('
+		kl_loss_str += os.path.split(tuner_utils.multiplator(df.kl_dataset, multstr ='multiple datasets'))[-1].split('.', 1)[0]
+		kl_loss_str += f', {tuner_utils.multiplator(df.kl_n_examples_per_step)} ex/step), '
+		title 		+= kl_loss_str
+	
 	title += f'{tuner_utils.multiplator(df.unfreezing)} unfreezing' if not all(df.unfreezing.isna()) else ''
 	if df.unfreezing.unique().size == 1 and df.unfreezing.unique()[0] == 'gradual':
 		title += f' ({tuner_utils.multiplator(df.unfreezing_epochs_per_layer)})'
 	
-	if not all(df.unfreezing.isna()):
-		title += ', '
+	if not all(df.unfreezing.isna()) and 'args_group' in df.columns:
+		title += f', args group: {tuner_utils.multiplator(df.args_group)}'
 	
-	if 'args_group' in df.columns:
-		title += f'args group: {tuner_utils.multiplator(df.args_group)}\n'
+	title += '\n'
 	
 	return title
 
@@ -777,8 +784,8 @@ def create_metrics_plots(
 			fig.suptitle(title)
 			fig.tight_layout()
 			
-			# little hack here for when we have an extra line in the label in the new verb experiments
-			fig.subplots_adjust(top=0.825-(num_dev_sets + (1 if 'args_group' in metrics.columns else 0))*.03125)
+			# make room for the plot title
+			fig.subplots_adjust(top=0.79375 - 0.03125*num_dev_sets)
 			
 			pdf.savefig()
 			plt.close()

@@ -13,7 +13,7 @@ import logging
 from tqdm import tqdm
 from typing import *
 from random import random
-from datasets import load_dataset
+from datasets import load_dataset, DatasetDict, Dataset
 from omegaconf import OmegaConf, DictConfig
 
 log = logging.getLogger(__name__)
@@ -64,48 +64,51 @@ def create_save_dataset(cfg: DictConfig) -> None:
 		previous_prob += datasets[dataset]
 		datasets[dataset] = previous_prob
 	
-	n_chosen = 0
-	exs 	 = [] # so we don't repeat sentences
-	with tqdm(total=n) as pbar, gzip.open(f'{name}.json.gz', 'wt') as out_file:
-		while n_chosen < n:
-			r = random()
-			for dataset, prob in datasets.items():
-				if r < prob:
-					current_dataset = dataset
-					break
-			
-			# np.random.choice is sloooow with big lists
-			r = int(round(random() * (len(loaded_datasets[current_dataset]['train'])-1),0))
-			
-			ex = loaded_datasets[current_dataset]['train'][r]['text']
-			
-			# do some formatting: split on periods, remove anything with newlines
-			# newlines would sometimes be best replaced with commas, or bullet points, etc.
-			# better to just leave them out entirely
-			
-			# we split this way to retain the delimeters
-			ex = [s for s in re.sub(r'((\.) |$)|((\?) |$)|((\!) |$)', '\\2&&&', ex).split('&&&') if not '\n' in s]
-			# remove empty strings and extra leading/trailing spaces
-			ex = [s.strip() for s in ex if s.strip()]
-			
-			# if there's anything left, save an example
-			if ex and not all(ex.lower() in exs for ex in ex):
-				# get a random example from the retained sentences
-				r = int(round(random() * (len(ex)-1),0))
-				e = ex[r]
-				while e.lower() in exs:
+	new_dataset = dict.fromkeys(cfg.splits)
+	exs 	 	= [] # so we don't repeat sentences
+	for split in cfg.splits:
+		n_chosen = 0
+		with tqdm(total=n) as pbar:
+			while n_chosen < n:
+				r = random()
+				for dataset, prob in datasets.items():
+					if r < prob:
+						current_dataset = dataset
+						break
+				
+				# np.random.choice is sloooow with big lists
+				r = int(round(random() * (len(loaded_datasets[current_dataset]['train'])-1),0))
+				
+				ex = loaded_datasets[current_dataset]['train'][r]['text']
+				
+				# do some formatting: split on periods, remove anything with newlines
+				# newlines would sometimes be best replaced with commas, or bullet points, etc.
+				# better to just leave them out entirely
+				
+				# we split this way to retain the delimeters
+				ex = [s for s in re.sub(r'((\.) |$)|((\?) |$)|((\!) |$)', '\\2&&&', ex).split('&&&') if not '\n' in s]
+				# remove empty strings and extra leading/trailing spaces
+				ex = [s.strip() for s in ex if s.strip()]
+				
+				# if there's anything left, save an example
+				if ex and not all(ex.lower() in exs for ex in ex):
+					# get a random example from the retained sentences
 					r = int(round(random() * (len(ex)-1),0))
 					e = ex[r]
-				
-				exs.append(e.lower())				
-				ex = {'source': current_dataset, 'text': e}
-				
-				# save it to the file
-				json.dump(ex, out_file, ensure_ascii=False)
-				out_file.write('\n')
-				n_chosen += 1
-				pbar.update(1)
-		
+					while e.lower() in exs:
+						r = int(round(random() * (len(ex)-1),0))
+						e = ex[r]
+					
+					# use lower case here because we want sentences that are distinguished by more than case
+					# this is because we are using some uncased models
+					exs.append(e.lower())				
+					new_dataset[split].append({'source': current_dataset, 'text': e})
+					
+					n_chosen += 1
+					pbar.update(1)
+	
+	breakpoint()
+			
 	log.info(f'Dataset saved as {name}.json.gz in "{os.getcwd()}".')
 
 if __name__ == '__main__':

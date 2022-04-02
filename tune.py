@@ -49,6 +49,9 @@ def formatted_dir_name(model: DictConfig, tuning: DictConfig, hyperparameters: D
 	
 	dir_name 	+= 	'-'
 	dir_name 	+= 	f'lr{hyperparameters.lr}'
+
+	if hyperparameters.use_kl_baseline_loss and not hyperparameters.unfreezing == 'none':
+		dir_name += '-kloss'
 	
 	if 'which_args' in tuning and tuning.exp_type == 'newverb':
 		dir_name = 	os.path.join(dir_name, model.friendly_name) if tuning.which_args == 'model' else \

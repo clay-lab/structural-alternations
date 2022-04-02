@@ -27,18 +27,13 @@ from typing import *
 from .mixout.module import MixLinear
 from omegaconf import DictConfig, OmegaConf, open_dict, ListConfig
 
-from datasets import load_dataset, Dataset, DatasetDict
-from datasets.utils import logging as dataset_utils_logging
-from datasets.utils import disable_progress_bar
-disable_progress_bar()
-dataset_utils_logging.set_verbosity_error()
-
 from transformers import logging as lg
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 from sklearn.manifold import TSNE
 
 from . import tuner_plots
 from . import tuner_utils
+from . import kl_baseline_loss
 from .tuner_utils import none
 from .mixout.module import MixLinear
 
@@ -47,7 +42,6 @@ lg.set_verbosity_error()
 log = logging.getLogger(__name__)
 
 class Tuner:
-	
 	
 	# START Computed Properties
 	
@@ -326,7 +320,8 @@ class Tuner:
 		'''
 		exclude = [
 			'mask_token', 'mask_token_id', 'unk_token_id', 
-			'save_full_model', 'checkpoint_dir', 'load_full_model', 'device'
+			'save_full_model', 'checkpoint_dir', 'load_full_model', 'device',
+			'use_kl_baseline_loss',
 		]
 		
 		included_vars = [var for var in vars(self) if not var in exclude]
@@ -525,6 +520,41 @@ class Tuner:
 		
 		if not hasattr(self, 'random_seed'):
 			log.error(f'Original random seed not found in log file or weights file in {os.path.split(path)[0]}!')
+			
+	def __load_format_dataset(
+		self, 
+		dataset_file: str,
+		split: str = 'train', 
+		data_field: str = 'text',
+		fmt: str = 'json', 
+		n_examples: int = None
+	) -> Tuple:
+		'''
+		Loads and formats a huggingface dataset for use with the Tuner
+		
+			params:
+				dataset_file (str)		: the location of the dataset
+				data_field (str)		: the field in the dataset that contains the actual examples
+				string_id (str)			: a string_id corresponding to a huggingface pretrained tokenizer
+										  used to determine appropriate formatting
+				fmt (str)				: the file format the dataset is saved in
+				n_examples (int)		: how many (random) examples to draw from the dataset
+										  if not set, the full dataset is returned
+			
+			returns:
+				dataset (Dataset)		: a dataset that has been formatted for use with the tokenizer,
+										  possible with punctuation stripped
+		'''
+		return tuner_utils.load_format_dataset(
+			dataset_file 		= dataset_file,
+			split 				= split,
+			data_field 			= data_field,
+			n_examples 			= n_examples,
+			fmt 				= fmt, 
+			string_id 			= self.string_id, 
+			remove_punct 		= self.strip_punct,
+			tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs,
+		)
 	
 	def __eval(self, eval_cfg: DictConfig) -> None:
 		'''
@@ -806,6 +836,31 @@ class Tuner:
 				self.masked_dev_argument_data 		= self.__get_formatted_datasets(mask_args=True, masking_style='eval', datasets=self.cfg.dev)
 				self.args_group 					= self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.model_name
 			
+			if self.use_kl_baseline_loss:
+				if not (isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing)):
+					for k, v in self.cfg.kl_loss_params.items():
+						
+						setattr(self, ('kl_' if 'kl' not in k else '') + k, v)
+					
+					self.KL_baseline_loss 				= kl_baseline_loss.KLBaselineLoss(
+															model 				= self.model, 
+															tokenizer 			= self.tokenizer, 
+															dataset 			= self.__load_format_dataset(
+																					os.path.join(
+																						hydra.utils.get_original_cwd(),
+																						self.kl_dataset
+																					)
+																				),
+															scaleby 			= self.kl_scaleby,
+															n_examples_per_step	= self.kl_n_examples_per_step,
+															model_kwargs 		= self.cfg.model.model_kwargs, 
+															tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs
+														)
+				else:
+					log.warning('You set "use_kl_baseline_loss=True", but you are not unfreezing any model parameters!')
+					log.warning('Model predictions when excluding new tokens would not change compared to baseline.')
+					log.warning('For this reason, not using KL baseline loss.')
+				
 		self.cfg 					= OmegaConf.load(os.path.join(hydra.utils.get_original_cwd(), cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
 		
 		# allowing an optional argument to specify the gpu when calling Tuner helps us when evaluating with/without a gpu regardless of the tuning setup
@@ -858,6 +913,8 @@ class Tuner:
 		def save_weights(weights: Dict) -> None:
 			'''Saves dictionary of weights to disk'''
 			# always save the weights on cpu for ease of use
+			# sometimes we want to evaluate on a cpu-only machine even after running on a gpu
+			# this allows that
 			with gzip.open('weights.pkl.gz', 'wb') as f:
 				pkl.dump({k: v.to('cpu') if isinstance(v, torch.Tensor) else v for k,v in weights.items()}, f)
 		
@@ -1161,12 +1218,33 @@ class Tuner:
 					seed=self.random_seed,
 				)
 		
+		def compute_loss(outputs: 'MaskedLMOutput', eval: bool = False) -> torch.Tensor:
+			'''
+			Computes loss on language model outputs according to the config settings
+			
+				params:
+					outputs (MaskedLMOutput): outputs from a masked language model
+					eval (bool)				: whether the model is being evaluated or trained on the basis of
+											  the loss. for eval, we never use the KL baseline loss,
+											  since we are interested in overfitting to the generalization sets
+				
+				returns:
+					loss (torch.Tensor)		: if using KL divergence loss, add KL divergence loss to the original model outputs loss
+											  KL divergence loss is defined at class initialization according to passed options
+											  otherwise, return the original model loss
+			'''
+			if self.use_kl_baseline_loss and not eval:
+				outputs.loss += self.KL_baseline_loss()
+				return outputs.loss
+			else:
+				return outputs.loss
+		
 		initialize_added_token_weights()
 		
 		# store weights pre-training so we can inspect the initial status later
 		saved_weights = {'random_seed': self.random_seed, 0: self.added_token_weights}
 		
-		if not self.tuning_data or (self.exp_type == 'newverb' and self.unfreezing is not None):
+		if not self.tuning_data or not(isinstance(self.unfreezing,float) and np.isnan(self.unfreezing)):
 			log.info(f'Saving randomly initialized weights')
 			save_weights(saved_weights)
 			if not self.tuning_data:	
@@ -1224,10 +1302,10 @@ class Tuner:
 					optimizer.zero_grad(set_to_none=True) # this is supposed to be faster than .zero_grad()
 					
 					if self.masked_tuning_style == 'roberta':
-						inputs = self.mixed_tuning_data['inputs']
+						inputs 		= self.mixed_tuning_data['inputs']
 					
-					train_outputs = self.model(**inputs, labels=labels)
-					train_loss = train_outputs.loss
+					train_outputs 	= self.model(**inputs, labels=labels)
+					train_loss 		= compute_loss(train_outputs)
 					train_loss.backward()
 					
 					tb_loss_dict, tb_metrics_dict = {}, {}
@@ -1256,7 +1334,7 @@ class Tuner:
 						dev_losses = []
 						for dataset in dev_inputs:
 							dev_outputs = self.model(**dev_inputs[dataset], labels=dev_labels[dataset])
-							dev_loss 	= dev_outputs.loss
+							dev_loss 	= compute_loss(dev_outputs, eval=True)
 							dev_losses 	+= [dev_loss.item()]
 							
 							record_epoch_metrics(
@@ -1269,9 +1347,9 @@ class Tuner:
 						
 						# Compute loss on masked training data without dropout; this is most representative of the testing procedure, so we can use it to determine the best epoch
 						no_dropout_train_outputs 	= self.model(**masked_inputs, labels=labels)
-						no_dropout_train_loss 		= no_dropout_train_outputs.loss
+						no_dropout_train_loss 		= compute_loss(no_dropout_train_outputs, eval=True)
 						
-						dev_losses += [no_dropout_train_loss.item()]
+						dev_losses 					+= [no_dropout_train_loss.item()]
 						
 						record_epoch_metrics(
 							epoch, no_dropout_train_outputs, delta, 
@@ -2114,81 +2192,37 @@ class Tuner:
 										  examples in the dataset for the current model compared to a pre-fine-tuning baseline
 		'''
 		
-		log.info(f'Initializing Baseline Model:\t{self.cfg.model.base_class} ({self.string_id})')
-		baseline_model					= AutoModelForMaskedLM.from_pretrained(self.string_id, **self.cfg.model.model_kwargs).to(self.device)
-		baseline_model.eval()
-		
-		log.info(f'Initializing Baseline Tokenizer:\t{self.cfg.model.tokenizer}   ({self.string_id})')
-		baseline_tokenizer 				= AutoTokenizer.from_pretrained(self.string_id, use_fast=False, **self.cfg.model.tokenizer_kwargs)
-		
-		dataset_loc 					= eval_cfg.comparison_dataset.replace(f'{hydra.utils.get_original_cwd()}{os.path.sep}', '')
-		dataset_file 					= os.path.join(hydra.utils.get_original_cwd(), dataset_loc)
-		dataset_name 					= os.path.split(dataset_file)[-1].replace('.json.gz', '')
+		dataset_loc 			= eval_cfg.comparison_dataset.replace(f'{hydra.utils.get_original_cwd()}{os.path.sep}', '')
+		dataset_file 			= os.path.join(hydra.utils.get_original_cwd(), dataset_loc)
+		dataset_name 			= os.path.split(dataset_file)[-1].replace('.json.gz', '')
 		
 		log.info(f'Loading dataset {dataset_name}')
-		dataset 						= load_dataset('json', data_files={'baseline_comp': dataset_file})
-		
-		if not eval_cfg.comparison_n_exs:
-			# use the full dataset if we haven't said not to
-			eval_cfg.comparison_n_exs 	= len(dataset['baseline_comp'])
-		
-		comparison_n_exs 				= min(eval_cfg.comparison_n_exs, len(dataset['baseline_comp']))
-		original_texts 					= self.__format_data_for_tokenizer(data=dataset['baseline_comp']['text'])
-		
-		if comparison_n_exs < len(dataset['baseline_comp']):
-			log.info(f'Drawing {eval_cfg.comparison_n_exs} random examples from {len(dataset["baseline_comp"])} total')
-			dataset['baseline_comp'] 	= dataset['baseline_comp'].shuffle()[:comparison_n_exs]
-			# we need to do this because the later stuff expects this to be a list of dicts
-			dataset['baseline_comp']	= [dict(zip(dataset['baseline_comp'], t)) for t in zip(*dataset['baseline_comp'].values())]
-		
-		dataset 						= self.__format_data_for_tokenizer(data=dataset)
-		dataset['baseline_comp'] 		= {k: [i[k] for i in dataset['baseline_comp']] for k in dataset['baseline_comp'][0]}
-		dataset 						= DatasetDict({'baseline_comp': Dataset.from_dict(dataset['baseline_comp'])})
-		dataset['baseline_comp'] 		= dataset['baseline_comp'].map(lambda ex: baseline_tokenizer(ex['text']), batched=True)
-		sources 						= dataset['baseline_comp']['source']
-		texts							= dataset['baseline_comp']['text']
-		dataset 						= dataset.remove_columns(['source', 'text'])
-		dataset.set_format(type='torch')
-		dataloader 						= torch.utils.data.DataLoader(dataset['baseline_comp'], batch_size=1)
-		
-		# to compare performance to baseline, we are interested in what has changed with regards to the original tokens
-		# so we set this up to exclude predictions about the new tokens from the comparison
-		to_exclude 						= set(self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask))
-		to_include 						= torch.LongTensor([idx for idx in self.tokenizer.get_vocab().values() if not idx in to_exclude]).to(self.device)
+		dataset 				= self.__load_format_dataset(dataset_file=dataset_file, split='test', n_examples=eval_cfg.comparison_n_exs)
 		
 		if self.model.training:
 			log.warning('Model performance will not be compared to baseline in training mode. Model will be set to eval mode.')
 			self.model.eval()
 		
-		kl_divs 		= []
-		with torch.no_grad(), tqdm(dataloader) as t:
-			try:
-				for batch in t:
-					batch 				= {k: v.to(self.device) for k, v in batch.items()}
-					fine_tuned_outputs 	= self.model(**batch).logits.index_select(-1, to_include)
-					fine_tuned_outputs 	= F.log_softmax(fine_tuned_outputs, dim=-1)
-					
-					baseline_outputs	= F.softmax(baseline_model(**batch).logits, dim=-1) # torch.nn.function.kl_div expects inputs but NOT targets in log space
-					
-					# KL(P || Q); torch.nn.functional.kl_div does a counterintuitive thing where it wants Q first, rather than P
-					# it also expects the input to have been converted to log space, but not the target
-					# it also uses 'mean' as the default way of summarizing kl div for a distribution 
-					# instead of sum (as in the standard definition)
-					kl_div 				= F.kl_div(input=fine_tuned_outputs, target=baseline_outputs, reduction='sum').item()
-					kl_divs.append(kl_div)
-					
-					t.set_postfix(kl_div_mean=f'{np.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
-			except KeyboardInterrupt:
-				log.warning('Baseline comparison halted manually')
+		KL_baseline_loss 		= kl_baseline_loss.KLBaselineLoss(
+									model 				= self.model,
+									tokenizer 			= self.tokenizer,
+									dataset 			= dataset,
+									n_examples_per_step = eval_cfg.comparison_n_exs,
+									model_kwargs 		= self.cfg.model.model_kwargs,
+									tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs,
+									reduction 			= 'sum',
+								)
 		
-		log.info(f'Mean KL divergence on {dataset_name}: {np.mean(kl_divs):.2f} (\u00b1{tuner_utils.sem(kl_divs):.2f})')
+		mean_kl_div, kl_divs 	= KL_baseline_loss(progress_bar=True, return_all=True)
 		
-		kl_divs 					= pd.DataFrame(kl_divs, columns=['kl_div']).assign(
-										dataset_name 	= dataset_name,
-										source 			= sources[:len(kl_divs)],
-										text 			= texts[:len(kl_divs)],
-										sentence_num 	= lambda df: [original_texts.index(s) for s in df.text],
-									)
+		log.info(f'Mean KL divergence from baseline on {dataset_name}: {mean_kl_div:.2f} (\u00b1{tuner_utils.sem(kl_divs):.2f})')
+		
+		kl_divs				= pd.DataFrame(kl_divs, columns=['kl_div']).assign(
+									dataset_name 	= dataset_name,
+									source 			= dataset['source'],
+									text 			= dataset['text'],
+									sentence_num 	= dataset['original_pos'],
+								)
 
 		return kl_divs
 	
