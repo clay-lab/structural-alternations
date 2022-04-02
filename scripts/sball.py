@@ -20,6 +20,6 @@ def sbatch_all(s):
 		time.sleep(0.5)
 		x.kill()
 
-if __name___ == '__main__':
+if __name__ == '__main__':
 	
 	sbatch_all(sys.argv[-1])
