@@ -1,6 +1,7 @@
 import os
 import hydra
 import itertools
+import sball
 
 from omegaconf import DictConfig
 
@@ -34,13 +35,20 @@ def split_scripts(cfg: DictConfig) -> None:
 	
 	header += '\n'
 	
+	filenames = []
 	for i, sweep in enumerate(all_sweeps):
 		file = header + cfg.command + ' ' + path + ' ' + sweep
 		filename = sweep.split(' \\\n\t')
 		filename = '-'.join([f.split('=')[0] + '=' + os.path.split(f.split('=')[-1])[-1] for f in filename]) + '.sh'
 		filename = filename.replace(os.path.sep, '-')
+		filenames.append(filename)
 		with open(filename, 'w') as out_file:
 			out_file.write(file)
+	
+	# note that this submits all scripts in the current directory, even if they were there before. use caution
+	if cfg.runafter:
+		expr = ' '.join(filenames)
+		sball.sbatch_all(expr)
 
 if __name__ == '__main__':
 	

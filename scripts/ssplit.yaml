@@ -16,6 +16,8 @@ s:
 
 sweep: ''
 
+runafter: false
+
 header: ['module load CUDA', 'module load cuDNN', 'module load miniconda', 'source activate salts']
 command: python
 
