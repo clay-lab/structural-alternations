@@ -64,7 +64,7 @@ def create_save_dataset(cfg: DictConfig) -> None:
 		datasets[dataset] = previous_prob
 	
 	new_dataset = dict.fromkeys(cfg.splits)
-	exs 	 	= [None for _ in sum(cfg.splits.values())] # so we don't repeat sentences
+	exs 	 	= [None for _ in range(sum(cfg.splits.values()))] # so we don't repeat sentences
 	for split in cfg.splits:
 		n = cfg.splits[split]
 		new_dataset[split] = {}
