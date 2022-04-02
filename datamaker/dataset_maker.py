@@ -69,6 +69,11 @@ def create_save_dataset(cfg: DictConfig) -> None:
 		new_dataset[split] = []
 		n = cfg.splits[split]
 		n_chosen = 0
+		
+		# we don't just shuffle the dataset and choose the first n examples,
+		# because some datasets contain multiple sentences per row. we want
+		# n sentences, which means getting the row, and then splitting and getting a random (good)
+		# sentence from that row
 		with tqdm(total=n) as pbar:
 			while n_chosen < n:
 				r = random()
