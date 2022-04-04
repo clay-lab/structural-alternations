@@ -25,7 +25,7 @@ hyperparameters:
   use_kl_baseline_loss: false
 
 kl_loss_params:
-  dataset: datamaker\datasets\miniboki-2022-03-31_10-42-40\miniboki.json.gz
+  dataset: datamaker/datasets/miniboki-2022-04-01_22-58-30/miniboki
   n_examples_per_step: 100
   scaleby: 0.5
 
