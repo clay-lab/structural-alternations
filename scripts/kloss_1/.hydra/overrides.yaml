@@ -1,7 +1,0 @@
-- name=kloss_1
-- s.time=00:30:00
-- sweep='tune.py model=bert tuning=newverb_transitive_ext tuning.which_args=model,drink
-  hyperparameters.unfreezing=complete,mixout.9 hyperparameters.use_kl_baseline_loss=true
-  hyperparameters.mask_args=false,true hyperparameters.max_epochs=250 kl_loss_params.dataset=datamaker/datasets/miniboki-2022-04-01_22-58-30/miniboki
-  +debug=true +use_gpu=true'
-- runafter=true
