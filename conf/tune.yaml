@@ -25,13 +25,10 @@ hyperparameters:
   use_kl_baseline_loss: false
 
 kl_loss_params:
-<<<<<<< HEAD
   dataset: datamaker/datasets/miniboki-2022-04-01_22-58-30/miniboki
-=======
-  dataset: datamaker\datasets\miniboki-2022-04-01_22-58-30\miniboki
->>>>>>> d42a65fcfbc1cea9c205786e9b0f6ad21f0756bd
   n_examples_per_step: 100
   scaleby: 0.5
+  masking: bert
 
 # Masked tuning style values are 'always,' 'bert,' 'roberta', or 'none'
 # 'always' always masks tokens
@@ -45,7 +42,7 @@ kl_loss_params:
   
 hydra:
   run: 
-    dir: ./outputs/${get_dir_name:${model},${tuning},${hyperparameters}}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: ./outputs/${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params}}/${now:%Y-%m-%d_%H-%M-%S}
   sweep:
     dir: ./outputs
-    subdir: ${get_dir_name:${model},${tuning},${hyperparameters}}/${now:%Y-%m-%d_%H-%M-%S}-${n}
+    subdir: ${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params}}/${now:%Y-%m-%d_%H-%M-%S}-${n}

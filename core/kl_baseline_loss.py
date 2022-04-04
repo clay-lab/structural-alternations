@@ -37,11 +37,8 @@ class KLBaselineLoss(KLDivLoss):
 	just be optimizing for the behavior of the original model and not striking the intended
 	balance between performance on tuning data and the original model's behavior.
 	
-	See torch.
-	
 	Adapted from torch.nn.modules.loss.KLDivLoss
 	'''
-	
 	def __init__(
 		self,
 		model: 'PreTrainedModel',
@@ -49,6 +46,7 @@ class KLBaselineLoss(KLDivLoss):
 		dataset: Dataset,
 		scaleby: float = 1.,
 		n_examples_per_step: int = None,
+		masking: str = 'none',
 		model_kwargs: Dict = {},
 		tokenizer_kwargs: Dict = {},
 		size_average = None,
@@ -71,6 +69,11 @@ class KLBaselineLoss(KLDivLoss):
 													  you can use this to set how many random samples to draw
 													  from dataset to use when calculating loss. If not set,
 													  all examples will be used each time.
+				masking (str)						: which style of masking to use when calculating the loss
+													  valid options are the following.
+													  "always": choose 15% of tokens to randomly mask per sentence, and replace with mask tokens
+													  "bert"  : choose 15% of tokens to randomly mask per sentence. replace 80% with mask token, 10% with original token, 10% with random word.
+													  "none"  : don't mask any tokens. KL divergence is calculated on the full sentence instead of 15% of randomly masked tokens
 				model_kwargs (dict)					: used to create a baseline version of the passed model
 				tokenizer_kwargs (dict)				: used to create a baseline version of the passed tokenizer
 				size_average						: passed to KLDivLoss
@@ -81,6 +84,7 @@ class KLBaselineLoss(KLDivLoss):
 		self.model 				= model
 		self.tokenizer 			= tokenizer
 		self.device 			= self.model.device if torch.cuda.is_available() else 'cpu'
+		self.masking 			= masking
 		
 		log.info(f'Initializing Baseline Model for KLBaselineLoss:\t{self.model.config.architectures[0]} ({self.model.name_or_path})')
 		self.baseline_model		= AutoModelForMaskedLM.from_pretrained(self.model.name_or_path, **model_kwargs).to(self.device)
@@ -90,7 +94,7 @@ class KLBaselineLoss(KLDivLoss):
 		_ = self.baseline_model.eval()
 		
 		log.info(f'Initializing Baseline Tokenizer for KLBaselineLoss:\t{self.tokenizer.__class__.__name__}   ({self.tokenizer.name_or_path})')
-		baseline_tokenizer 		= AutoTokenizer.from_pretrained(self.tokenizer.name_or_path, **tokenizer_kwargs)
+		self.baseline_tokenizer = AutoTokenizer.from_pretrained(self.tokenizer.name_or_path, **tokenizer_kwargs)
 		
 		# set up the dataset
 		self.dataset 			= dataset
@@ -104,7 +108,7 @@ class KLBaselineLoss(KLDivLoss):
 									list(
 										set(self.tokenizer.get_vocab().values())
 										.intersection(
-											set(baseline_tokenizer.get_vocab().values())
+											set(self.baseline_tokenizer.get_vocab().values())
 										)
 									)
 								).to(self.device)
@@ -139,28 +143,40 @@ class KLBaselineLoss(KLDivLoss):
 		mean_kl_div						= torch.tensor((0.)).to(self.device)
 		
 		# haven't figure out a way to actually do batches > 1 yet
-		# the issue is setting up the padding of the inputs correctly. As it turns out
-		# this is not actually that slow, so we'll just do it 1 at a time for now
+		# the issue is setting up the padding of the inputs correctly per batch. As it turns out
+		# one at a is not actually that slow, so we'll just do it 1 at a time for now
 		if progress_bar:
 			dataloader 	= tqdm(dataloader)
 		
 		if progress_bar or return_all:
 			kl_divs 	= []
 		
+		if return_all:
+			all_mask_indices = []
+		
 		try:
 			for i, batch in enumerate(dataloader):
-				batch_inputs			= {k: v.to(self.device) for k, v in batch.items() if isinstance(v,torch.Tensor)}
+				batch_inputs				= {k: v.to(self.device) for k, v in batch.items() if isinstance(v,torch.Tensor)}
+				batch_inputs['input_ids'], mask_indices	\
+											= self.mask_inputs(batch_inputs['input_ids'])
 				
-				outputs 				= self.model(**batch_inputs).logits.index_select(-1, self.to_include)
-				outputs 				= F.log_softmax(outputs, dim=-1)
+				if return_all:
+					all_mask_indices.append(mask_indices)
+				
+				outputs 					= self.model(**batch_inputs).logits.index_select(-1, self.to_include)
+				outputs 					= F.log_softmax(outputs, dim=-1)
 				
 				# we're not training the baseline model, so no need to get gradients for it
 				with torch.no_grad():
-					baseline_outputs 	= F.softmax(self.baseline_model(**batch_inputs).logits, dim=-1)
+					baseline_outputs 		= F.softmax(self.baseline_model(**batch_inputs).logits, dim=-1)
+				
+				# we just calculate the loss on the selected tokens
+				outputs 					= torch.cat([torch.unsqueeze(outputs[i].index_select(0, mask_locations), dim=0) for i, mask_locations in enumerate(mask_indices)], dim=0)
+				baseline_outputs			= torch.cat([torch.unsqueeze(baseline_outputs[i].index_select(0, mask_locations), dim=0) for i, mask_locations in enumerate(mask_indices)], dim=0)
 				
 				# we want this to be a mean instead of a sum, so divide by the length of the dataset
-				kl_div 					= super(KLBaselineLoss, self).forward(outputs, baseline_outputs)
-				mean_kl_div 			+= kl_div/comp_dataset.num_rows
+				kl_div 						= super(KLBaselineLoss, self).forward(outputs, baseline_outputs)
+				mean_kl_div 				+= kl_div/comp_dataset.num_rows
 						
 				if progress_bar or return_all:
 					kl_divs.append(kl_div)
@@ -173,6 +189,51 @@ class KLBaselineLoss(KLDivLoss):
 			mean_kl_div = (mean_kl_div * comp_dataset.num_rows)/i
 		
 		if return_all:
-			return mean_kl_div * self.scaleby, torch.tensor(kl_divs).to(self.device)
+			return mean_kl_div * self.scaleby, torch.tensor(kl_divs).to(self.device), all_mask_indices
 		else:
 			return mean_kl_div * self.scaleby
+	
+	def mask_inputs(self, inputs: torch.Tensor) -> Tuple[torch.Tensor,List[torch.Tensor]]:
+		'''
+		Randomly mask inputs according to the configuration.
+		If masking is "none", return the original tensor.
+		If masking is "always", choose 15% of tokens and replace with mask tokens.
+		If masking is "bert", choose 15% of tokens. Replace 80% of those with mask tokens, 10% with the original token, and 10% with a random token.
+		
+			params:
+				inputs (torch.Tensor)				: a tensor of the shape (batch_size, num_words) containing 
+													  tokens used as model inputs
+			
+			returns:
+				masked_inputs (torch.Tensor)		: a tensor with tokens replaced with mask tokens
+				masked_indices (List[List[int]])	: a list of of lists of indices for each sentence in the inputs
+													  where tokens have been replaced with mask tokens
+		'''
+		# exclude the pad tokens
+		candidates 	= [(sentence != self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token)).nonzero(as_tuple=True)[0] for sentence in inputs]
+		
+		if self.masking == 'none':
+			# don't mask anything, so just return the inputs and the full set of indices
+			return inputs, candidates
+		
+		all_to_mask = []
+		for i, (sentence, candidate_set) in enumerate(zip(inputs, candidates)):
+			# randomly choose 15% of the candidates to mask
+			to_mask 	= torch.argsort(torch.rand(candidate_set.shape[0], device=self.device))[:round(candidate_set.shape[0]*.15)]
+			all_to_mask.append(to_mask)
+			
+			for index in to_mask:
+				r 		= torch.rand(1, device=self.device)
+				
+				# if we are always masking, replace with the mask token
+				# otherwise, replace with the mask token 80% of the time
+				if r < 0.8 or self.masking == 'always':
+					inputs[i][index] = self.tokenizer.convert_tokens_to_ids(self.baseline_tokenizer.mask_token)
+				# replace with a random word from the model 10% of the time
+				elif 0.8 <= r < 0.9:
+					inputs[i][index] = np.random.choice(len(self.baseline_tokenizer))
+				# leave intact 10% of the time
+				elif 0.9 <= r < 1.0:
+					pass
+		
+		return inputs, all_to_mask

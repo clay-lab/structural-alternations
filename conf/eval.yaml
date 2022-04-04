@@ -15,9 +15,10 @@ k: 50 # get the k subword tokens with the most similar embeddings to the trained
 num_tsne_words: 500 # plot the tsne of the first num_tsne_words embeddings + the novel tokens
 
 # if provided, and the model used unfreezing, compare the model's performance to a baseline on a dataset
-comparison_dataset: ''
-comparison_n_exs: '' # how many sentences from the comparison dataset to use? blank means all
-                     # otherwise, pull this many random examples from the dataset to use
+comparison_dataset: datamaker/datasets/miniboki-2022-04-01_22-58-30/miniboki
+comparison_n_exs: 1000 # how many sentences from the comparison dataset to use? blank means all
+                       # otherwise, pull this many random examples from the dataset to use
+comparison_masking: bert # how to mask sentences during evaluation
 
 checkpoint_dir: ''
 

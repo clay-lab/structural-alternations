@@ -15,10 +15,10 @@ log = logging.getLogger(__name__)
 OmegaConf.register_new_resolver(
 	'get_dir_name',
 	# we have to do this via an intermediate lambda because omegaconf only allows lambda resolvers
-	lambda model, tuning, hyperparameters: formatted_dir_name(model, tuning, hyperparameters)
+	lambda model, tuning, hyperparameters, kl_loss_params: formatted_dir_name(model, tuning, hyperparameters, kl_loss_params)
 )
 
-def formatted_dir_name(model: DictConfig, tuning: DictConfig, hyperparameters: DictConfig) -> str:
+def formatted_dir_name(model: DictConfig, tuning: DictConfig, hyperparameters: DictConfig, kl_loss_params: DictConfig) -> str:
 	dir_name 	=	tuning.name
 	
 	model_name 	= 	'bbert' if model.friendly_name == 'bert' \
@@ -51,7 +51,10 @@ def formatted_dir_name(model: DictConfig, tuning: DictConfig, hyperparameters: D
 	dir_name 	+= 	f'lr{hyperparameters.lr}'
 
 	if hyperparameters.use_kl_baseline_loss and not hyperparameters.unfreezing == 'none':
-		dir_name += '-kloss'
+		dir_name += f'-{kl_loss_params.scaleby:.2f}kl'
+		dir_name += kl_loss_params.masking[0] + 'mask' \
+					if kl_loss_params.masking in ['always', 'none', 'bert'] \
+					else kl_loss_params.masking
 	
 	if 'which_args' in tuning and tuning.exp_type == 'newverb':
 		dir_name = 	os.path.join(dir_name, model.friendly_name) if tuning.which_args == 'model' else \

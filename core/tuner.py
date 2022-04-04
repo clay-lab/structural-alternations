@@ -840,25 +840,27 @@ class Tuner:
 						
 						setattr(self, ('kl_' if 'kl' not in k else '') + k, v)
 					
-					self.KL_baseline_loss 				= kl_baseline_loss.KLBaselineLoss(
-															model 				= self.model, 
-															tokenizer 			= self.tokenizer, 
-															dataset 			= self.__load_format_dataset(
-																					dataset_loc = os.path.join(
-																						hydra.utils.get_original_cwd(),
-																						self.kl_dataset
-																					),
-																					split = 'train'
+					self.KL_baseline_loss 			= kl_baseline_loss.KLBaselineLoss(
+														model 				= self.model, 
+														tokenizer 			= self.tokenizer, 
+														dataset 			= self.__load_format_dataset(
+																				dataset_loc = os.path.join(
+																					hydra.utils.get_original_cwd(),
+																					self.kl_dataset
 																				),
-															scaleby 			= self.kl_scaleby,
-															n_examples_per_step	= self.kl_n_examples_per_step,
-															model_kwargs 		= self.cfg.model.model_kwargs, 
-															tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs
-														)
+																				split = 'train'
+																			),
+														scaleby 			= self.kl_scaleby,
+														n_examples_per_step	= self.kl_n_examples_per_step,
+														masking 			= self.kl_masking,
+														model_kwargs 		= self.cfg.model.model_kwargs, 
+														tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs
+													)
 				else:
 					log.warning('You set "use_kl_baseline_loss=True", but you are not unfreezing any model parameters!')
 					log.warning('Model predictions when excluding new tokens would not change compared to baseline.')
 					log.warning('For this reason, not using KL baseline loss to avoid wasting time.')
+					self.use_kl_baseline_loss 		= False
 				
 		self.cfg 					= OmegaConf.load(os.path.join(hydra.utils.get_original_cwd(), cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
 		
@@ -2191,38 +2193,43 @@ class Tuner:
 										  examples in the dataset for the current model compared to a pre-fine-tuning baseline
 		'''
 		# doing this lets us use either absolute paths or paths relative to the starting dir
-		dataset_loc 			= eval_cfg.comparison_dataset.replace(hydra.utils.get_original_cwd(), '')
-		dataset_loc 			= os.path.join(hydra.utils.get_original_cwd(), eval_cfg.comparison_dataset)
-		dataset_name 			= os.path.split(dataset_loc)[-1]
+		dataset_loc 		= eval_cfg.comparison_dataset.replace(hydra.utils.get_original_cwd(), '')
+		dataset_loc 		= os.path.join(hydra.utils.get_original_cwd(), eval_cfg.comparison_dataset)
+		dataset_name 		= os.path.split(dataset_loc)[-1]
 		
 		log.info(f'Loading dataset {dataset_name}')
-		dataset 				= self.__load_format_dataset(dataset_loc=dataset_loc, split='test', n_examples=eval_cfg.comparison_n_exs)
+		dataset 			= self.__load_format_dataset(dataset_loc=dataset_loc, split='test', n_examples=eval_cfg.comparison_n_exs)
 		
 		if self.model.training:
 			log.warning('Model performance will not be compared to baseline in training mode. Model will be set to eval mode.')
 			self.model.eval()
 		
-		KL_baseline_loss 		= kl_baseline_loss.KLBaselineLoss(
-									model 				= self.model,
-									tokenizer 			= self.tokenizer,
-									dataset 			= dataset,
-									n_examples_per_step = eval_cfg.comparison_n_exs,
-									model_kwargs 		= self.cfg.model.model_kwargs,
-									tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs,
-									reduction 			= 'sum',
-								)
+		KL_baseline_loss 	= kl_baseline_loss.KLBaselineLoss(
+								model 				= self.model,
+								tokenizer 			= self.tokenizer,
+								dataset 			= dataset,
+								n_examples_per_step = eval_cfg.comparison_n_exs,
+								masking 			= eval_cfg.comparison_masking,
+								model_kwargs 		= self.cfg.model.model_kwargs,
+								tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs,
+								reduction 			= 'sum',
+							)
 		
 		with torch.no_grad():
-			mean_kl_div, kl_divs = KL_baseline_loss(progress_bar=True, return_all=True)
+			mean_kl_div, kl_divs, mask_indices \
+							 = KL_baseline_loss(progress_bar=True, return_all=True)
 		
 		log.info(f'Mean KL divergence from baseline on {dataset_name}: {mean_kl_div:.2f} (\u00b1{tuner_utils.sem(kl_divs):.2f})')
 		
 		kl_divs				= pd.DataFrame(kl_divs, columns=['kl_div']).assign(
-									dataset_name 	= dataset_name,
-									source 			= dataset['source'],
-									text 			= dataset['text'],
-									sentence_num 	= dataset['original_pos'],
-								)
+								dataset_name 	= dataset_name,
+								source 			= dataset['source'],
+								text 			= dataset['text'],
+								sentence_num 	= dataset['original_pos']
+							)
+		
+		if eval_cfg.comparison_masking != 'none':
+			kl_divs 		= kl_divs.assign(mask_indices = mask_indices)
 		
 		return kl_divs
 	

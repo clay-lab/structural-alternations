@@ -500,7 +500,9 @@ def get_plot_title(
 	if any([c for c in df.columns if c.startswith('kl_')]):
 		kl_loss_str = 'KL loss'
 		kl_loss_str += f' \u00d7 {tuner_utils.multiplator(df.kl_scaleby)} ('
-		kl_loss_str += os.path.split(tuner_utils.multiplator(df.kl_dataset, multstr ='multiple datasets'))[-1].split('.', 1)[0]
+		kl_loss_str += os.path.split(tuner_utils.multiplator(df.kl_dataset, multstr='multiple datasets'))[-1].split('.', 1)[0]
+		kl_loss_str += f', masking: ' if not all(df.kl_masking == 'none') else ' unmasked' if all(df.kl_masking == 'none') else ', '
+		kl_loss_str += tuner_utils.multiplator(df.kl_masking) if any(df.kl_masking == 'multiple') or any(df.kl_masking != 'none') else ''
 		kl_loss_str += f', {tuner_utils.multiplator(df.kl_n_examples_per_step)} ex/step), '
 		title 		+= kl_loss_str
 	
