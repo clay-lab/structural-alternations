@@ -314,7 +314,7 @@ def get_sentence_label(data: pd.DataFrame) -> str:
 	first_rows = data[data.sentence == data.loc[0].sentence][['ratio_name', 'position_ratio_name', 'sentence']].drop_duplicates().reset_index(drop=True)
 	position_map = {}
 	for row in first_rows.index:
-		position_map.update({gf : position for gf, position in tuple(zip(first_rows.loc[row].ratio_name.split('/'), [int(p) for p in first_rows.loc[row].position_ratio_name.replace('position ', '').split('/')]))})
+		position_map.update({gf: position for gf, position in tuple(zip(first_rows.loc[row].ratio_name.split('/'), [int(p) for p in first_rows.loc[row].position_ratio_name.replace('position ', '').split('/')]))})
 	
 	position_map = dict(sorted(position_map.items(), key=lambda item: item[1]))
 	sentence_ex = first_rows.sentence[0]
@@ -507,7 +507,10 @@ def get_single_pair_data(
 											  and all groups in the group column occur in both x and y
 	'''
 	# do some sorting
-	summary = summary.sort_values(group).reset_index(drop=True)
+	summary = summary[summary[pair_col].isin(pair)].reset_index(drop=True)
+	
+	# we need 'kind='stable'' because otherwise other columns get into weird orders
+	summary = summary.sort_values(group, kind='stable').reset_index(drop=True)
 	
 	if 'ratio_name' in summary and any(re.sub(r'\[|\]', '', gf) in ratio_name for gf in GF_ORDER for ratio_name in summary.ratio_name):
 		# Sort by grammatical function prominence for newverb exps (we do this because 'subj' alphabetically follows 'obj'), but it's more natural for it to go first

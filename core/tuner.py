@@ -834,28 +834,10 @@ class Tuner:
 				self.masked_dev_argument_data 		= self.__get_formatted_datasets(mask_args=True, masking_style='eval', datasets=self.cfg.dev)
 				self.args_group 					= self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.model_name
 			
-			if hasattr(self, 'use_kl_baseline_loss') and self.use_kl_baseline_loss:
+			if self.use_kl_baseline_loss:
 				if not (isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing)):
 					for k, v in self.cfg.kl_loss_params.items():
-						
 						setattr(self, ('kl_' if 'kl' not in k else '') + k, v)
-					
-					self.KL_baseline_loss 			= kl_baseline_loss.KLBaselineLoss(
-														model 				= self.model, 
-														tokenizer 			= self.tokenizer, 
-														dataset 			= self.__load_format_dataset(
-																				dataset_loc = os.path.join(
-																					hydra.utils.get_original_cwd(),
-																					self.kl_dataset
-																				),
-																				split = 'train'
-																			),
-														scaleby 			= self.kl_scaleby,
-														n_examples_per_step	= self.kl_n_examples_per_step,
-														masking 			= self.kl_masking,
-														model_kwargs 		= self.cfg.model.model_kwargs, 
-														tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs
-													)
 				else:
 					log.warning('You set "use_kl_baseline_loss=True", but you are not unfreezing any model parameters!')
 					log.warning('Model predictions when excluding new tokens would not change compared to baseline.')
@@ -1239,6 +1221,24 @@ class Tuner:
 				return outputs.loss
 			else:
 				return outputs.loss
+		
+		if self.use_kl_baseline_loss:
+			self.KL_baseline_loss 	= kl_baseline_loss.KLBaselineLoss(
+										model 				= self.model, 
+										tokenizer 			= self.tokenizer, 
+										dataset 			= self.__load_format_dataset(
+																dataset_loc = os.path.join(
+																	hydra.utils.get_original_cwd(),
+																	self.kl_dataset
+																),
+																split = 'train'
+															),
+										scaleby 			= self.kl_scaleby,
+										n_examples_per_step	= self.kl_n_examples_per_step,
+										masking 			= self.kl_masking,
+										model_kwargs 		= self.cfg.model.model_kwargs, 
+										tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs
+									)
 		
 		initialize_added_token_weights()
 		
@@ -2212,7 +2212,6 @@ class Tuner:
 								masking 			= eval_cfg.comparison_masking,
 								model_kwargs 		= self.cfg.model.model_kwargs,
 								tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs,
-								reduction 			= 'sum',
 							)
 		
 		with torch.no_grad():
@@ -2225,7 +2224,8 @@ class Tuner:
 								dataset_name 	= dataset_name,
 								source 			= dataset['source'],
 								text 			= dataset['text'],
-								sentence_num 	= dataset['original_pos']
+								sentence_num 	= dataset['original_pos'],
+								eval_kl_masking = eval_cfg.comparison_masking,
 							)
 		
 		if eval_cfg.comparison_masking != 'none':

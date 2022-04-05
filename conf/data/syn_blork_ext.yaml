@@ -28,6 +28,12 @@ sentence_types:
   - near-P modal active transitive
   - for-P modal active transitive
   - at-P modal active transitive
+  - like modal active transitive
+  - like past active transitive
+  - say SC modal active transitive
+  - say SC past active transitive
+  - kick modal active transitive
+  - kick past active transitive
 
 eval_groups:
   verb : BLORK
@@ -36,9 +42,6 @@ to_mask:
   BLORK
   
 added_args:
-  # bert:
-  #   '[subj]' : [human, person, man, woman]
-  #   '[obj]'  : [book, table, machine, thing]
   red_yellow:
     '[subj]' : [blood, ruby]
     '[obj]'  : [honey, gold]

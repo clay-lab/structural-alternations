@@ -16,7 +16,7 @@ num_tsne_words: 500 # plot the tsne of the first num_tsne_words embeddings + the
 
 # if provided, and the model used unfreezing, compare the model's performance to a baseline on a dataset
 comparison_dataset: datamaker/datasets/miniboki-2022-04-01_22-58-30/miniboki
-comparison_n_exs: 1000 # how many sentences from the comparison dataset to use? blank means all
+comparison_n_exs: 100 # how many sentences from the comparison dataset to use? blank means all
                        # otherwise, pull this many random examples from the dataset to use
 comparison_masking: bert # how to mask sentences during evaluation
 
@@ -24,7 +24,7 @@ checkpoint_dir: ''
 
 hydra:
   run:
-    dir: ${checkpoint_dir}/eval-${name:${data.name}}
+    dir: ${checkpoint_dir}/eval-${get_dir_name:${data.name},${comparison_masking}}
   sweep:
     dir: ${checkpoint_dir}
-    subdir: eval-${name:${data.name}}
+    subdir: eval-${get_dir_name:${data.name},${comparison_masking}}

@@ -1341,7 +1341,8 @@ def create_kl_divs_plot(
 	def get_kl_divs_plot_title(df: pd.DataFrame):
 		metric 		= f'histogram of KL divergences compared to baseline on {tuner_utils.multiplator(df.dataset_name)} (size {len(df)})'
 		title 		= get_plot_title(df, metric)
-		title 		+= f'\nmean: {np.mean(df.kl_div):.2f} (\u00b1{tuner_utils.sem(df.kl_div):.2f})'
+		title 		+= f'\neval KL masking: {tuner_utils.multiplator(df.eval_kl_masking)}, '
+		title 		+= f'mean: {np.mean(df.kl_div):.2f} (\u00b1{tuner_utils.sem(df.kl_div):.2f})'
 		
 		return title
 	
