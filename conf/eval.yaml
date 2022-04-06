@@ -26,6 +26,9 @@ comparison_masking: bert # how to mask sentences during evaluation
 dir: '' # the directory containing the model checkpoint to evaluate
 summarize: false # whether to create an overall summary when evaluating multiple models
 
+debug: false # whether to print model predictions for some sample sentences. only used for newverb experiments
+use_gpu: false # whether to use gpu for eval
+
 hydra:
   run:
     dir: ./${dir}/eval-${dirname:${criteria},${data.name}}

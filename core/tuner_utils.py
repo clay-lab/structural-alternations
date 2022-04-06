@@ -1240,6 +1240,89 @@ def sample_from_dataset(
 	
 	return dataset
 
+def mask_input(
+	inputs: torch.Tensor,
+	tokenizer: 'PreTrainedTokenizer',
+	indices: List[int] = None, 
+	masking_style: str = 'always',
+	device: str = 'cpu',
+) -> torch.Tensor:
+	'''
+	Creates a masked input according to the specified masking style.
+	If indices are provided, mask them according to the masking style.
+	Otherwise, choose a random 15% of the indices to mask.
+	
+	Then:
+		If masking is "none", return the original tensor.
+		If masking is "always", replace indices with mask tokens.
+		If masking is "bert", Replace 80% of indices with mask tokens, 
+							  10% with the original token, 
+							  and 10% with a random token.
+	
+		params:
+			inputs (torch.Tensor)			: a tensor containing token ids for a model
+			tokenizer (PreTrainedTokenizer)	: the tokenizer for the model for which the inputs are being prepared
+			indices (list[int])				: which positions to mask in the input
+											  if no indices are passed and masking is in ['bert', 'roberta', 'none'],
+											  a random 15% of tokens will be chosen to mask
+			masking_style (str)				: a string specifying which masked tuning style to use
+											  'always' means always replace the indices with the mask
+											  'none' means leave the original indices in place
+											  'bert/roberta' means replace the indices with the mask 80% of the time,
+											  	with the original token 10% of the time,
+											  	and with a random token id 10% of the time
+			device (str)					: what device (cpu, cuda) to place any returned indices on
+		
+		returns:
+			masked_inputs (torch.Tensor)	: inputs where the indices have been replaced with the mask token id
+											  according to the masked tuning style
+			indices (List[int])				: if no indices were passed, a list of the randomly chosen indices 
+											  to mask is returned 
+	'''
+	return_indices = False
+	if indices is None:
+		return_indices = True
+		# exclude the pad tokens
+		candidates 	= (inputs != tokenizer.convert_tokens_to_ids(tokenizer.pad_token)).nonzero(as_tuple=True)[0]
+		indices 	= torch.argsort(torch.rand(candidates.shape[0], device=device))[:round(candidates.shape[0]*.15)]
+		# this is just for presentational purposes really
+		indices 	= indices.sort().values
+	
+	# if we are not masking anything just return it
+	if masking_style == 'none':
+		if return_indices:
+			return inputs, candidates
+		else:
+			return inputs
+	
+	masked_inputs 	= inputs.clone().detach()	
+	mask_token_id 	= tokenizer.convert_tokens_to_ids(tokenizer.mask_token)
+	
+	for index in indices:
+		# even when using bert/roberta style tuning, we sometimes need access to the data with everything masked
+		# do not use bert/roberta-style masking if we are always masking
+		# note that we DO want to allow collecting unmasked inputs even when using always masked tuning, since we need them for the labels
+		# setting this to 0 means we always mask if masking_style is none
+		r = np.random.random() if masking_style in ['bert', 'roberta'] else 0
+			
+		# Roberta tuning regimen: 
+		# masked tokens are masked 80% of the time,
+		# original 10% of the time, 
+		# and random word 10% of the time
+		if r < 0.8:
+			replacement = mask_token_id
+		elif 0.8 <= r < 0.9:
+			replacement = inputs[index]
+		elif 0.9 <= r:
+			replacement = np.random.choice(len(tokenizer))
+		
+		masked_inputs[index] = replacement
+	
+	if return_indices:
+		return masked_inputs, indices
+	else:
+		return masked_inputs
+
 
 # analysis
 def get_best_epoch(

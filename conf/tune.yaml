@@ -29,6 +29,9 @@ kl_loss_params:
   n_examples_per_step: 100
   scaleby: 0.5
   masking: bert
+  
+debug: false # whether to print predictions for sample sentences every epoch. only used in newverb experiments
+use_gpu: false # whether to use gpu support
 
 # Masked tuning style values are 'always,' 'bert,' 'roberta', or 'none'
 # 'always' always masks tokens

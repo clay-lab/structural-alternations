@@ -48,7 +48,7 @@ class Tuner:
 	@property
 	def mixed_tuning_data(self) -> Dict:
 		'''Returns a dict with roberta-style masked sentences, inputs, and masked token indices.'''
-		return self.__get_formatted_datasets()[self.tuning]
+		return self.__get_formatted_datasets(masking_style=self.masked_tuning_style)[self.tuning]
 	
 	@property
 	def word_embeddings(self) -> nn.parameter.Parameter:
@@ -125,29 +125,15 @@ class Tuner:
 			
 			masked_token_indices.append(masked_token_indices_for_sentence)
 		
-		masked_inputs 	= inputs.copy()
-		vocab 			= tuple(self.tokenizer.get_vocab().values())
+		masked_inputs 	= deepcopy(inputs)
 		if masking_style != 'none':
 			for i, (tokenized_sentence, indices) in enumerate(zip(inputs['input_ids'], to_mask_indices)):
-				for index in indices:
-					# even when using bert/roberta style tuning, we sometimes need access to the data with everything masked
-					# do not use bert/roberta-style masking if we are always masking
-					# note that we DO want to allow collecting unmasked inputs even when using always masked tuning, since we need them for the labels
-					# setting this to 0 means we always mask if masking_style is none
-					r = np.random.random() if self.masked_tuning_style in ['bert', 'roberta'] else 0
-						
-					# Roberta tuning regimen: 
-					# masked tokens are masked 80% of the time,
-					# original 10% of the time, 
-					# and random word 10% of the time
-					if (r < 0.8 or masking_style == 'always'):
-						replacement = self.mask_token_id
-					elif 0.8 <= r < 0.9:
-						replacement = inputs['input_ids'][i][index]
-					elif 0.9 <= r:
-						replacement = np.random.choice(vocab)
-					
-					masked_inputs['input_ids'][i][index] = replacement
+				masked_inputs['input_ids'][i] = tuner_utils.mask_input(
+													inputs=masked_inputs['input_ids'][i], 
+													indices=indices, 
+													masking_style=masking_style, 
+													tokenizer=self.tokenizer
+												)
 		
 		return masked_inputs, labels, masked_token_indices
 	
@@ -346,15 +332,25 @@ class Tuner:
 				epoch (int)			: which epoch the model is at
 				total_epochs (int)	: the total number of epochs the model was trained for, or max_epochs
 		'''
-		log.info('')
-		self.predict_sentences(
-			info = f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 
+		if self.exp_type == 'newverb':
 			sentences = [
 				 'The local [MASK] will step in to help.',
-				 'The [MASK] will blork the [MASK].',
+				f'The [MASK] will {self.tokens_to_mask[0]} the [MASK].',
 				f'The {self.__format_strings_with_tokens_for_display(self.args["[subj]"][0])} will {self.mask_token} the {self.__format_strings_with_tokens_for_display(self.args["[obj]"][0])}.',
 				 'The [MASK] will [MASK] the [MASK].',
-			], 
+			]
+		else:
+			sentences = ['The local [MASK] will step in to help.'] + self.tuning_data['sentences'][:2] + self.tuning_data['sentences'][-2:]
+			for i, sentence in enumerate(sentences):
+				for token in self._Tuner__format_strings_with_tokens_for_display(self.tokens_to_mask):
+					sentence = sentence.replace(token, self.mask_token)
+				
+				sentences[i] = sentence
+		
+		log.info('')
+		self.predict_sentences(
+			info=f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 
+			sentences=sentences,
 			output_fun=log.info
 		)
 	
@@ -851,8 +847,8 @@ class Tuner:
 			with open_dict(self.cfg):
 				self.cfg.use_gpu 	= use_gpu
 		
-		# too little memory to use gpus locally, but we can specify to use them on the cluster with +use_gpu
-		self.device					= 'cuda' if torch.cuda.is_available() and 'use_gpu' in self.cfg and self.cfg.use_gpu else 'cpu'
+		# too little memory to use gpus locally, but we can specify to use them on the cluster with use_gpu=true
+		self.device					= 'cuda' if torch.cuda.is_available() and self.cfg.use_gpu else 'cpu'
 		
 		if self.device == 'cuda':
 			log.info(f'Using GPU: {torch.cuda.get_device_name(torch.cuda.current_device())}')
@@ -1295,7 +1291,7 @@ class Tuner:
 						self.freeze_to_layer(max(-self.model.config.num_hidden_layers, -(floor(epoch/self.unfreezing_epochs_per_layer)+1)))
 					
 					# debug
-					if 'debug' in self.cfg and self.cfg.debug and self.exp_type == 'newverb':
+					if self.cfg.debug:
 						self.__log_debug_predictions(epoch, epochs)
 					
 					self.model.train()
@@ -1390,7 +1386,7 @@ class Tuner:
 		writer.close()
 		
 		# debug
-		if 'debug' in self.cfg and self.cfg.debug and self.exp_type == 'newverb':
+		if self.cfg.debug:
 			self.__log_debug_predictions(epoch, epochs)
 			log.info('')
 		
@@ -2085,7 +2081,7 @@ class Tuner:
 		epoch, total_epochs = self.restore_weights(epoch)
 		
 		# debug
-		if 'debug' in eval_cfg and eval_cfg.debug:
+		if eval_cfg.debug:
 			self.__log_debug_predictions(epoch, total_epochs)
 			log.info('')
 		
