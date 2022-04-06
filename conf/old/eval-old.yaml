@@ -3,9 +3,6 @@ defaults:
   - data: syn_give_give_ext
   - override hydra/job_logging: tuner_log_conf
 
-criteria: all # to be evaluated, a model must contain these strings in the relative path to its checkpoint directory
-              # 'all' means no exclusions
-
 epoch: best_mean
 # which epoch to evaluate the model on. None means the final epoch.
 # 'best_sumsq' means the epoch meeting the following criteria:
@@ -23,12 +20,11 @@ comparison_n_exs: 100 # how many sentences from the comparison dataset to use? b
                        # otherwise, pull this many random examples from the dataset to use
 comparison_masking: bert # how to mask sentences during evaluation
 
-dir: '' # the directory containing the model checkpoint to evaluate
-summarize: false # whether to create an overall summary when evaluating multiple models
+checkpoint_dir: ''
 
 hydra:
   run:
-    dir: ./${dir}/eval-${dirname:${criteria},${data.name}}
+    dir: ${checkpoint_dir}/eval-${get_dir_name:${data.name},${comparison_masking}}
   sweep:
-    dir: ./${dir}
-    subdir: eval-${dirname:${criteria},${data.name}}
+    dir: ${checkpoint_dir}
+    subdir: eval-${get_dir_name:${data.name},${comparison_masking}}
