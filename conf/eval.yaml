@@ -21,13 +21,14 @@ num_tsne_words: 500 # plot the tsne of the first num_tsne_words embeddings + the
 comparison_dataset: datamaker/datasets/miniboki-2022-04-01_22-58-30/miniboki
 comparison_n_exs: 100 # how many sentences from the comparison dataset to use? blank means all
                        # otherwise, pull this many random examples from the dataset to use
-comparison_masking: bert # how to mask sentences during evaluation
+comparison_masking: none # how to mask sentences during evaluation
 
 dir: '' # the directory containing the model checkpoint to evaluate
 summarize: false # whether to create an overall summary when evaluating multiple models
 
 debug: false # whether to print model predictions for some sample sentences. only used for newverb experiments
 use_gpu: false # whether to use gpu for eval
+rerun: false # whether to rerun eval on model checkpoints that already have the expected number of results files
 
 hydra:
   run:

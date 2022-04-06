@@ -1,8 +1,9 @@
-# multieval.py
+# eval.py
 # 
-# Application entry point for evaluating and summarizing multiple masked language models.
+# Application entry point for evaluating and summarizing masked language models.
 import os
 import re
+import time
 import hydra
 import shutil
 import logging
@@ -32,7 +33,7 @@ EXPECTED_NUMBER_OF_RESULT_FILES = {
 }
 
 @hydra.main(config_path='conf', config_name='eval')
-def multieval(cfg: DictConfig) -> None:
+def evaluate(cfg: DictConfig) -> None:
 	
 	def reset_log_file():
 		logging.shutdown()
@@ -49,7 +50,7 @@ def multieval(cfg: DictConfig) -> None:
 		else:
 			expr = epoch
 		
-		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?-plots\.pdf|{scores_name}.(csv|pkl)\.gz|cossims\.csv\.gz)))'
+		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies(_diffs)?\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?-plots\.pdf|{scores_name}.(csv|pkl)\.gz|cossims\.csv\.gz|kl_divs\.csv\.gz|kl_divs-hist\.pdf)))'
 	
 	def get_checkpoint_dirs(d: str, criteria: str) -> List[str]:
 		# Get checkpoint dirs in outputs
@@ -129,16 +130,16 @@ def multieval(cfg: DictConfig) -> None:
 	
 	try:
 		for i, checkpoint_dir in enumerate(checkpoint_dirs):
-			success = False
-			eval_dir = create_and_change_to_eval_dir(checkpoint_dir, get_dir_name(cfg.data.name, cfg.comparison_masking))
-			if len([f for f in os.listdir(eval_dir) if re.search(score_file_regex, f)]) < num_expected_files:
-				tuner = Tuner(checkpoint_dir, use_gpu=cfg.use_gpu if 'use_gpu' in cfg else None)
+			success 	= False
+			eval_dir 	= create_and_change_to_eval_dir(checkpoint_dir, get_dir_name(cfg.data.name, cfg.comparison_masking))
+			if len([f for f in os.listdir(eval_dir) if re.search(score_file_regex, f)]) < num_expected_files or cfg.rerun:
+				tuner 	= Tuner(checkpoint_dir, use_gpu=cfg.use_gpu)
 				tuner.evaluate(eval_cfg=cfg)
 				copy_config_logs(multieval_dir, eval_dir)
-			success	= True
+			success		= True
 	except KeyboardInterrupt:
 		log.warning('Multieval was stopped manually!')
-		cfg.summarize = False
+		cfg.summarize 	= False
 	finally:
 		log.info(f'Evaluation complete for {i if not success else i + 1} models')
 		os.chdir(multieval_dir)
@@ -148,6 +149,8 @@ def multieval(cfg: DictConfig) -> None:
 	else:
 		os.chdir('..')
 		logging.shutdown()
+		# need to add a tiny cooldown here to avoid stepping on the OS's toes
+		time.sleep(0.5)
 		shutil.rmtree(multieval_dir)
 
 def save_summary( 
@@ -326,4 +329,4 @@ def summarize_cossims(cossims: pd.DataFrame) -> None:
 
 if __name__ == '__main__':
 	
-	multieval()
+	evaluate()
