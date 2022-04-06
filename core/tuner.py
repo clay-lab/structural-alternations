@@ -1804,6 +1804,7 @@ class Tuner:
 			sentences = f'The local {self.mask_token} will step in to help.'
 			log.info(f'No sentence was provided. Using default sentence "{sentences}"')
 		
+		max_len 	= max([len(sentence) for sentence in sentences])
 		sentences 	= self.__format_data_for_tokenizer(tuner_utils.listify(sentences))
 		
 		with torch.no_grad():
@@ -1815,7 +1816,7 @@ class Tuner:
 		
 		if output_fun is not None:
 			for sentence, predicted_sentence in zip(sentences, predicted_sentences):
-				output_fun(f'{info + " " if info else ""}input: {sentence}, prediction: {predicted_sentence}')
+				output_fun(f'{info + " " if info else ""}input: {(sentence + ",").ljust(max_len+1)} prediction: {predicted_sentence}')
 		
 		if restore_training:
 			self.model.train()
