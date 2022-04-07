@@ -713,7 +713,7 @@ class Tuner:
 	
 	# START Class Functions
 	
-	def __init__(self, cfg_or_path: Union[DictConfig,str], use_gpu: bool = False) -> 'Tuner':
+	def __init__(self, cfg_or_path: Union[DictConfig,str], use_gpu: bool = None) -> 'Tuner':
 		'''
 		Creates a tuner object, loads argument/dev sets, and sets class attributes
 		
@@ -850,8 +850,9 @@ class Tuner:
 		self.cfg 					= OmegaConf.load(os.path.join(self.original_cwd, cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
 		
 		# allowing an optional argument to specify the gpu when calling Tuner helps us when evaluating with/without a gpu regardless of the tuning setup
-		with open_dict(self.cfg):
-			self.cfg.use_gpu 	= use_gpu
+		if use_gpu is not None:
+			with open_dict(self.cfg):
+				self.cfg.use_gpu 		= use_gpu
 		
 		# too little memory to use gpus locally, but we can specify to use them on the cluster with use_gpu=true
 		self.device					= 'cuda' if torch.cuda.is_available() and self.cfg.use_gpu else 'cpu'
