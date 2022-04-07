@@ -34,6 +34,14 @@ sentence_types:
   - say SC past active transitive
   - kick modal active transitive
   - kick past active transitive
+  - kick modal passive transitive
+  - kick past passive transitive
+  - bother modal active transitive
+  - bother past active transitive
+  - resemble modal active transitive
+  - resemble present active transitive
+  - talk to modal active transitive
+  - talk to past active transitive
 
 eval_groups:
   verb : BLORK

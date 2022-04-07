@@ -26,6 +26,7 @@ from tqdm.contrib.logging import logging_redirect_tqdm
 from typing import *
 from .mixout.module import MixLinear
 from omegaconf import DictConfig, OmegaConf, open_dict, ListConfig
+from contextlib import suppress
 
 from transformers import logging as lg
 from transformers import AutoModelForMaskedLM, AutoTokenizer
@@ -499,7 +500,7 @@ class Tuner:
 			if not os.path.isfile(path):
 				path = f'{os.path.sep}..{os.path.sep}'.join(os.path.split(path))
 		
-			try:
+			with suppress(IndexError, FileNotFoundError):
 				if f == 'tune.log':
 					with open(path, 'r') as logfile_stream:
 						logfile = logfile_stream.read()
@@ -512,8 +513,6 @@ class Tuner:
 			
 					self.random_seed = weights['random_seed']
 					break
-			except (IndexError, FileNotFoundError):
-				pass
 		
 		if not hasattr(self, 'random_seed'):
 			log.error(f'Original random seed not found in log file or weights file in {os.path.split(path)[0]}!')
@@ -621,7 +620,7 @@ class Tuner:
 		
 		file_prefix = tuner_utils.get_file_prefix(summary)
 		
-		log.info(f'Saving to "{os.getcwd().replace(hydra.utils.get_original_cwd(), "")}"')
+		log.info(f'Saving to "{os.getcwd().replace(self.original_cwd, "")}"')
 		summary.to_pickle(f'{file_prefix}-odds_ratios.pkl.gz')
 		
 		# tensors are saved as text in csv, but we want to save them as numbers
@@ -714,7 +713,7 @@ class Tuner:
 	
 	# START Class Functions
 	
-	def __init__(self, cfg_or_path: Union[DictConfig,str], use_gpu: bool = None) -> 'Tuner':
+	def __init__(self, cfg_or_path: Union[DictConfig,str], use_gpu: bool = False) -> 'Tuner':
 		'''
 		Creates a tuner object, loads argument/dev sets, and sets class attributes
 		
@@ -736,7 +735,7 @@ class Tuner:
 			'''Loads dev sets using specified criteria'''
 			if self.cfg.dev == 'best_matches':
 				criteria = self.cfg.tuning.name.split('_')
-				candidates = os.listdir(os.path.join(hydra.utils.get_original_cwd(), 'conf', 'tuning'))
+				candidates = os.listdir(os.path.join(self.original_cwd, 'conf', 'tuning'))
 				candidates = [candidate.replace('.yaml', '').split('_') for candidate in candidates]
 				
 				# Find all the tuning sets that differ from the current one by one parameter, and grab those as our best matches
@@ -757,7 +756,7 @@ class Tuner:
 			
 			with open_dict(self.cfg):
 				for dev_set in dev_sets:
-					dev = OmegaConf.load(os.path.join(hydra.utils.get_original_cwd(), 'conf', 'tuning', dev_set + '.yaml'))
+					dev = OmegaConf.load(os.path.join(self.original_cwd, 'conf', 'tuning', dev_set + '.yaml'))
 					if not all(token in self.cfg.tuning.to_mask for token in dev.to_mask):
 						log.warn(f'Not all dev tokens to mask from {dev_set} are in the training set! This is probably not what you intended. Removing this dataset from the dev data.')
 					
@@ -840,13 +839,19 @@ class Tuner:
 					log.warning('Model predictions when excluding new tokens would not change compared to baseline.')
 					log.warning('For this reason, not using KL baseline loss to avoid wasting time.')
 					self.use_kl_baseline_loss 		= False
-				
-		self.cfg 					= OmegaConf.load(os.path.join(hydra.utils.get_original_cwd(), cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
+		
+		# this lets us load a tuner without having to go through hydra.main first.
+		# it's more convenient when we want to evaluate the model interactively
+		try:
+			self.original_cwd 		= hydra.utils.get_original_cwd()
+		except ValueError:
+			self.original_cwd 		= os.getcwd()
+		
+		self.cfg 					= OmegaConf.load(os.path.join(self.original_cwd, cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
 		
 		# allowing an optional argument to specify the gpu when calling Tuner helps us when evaluating with/without a gpu regardless of the tuning setup
-		if use_gpu is not None:
-			with open_dict(self.cfg):
-				self.cfg.use_gpu 	= use_gpu
+		with open_dict(self.cfg):
+			self.cfg.use_gpu 	= use_gpu
 		
 		# too little memory to use gpus locally, but we can specify to use them on the cluster with use_gpu=true
 		self.device					= 'cuda' if torch.cuda.is_available() and self.cfg.use_gpu else 'cpu'
@@ -854,7 +859,10 @@ class Tuner:
 		if self.device == 'cuda':
 			log.info(f'Using GPU: {torch.cuda.get_device_name(torch.cuda.current_device())}')
 		
-		self.checkpoint_dir 		= os.path.join(hydra.utils.get_original_cwd(), cfg_or_path) if isinstance(cfg_or_path, str) else os.getcwd()
+		self.checkpoint_dir 		= os.path.join(self.original_cwd, cfg_or_path) if isinstance(cfg_or_path, str) else os.getcwd()
+		
+		# switch over to the checkpoint dir for the purpose of organizing results
+		os.chdir(self.checkpoint_dir)
 		self.save_full_model 		= False
 		self.load_full_model 		= False
 		
@@ -1142,11 +1150,9 @@ class Tuner:
 					col[i] = re.sub(r'(.*\(train\))', '0\\1', col[i])
 					col[i] = re.sub(r'(.*\(masked, no dropout\))', '1\\1', col[i])
 				
-				try:
+				with suppress(Exception)
 					_ = int(col[i])
 					col[i] = str(col[i]).rjust(len(str(max(metrics.epoch))))
-				except:
-					pass
 				
 				# + 2 for loss and remaining patience
 				num_tokens_to_mask 	= len(tokens_to_mask) + 2
@@ -1225,7 +1231,7 @@ class Tuner:
 										tokenizer 			= self.tokenizer, 
 										dataset 			= self.__load_format_dataset(
 																dataset_loc = os.path.join(
-																	hydra.utils.get_original_cwd(),
+																	self.original_cwd,
 																	self.kl_dataset
 																),
 																split = 'train'
@@ -1266,7 +1272,7 @@ class Tuner:
 		hyperparameters_str += f'{self.unfreezing_epochs_per_layer}' if self.unfreezing == 'gradual' else ''
 		hyperparameters_str += f', mask_args={self.mask_args}' if not np.isnan(self.mask_args) else ''
 		
-		log.info(f'Training model @ "{os.getcwd().replace(hydra.utils.get_original_cwd(), "")}" ({hyperparameters_str})')
+		log.info(f'Training model @ "{os.getcwd().replace(self.original_cwd, "")}" ({hyperparameters_str})')
 		
 		datasets = [self.tuning + ' (train)', 
 					self.tuning + ' (masked, no dropout)'] + \
@@ -1380,7 +1386,6 @@ class Tuner:
 			
 			except KeyboardInterrupt:
 				log.warning(f'Training halted manually at epoch {epoch+1}')
-				pass
 		
 		add_tb_labels(epoch, writer, tb_metrics_dict)
 		writer.flush()
@@ -1690,7 +1695,7 @@ class Tuner:
 			
 			pos 			= 'verbs' if self.exp_type == 'newverb' else 'nouns'
 			
-			with open(os.path.join(hydra.utils.get_original_cwd(), 'conf', pos + '.txt'), 'r') as f:
+			with open(os.path.join(self.original_cwd, 'conf', pos + '.txt'), 'r') as f:
 				candidates 	= [w.lower().strip() for w in f.readlines()]
 			
 			names_sets_keys = []
@@ -1924,7 +1929,7 @@ class Tuner:
 				types_sentences (dict): dict with sentences, inputs, and arg_indices 
 										for each sentence type in the eval data file
 		'''
-		resolved_path 			= os.path.join(hydra.utils.get_original_cwd(), 'data', eval_cfg.data.name)
+		resolved_path 			= os.path.join(self.original_cwd, 'data', eval_cfg.data.name)
 		
 		with open(resolved_path, 'r') as f:
 			raw_input 			= [line.strip() for line in f]
@@ -2193,8 +2198,8 @@ class Tuner:
 										  examples in the dataset for the current model compared to a pre-fine-tuning baseline
 		'''
 		# doing this lets us use either absolute paths or paths relative to the starting dir
-		dataset_loc 		= eval_cfg.comparison_dataset.replace(hydra.utils.get_original_cwd(), '')
-		dataset_loc 		= os.path.join(hydra.utils.get_original_cwd(), eval_cfg.comparison_dataset)
+		dataset_loc 		= eval_cfg.comparison_dataset.replace(self.original_cwd, '')
+		dataset_loc 		= os.path.join(self.original_cwd, eval_cfg.comparison_dataset)
 		dataset_name 		= os.path.split(dataset_loc)[-1]
 		
 		log.info(f'Loading dataset {dataset_name}')

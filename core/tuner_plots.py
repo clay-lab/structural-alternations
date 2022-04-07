@@ -21,6 +21,8 @@ from tqdm import tqdm
 from math import sqrt, ceil, floor
 from typing import *
 from omegaconf import DictConfig
+from contextlib import suppress
+
 from . import tuner_utils
 from .tuner_utils import none
 
@@ -424,17 +426,15 @@ def set_legend_title(
 				ax.get_legend().set_title(legend_title)
 			except AttributeError:
 				log.warning('A legend title was provided but no legend exists.')
-				pass
+		
 		elif legend_title == '':
 			# if the legend title is '', we want to delete the whole thing
-			try:
+			with suppress(AttributeError):
 				# this ensures the title exists
 				# if it doesn't, an error is thrown and we'll exit without overwriting the wrong thing
 				_ = ax.get_legend().get_title()
 				handles, labels = ax.get_legend_handles_labels()
-				ax.legend(handles=handles, labels=labels)				
-			except AttributeError:
-				pass
+				ax.legend(handles=handles, labels=labels)
 
 def set_legend_labels(
 	ax: matplotlib.axes.Axes,
@@ -450,13 +450,8 @@ def set_legend_labels(
 	'''
 	if legend_labels is not None:
 		for text in ax.get_legend().get_texts():
-			try:
+			with suppress(KeyError, AttributeError):
 				text.set_text(legend_labels[text.get_text()])
-			# this happens if the text isn't in the mapping, or if there is no legend to add the labels to
-			# we just ignore it
-			except (KeyError, AttributeError):
-				pass
-
 
 # used during tuning/evaluation
 def get_plot_title(
