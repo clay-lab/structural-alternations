@@ -326,7 +326,8 @@ class Tuner:
 		total_epochs: int
 	) -> None:
 		'''
-		Prints a log message used during debugging. Currently only usable with newverb experiments.
+		Prints a log message used during debugging. The log displays predictions for a baseline sentence,
+		as well as sentences taken from or similar to the fine-tuning data, depending on the experiment type.
 		
 			params:
 				epoch (int)			: which epoch the model is at
