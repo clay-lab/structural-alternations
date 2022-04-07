@@ -334,13 +334,13 @@ class Tuner:
 		'''
 		if self.exp_type == 'newverb':
 			sentences = [
-				 'The local [MASK] will step in to help.',
-				f'The [MASK] will {self.__format_strings_with_tokens_for_display(self.tokens_to_mask[0])} the [MASK].',
+				f'The local {self.mask_token} will step in to help.',
+				f'The {self.mask_token} will {self.__format_strings_with_tokens_for_display(self.tokens_to_mask[0])} the {self.mask_token}.',
 				f'The {self.__format_strings_with_tokens_for_display(self.args["[subj]"][0])} will {self.mask_token} the {self.__format_strings_with_tokens_for_display(self.args["[obj]"][0])}.',
-				 'The [MASK] will [MASK] the [MASK].',
+				f'The {self.mask_token} will {self.mask_token} the {self.mask_token}.',
 			]
 		else:
-			sentences = ['The local [MASK] will step in to help.'] + self.tuning_data['sentences'][:2] + self.tuning_data['sentences'][-2:]
+			sentences = [f'The local {self.mask_token} will step in to help.'] + self.tuning_data['sentences'][:2] + self.tuning_data['sentences'][-2:]
 			for i, sentence in enumerate(sentences):
 				for token in self.__format_strings_with_tokens_for_display(self.tokens_to_mask):
 					sentence = sentence.replace(token, self.mask_token)
