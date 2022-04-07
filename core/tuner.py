@@ -852,7 +852,7 @@ class Tuner:
 		# allowing an optional argument to specify the gpu when calling Tuner helps us when evaluating with/without a gpu regardless of the tuning setup
 		if use_gpu is not None:
 			with open_dict(self.cfg):
-				self.cfg.use_gpu 		= use_gpu
+				self.cfg.use_gpu 	= use_gpu
 		
 		# too little memory to use gpus locally, but we can specify to use them on the cluster with use_gpu=true
 		self.device					= 'cuda' if torch.cuda.is_available() and self.cfg.use_gpu else 'cpu'
@@ -900,7 +900,12 @@ class Tuner:
 		Saves updated weights/model state, metrics, and plots of metrics to disk.
 		'''
 		def save_weights(weights: Dict) -> None:
-			'''Saves dictionary of weights to disk'''
+			'''
+			Saves dictionary of weights to disk
+			
+				params:
+					weights (dict): a dictionary of the form {epoch_number: {token_name: weight}} to save to disk
+			'''
 			# always save the weights on cpu for ease of use
 			# sometimes we want to evaluate on a cpu-only machine even after running on a gpu
 			# this allows that
