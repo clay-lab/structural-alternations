@@ -37,7 +37,10 @@ def formatted_dir_name(model: DictConfig, tuning: DictConfig, hyperparameters: D
 	dir_name 	+= 	'wpunc' if not hyperparameters.strip_punct else 'npunc'
 	
 	dir_name 	+= 	'-'
-	dir_name 	+= 	str(hyperparameters.unfreezing)[:2].zfill(2) + 'unf'
+	if hyperparameters.unfreezing == 'all_hidden_layers':
+		dir_name += 'ahunf'
+	else:
+		dir_name += str(hyperparameters.unfreezing)[:2].zfill(2) + 'unf'
 	
 	if 'gradual' in hyperparameters.unfreezing:
 		dir_name += re.sub(r'.*([0-9]+)', '\\1', hyperparameters.unfreezing).zfill(2)
