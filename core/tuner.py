@@ -1150,7 +1150,7 @@ class Tuner:
 					col[i] = re.sub(r'(.*\(train\))', '0\\1', col[i])
 					col[i] = re.sub(r'(.*\(masked, no dropout\))', '1\\1', col[i])
 				
-				with suppress(Exception)
+				with suppress(Exception):
 					_ = int(col[i])
 					col[i] = str(col[i]).rjust(len(str(max(metrics.epoch))))
 				
