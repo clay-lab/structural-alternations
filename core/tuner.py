@@ -1421,9 +1421,11 @@ class Tuner:
 			self.unfreeze_all_params()
 		elif 'mixout' in str(self.unfreezing):
 			self.set_mixout_layers()
-		elif not isinstance(self.unfreezing, int):
+		elif self.unfreezing == 'all_hidden_layers':
+			self.freeze_to_layer(-self.model.config.num_hidden_layers)
+		elif not isinstance(self.unfreezing,int):
 			self.freeze_to_layer(self.model.config.num_hidden_layers)
-		elif isinstance(self.unfreezing, int):
+		elif isinstance(self.unfreezing,int):
 			self.freeze_to_layer(self.unfreezing)
 	
 	def unfreeze_all_params(self) -> None:
