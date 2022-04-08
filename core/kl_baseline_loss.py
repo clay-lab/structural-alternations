@@ -2,6 +2,10 @@
 # with the KL divergence between the updated model's predictions
 # and the pretrained model's predictions
 
+# debug
+import sys
+import pickle
+
 import logging
 
 import numpy as np
@@ -163,7 +167,7 @@ class KLBaselineLoss(KLDivLoss):
 					batch_inputs['input_ids'][i], mask_input_indices \
 										= tuner_utils.mask_input(
 											inputs=batch_inputs['input_ids'][i],
-											tokenizer=self.tokenizer,
+											tokenizer=self.baseline_tokenizer,
 											masking_style=self.masking,
 											device=self.device,
 										)
@@ -178,8 +182,8 @@ class KLBaselineLoss(KLDivLoss):
 				
 				# we're not training the baseline model, so no need to get gradients for it
 				with torch.no_grad():
-					baseline_outputs 	= F.softmax(self.baseline_model(**batch_inputs).logits, dim=-1)
-				
+					baseline_outputs 		= F.softmax(self.baseline_model(**batch_inputs).logits, dim=-1)	
+								
 				# we just calculate the loss on the selected tokens
 				outputs 				= torch.cat([torch.unsqueeze(outputs[i].index_select(0, mask_locations), dim=0) for i, mask_locations in enumerate(mask_indices)], dim=0)
 				baseline_outputs		= torch.cat([torch.unsqueeze(baseline_outputs[i].index_select(0, mask_locations), dim=0) for i, mask_locations in enumerate(mask_indices)], dim=0)
