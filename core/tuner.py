@@ -725,7 +725,7 @@ class Tuner:
 			
 			results['outputs'].logits = results['outputs'].logits.clone().detach().cpu()
 			
-			with gzip.open('debug_predictions.pkl.gz', 'wb') as out_file:
+			with gzip.open(f'{file_prefix}-debug_predictions.pkl.gz', 'wb') as out_file:
 				pkl.dump(results, out_file)
 		
 		log.info('Evaluation complete')
