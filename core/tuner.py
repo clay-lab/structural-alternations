@@ -862,8 +862,10 @@ class Tuner:
 		
 		self.checkpoint_dir 		= os.path.join(self.original_cwd, cfg_or_path) if isinstance(cfg_or_path, str) else os.getcwd()
 		
-		# switch over to the checkpoint dir for the purpose of organizing results
-		os.chdir(self.checkpoint_dir)
+		# switch over to the checkpoint dir for the purpose of organizing results if we're not already in a subdirectory of it
+		if not os.getcwd() in self.checkpoint_dir:
+			os.chdir(self.checkpoint_dir)
+		
 		self.save_full_model 		= False
 		self.load_full_model 		= False
 		
