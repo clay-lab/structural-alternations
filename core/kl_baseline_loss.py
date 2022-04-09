@@ -193,7 +193,7 @@ class KLBaselineLoss(KLDivLoss):
 				mean_kl_div 			+= kl_div/comp_dataset.num_rows
 						
 				if progress_bar or return_all:
-					kl_divs.append(kl_div)
+					kl_divs.append(kl_div.cpu())
 					
 					if progress_bar:
 						dataloader.set_postfix(kl_div_mean=f'{np.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
