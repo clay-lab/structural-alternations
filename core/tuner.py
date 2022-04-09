@@ -637,10 +637,10 @@ class Tuner:
 				additional_sentences=additional_sentences,
 			)
 			
-			results['model_inputs'] = {results['model_inputs'][k]: v.clone().detach().cpu() for k, v in results['model_inputs'].items()}
+			results['model_inputs'] = {k: v.clone().detach().cpu() for k, v in results['model_inputs'].items()}
 			results['outputs'].logits = results['outputs'].logits.clone().detach().cpu()
 			
-			with gzip.open(f'{file_prefix}-debug_predictions.pkl.gz', 'wb') as out_file:
+			with gzip.open(f'debug_predictions.pkl.gz', 'wb') as out_file:
 				pkl.dump(results, out_file)
 			
 			sys.exit(1)
