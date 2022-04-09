@@ -324,7 +324,8 @@ class Tuner:
 	def __log_debug_predictions(
 		self, 
 		epoch: int, 
-		total_epochs: int
+		total_epochs: int,
+		additional_sentences: List[str] = None
 	) -> None:
 		'''
 		Prints a log message used during debugging. The log displays predictions for a baseline sentence,
@@ -334,6 +335,8 @@ class Tuner:
 				epoch (int)			: which epoch the model is at
 				total_epochs (int)	: the total number of epochs the model was trained for, or max_epochs
 		'''
+		additional_sentences = [] if additional_sentences is None else additional_sentences
+		
 		if self.exp_type == 'newverb':
 			sentences = [
 				f'The local {self.mask_token} will step in to help.',
@@ -348,6 +351,8 @@ class Tuner:
 					sentence = sentence.replace(token, self.mask_token)
 				
 				sentences[i] = sentence
+		
+		sentences += additional_sentences
 		
 		log.info('')
 		results = self.predict_sentences(
@@ -718,9 +723,22 @@ class Tuner:
 			self.create_kl_divs_plot(kl_divs)
 		
 		if eval_cfg.debug:
+			if self.exp_type == 'newverb':
+				additional_sentences=[
+					'The [MASK] liked the [MASK].',
+					'The [MASK] kicked the [MASK].',
+					'The [MASK] drank the [MASK].',
+					'The [MASK] bothered the [MASK].',
+					'The [MASK] resembles the [MASK].',
+					'The [MASK] talked to the [MASK].',
+				]
+			else:
+				additional_sentences=[]
+				
 			results = self.__log_debug_predictions(
 				epoch=eval_cfg.epoch,
-				total_epochs=eval_cfg.epoch
+				total_epochs=eval_cfg.epoch,
+				additional_sentences=additional_sentences,
 			)
 			
 			results['outputs'].logits = results['outputs'].logits.clone().detach().cpu()

@@ -36,8 +36,14 @@ sentence_types:
   - kick past active transitive
   - kick modal passive transitive
   - kick past passive transitive
+  - drink modal active transitive
+  - drink past active transitive
+  - drink modal passive transitive
+  - drink past passive transitive
   - bother modal active transitive
   - bother past active transitive
+  - bother modal passive transitive
+  - bother past passive transitive
   - resemble modal active transitive
   - resemble present active transitive
   - talk to modal active transitive
