@@ -614,6 +614,37 @@ class Tuner:
 		
 		self.model.eval()
 		
+		if eval_cfg.debug:
+			if self.exp_type == 'newverb':
+				additional_sentences=[
+					f'The {self.mask_token} liked the {self.mask_token}.',
+					f'The {self.mask_token} was liked by the {self.mask_token}.',
+					f'The {self.mask_token} kicked the {self.mask_token}.',
+					f'The {self.mask_token} was kicked by the {self.mask_token}.',
+					f'The {self.mask_token} drank the {self.mask_token}.',
+					f'The {self.mask_token} was drunk by the {self.mask_token}.',
+					f'The {self.mask_token} bothered the {self.mask_token}.',
+					f'The {self.mask_token} was bothered by the {self.mask_token}.',
+					f'The {self.mask_token} resembles the {self.mask_token}.',
+					f'The {self.mask_token} talked to the {self.mask_token}.',
+				]
+			else:
+				additional_sentences=[]
+				
+			results = self.__log_debug_predictions(
+				epoch=eval_cfg.epoch,
+				total_epochs=eval_cfg.epoch,
+				additional_sentences=additional_sentences,
+			)
+			
+			results['model_inputs'] = {results['model_inputs'][k]: v.clone().detach().cpu() for k, v in results['model_inputs'].items()}
+			results['outputs'].logits = results['outputs'].logits.clone().detach().cpu()
+			
+			with gzip.open(f'{file_prefix}-debug_predictions.pkl.gz', 'wb') as out_file:
+				pkl.dump(results, out_file)
+			
+			sys.exit(1)
+		
 		data 				= self.load_eval_file(eval_cfg)
 		
 		if eval_cfg.data.exp_type == 'newverb':
