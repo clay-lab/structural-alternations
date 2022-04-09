@@ -30,6 +30,8 @@ sentence_types:
   - at-P modal active transitive
   - like modal active transitive
   - like past active transitive
+  - like modal passive transitive
+  - like past passive transitive
   - say SC modal active transitive
   - say SC past active transitive
   - kick modal active transitive

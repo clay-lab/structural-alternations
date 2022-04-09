@@ -725,12 +725,16 @@ class Tuner:
 		if eval_cfg.debug:
 			if self.exp_type == 'newverb':
 				additional_sentences=[
-					'The [MASK] liked the [MASK].',
-					'The [MASK] kicked the [MASK].',
-					'The [MASK] drank the [MASK].',
-					'The [MASK] bothered the [MASK].',
-					'The [MASK] resembles the [MASK].',
-					'The [MASK] talked to the [MASK].',
+					f'The {self.mask_token} liked the {self.mask_token}.',
+					f'The {self.mask_token} was liked by the {self.mask_token}.',
+					f'The {self.mask_token} kicked the {self.mask_token}.',
+					f'The {self.mask_token} was kicked by the {self.mask_token}.',
+					f'The {self.mask_token} drank the {self.mask_token}.',
+					f'The {self.mask_token} was drunk by the {self.mask_token}.',
+					f'The {self.mask_token} bothered the {self.mask_token}.',
+					f'The {self.mask_token} was bothered by the {self.mask_token}.',
+					f'The {self.mask_token} resembles the {self.mask_token}.',
+					f'The {self.mask_token} talked to the {self.mask_token}.',
 				]
 			else:
 				additional_sentences=[]
