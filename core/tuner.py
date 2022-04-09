@@ -2244,7 +2244,8 @@ class Tuner:
 		
 		log.info(f'Mean KL divergence from baseline on {dataset_name}: {mean_kl_div:.2f} (\u00b1{tuner_utils.sem(kl_divs):.2f})')
 		
-		kl_divs				= pd.DataFrame(kl_divs, columns=['kl_div']).assign(
+		# pandas needs the kl_divs to be on cpu
+		kl_divs				= pd.DataFrame(kl_divs.cpu(), columns=['kl_div']).assign(
 								dataset_name 	= dataset_name,
 								source 			= dataset['source'],
 								text 			= dataset['text'],
@@ -2253,7 +2254,7 @@ class Tuner:
 							)
 		
 		if eval_cfg.comparison_masking != 'none':
-			kl_divs 		= kl_divs.assign(mask_indices = mask_indices)
+			kl_divs 		= kl_divs.assign(mask_indices=mask_indices)
 		
 		return kl_divs
 	
