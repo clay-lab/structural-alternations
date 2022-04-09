@@ -350,11 +350,13 @@ class Tuner:
 				sentences[i] = sentence
 		
 		log.info('')
-		self.predict_sentences(
+		results = self.predict_sentences(
 			info=f'epoch {str(epoch).zfill(len(str(total_epochs)))}', 
 			sentences=sentences,
 			output_fun=log.info
 		)
+		
+		return results
 	
 	def __collect_results(
 		self, 
@@ -631,20 +633,20 @@ class Tuner:
 		
 		summary_csv.to_csv(f'{file_prefix}-odds_ratios.csv.gz', index=False, na_rep='NaN')
 		
-		cossims_args = dict(topk=eval_cfg.k)
+		cossims_args 		= dict(topk=eval_cfg.k)
 		if eval_cfg.data.exp_type == 'newarg':
 			cossims_args.update(dict(targets=eval_cfg.data.masked_token_targets))
 		
 		predicted_roles 	= {v: k for k, v in eval_cfg.data.eval_groups.items()}
 		target_group_labels = {k: v for k, v in eval_cfg.data.masked_token_target_labels.items()} if 'masked_token_target_labels' in eval_cfg.data else {}
 		
-		groups 			= ['predicted_arg', 'target_group']
-		group_types 	= ['predicted_role', 'target_group_label']
-		group_labels 	= [predicted_roles, target_group_labels]
+		groups 				= ['predicted_arg', 'target_group']
+		group_types 		= ['predicted_role', 'target_group_label']
+		group_labels 		= [predicted_roles, target_group_labels]
 		cossims_args.update(dict(groups=groups, group_types=group_types, group_labels=group_labels))
 		
-		cossims 		= self.get_cossims(**cossims_args)
-		cossims 		= tuner_utils.transfer_hyperparameters_to_df(summary, cossims)
+		cossims 			= self.get_cossims(**cossims_args)
+		cossims 			= tuner_utils.transfer_hyperparameters_to_df(summary, cossims)
 	
 		if not cossims[~cossims.target_group.str.endswith('most similar')].empty:
 			log.info('Creating cosine similarity plots')
@@ -653,26 +655,36 @@ class Tuner:
 		cossims.to_csv(f'{file_prefix}-cossims.csv.gz', index=False, na_rep='NaN')
 		
 		log.info('Creating t-SNE plot(s)')
-		tsne_args = dict(n=eval_cfg.num_tsne_words, n_components=2, random_state=0, learning_rate='auto', init='pca')
+		tsne_args 			= dict(
+								n=eval_cfg.num_tsne_words, 
+								n_components=2, 
+								random_state=0, 
+								learning_rate='auto', 
+								init='pca'
+							)
 		if 'masked_token_targets' in eval_cfg.data:
 			tsne_args.update(dict(targets=eval_cfg.data.masked_token_targets))
 		
 		if 'masked_token_target_labels' in eval_cfg.data:
 			tsne_args.update(dict(target_group_labels=target_group_labels))
 		
-		tsnes = self.get_tsnes(**tsne_args)
-		tsnes = tuner_utils.transfer_hyperparameters_to_df(summary, tsnes)
+		tsnes 				= self.get_tsnes(**tsne_args)
+		tsnes 				= tuner_utils.transfer_hyperparameters_to_df(summary, tsnes)
 		self.create_tsnes_plots(tsnes)
 		
 		tsnes.to_csv(f'{file_prefix}-tsnes.csv.gz', index=False, na_rep='NaN')
 		
 		if eval_cfg.data.exp_type == 'newverb':
 			odds_ratios_plot_kwargs = dict(
-				scatterplot_kwargs=dict(
-					text='token', 
-					text_color={'colname': 'token_type', 'eval only': 'blue', 'tuning': 'black'}
-				)
-			)
+										scatterplot_kwargs=dict(
+											text='token', 
+											text_color={
+												'colname': 'token_type', 
+												'eval only': 'blue', 
+												'tuning': 'black'
+											}
+										)
+									)
 			log.info('Creating odds ratios differences plots')
 			self.create_odds_ratios_plots(summary, eval_cfg, plot_diffs=True, **odds_ratios_plot_kwargs)
 		else:
@@ -704,6 +716,17 @@ class Tuner:
 			
 			log.info('Creating KL divergences plot')
 			self.create_kl_divs_plot(kl_divs)
+		
+		if eval_cfg.debug:
+			results = self.__log_debug_predictions(
+				epoch=eval_cfg.epoch,
+				total_epochs=eval_cfg.epoch
+			)
+			
+			results['outputs'].logits = results['outputs'].logits.clone().detach().cpu()
+			
+			with gzip.open('debug_predictions.pkl.gz', 'wb') as out_file:
+				pkl.dump(results, out_file)
 		
 		log.info('Evaluation complete')
 		print('')
@@ -1317,7 +1340,7 @@ class Tuner:
 					
 					# debug
 					if self.cfg.debug:
-						self.__log_debug_predictions(epoch, epochs)
+						_ = self.__log_debug_predictions(epoch, epochs)
 					
 					self.model.train()
 					
@@ -1411,7 +1434,7 @@ class Tuner:
 		
 		# debug
 		if self.cfg.debug:
-			self.__log_debug_predictions(epoch, epochs)
+			_ = self.__log_debug_predictions(epoch, epochs)
 			log.info('')
 		
 		if not self.save_full_model:
@@ -2110,7 +2133,7 @@ class Tuner:
 		
 		# debug
 		if eval_cfg.debug:
-			self.__log_debug_predictions(epoch, total_epochs)
+			_ = self.__log_debug_predictions(epoch, total_epochs)
 			log.info('')
 		
 		# get the experiment-type specific evaluation groups
