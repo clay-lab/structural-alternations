@@ -916,7 +916,7 @@ class Tuner:
 				if isinstance(weights[epoch],dict):
 					# this is when we save the weights, which are each mapped to a string
 					weights_cpu[epoch] = {}
-					weights_cpu[epoch] = {k: v.clone().detach().to('cpu') if isinstance(v, torch.Tensor) else v for k, v in weights[epoch].items()}
+					weights_cpu[epoch] = {k: v.clone().detach().cpu() if isinstance(v, torch.Tensor) else v for k, v in weights[epoch].items()}
 				else:
 					# the else is triggered when we save the random seed, which is an int
 					weights_cpu[epoch] = weights[epoch]
@@ -1766,7 +1766,8 @@ class Tuner:
 				tsne = TSNE(**tsne_kwargs)
 				
 				with torch.no_grad():
-					vectors = torch.cat([embedding for embedding in targets[group]['embeddings'].values()])
+					# move to CPU since sklearn wants numpy arrays, which have to be an the cpu
+					vectors = torch.cat([embedding for embedding in targets[group]['embeddings'].values()]).cpu()
 					two_dim = tsne.fit_transform(vectors)
 				
 				for token, tsne1, tsne2 in zip(targets[group]['words'], two_dim[:,0], two_dim[:,1]):
