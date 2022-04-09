@@ -909,8 +909,18 @@ class Tuner:
 			# always save the weights on cpu for ease of use
 			# sometimes we want to evaluate on a cpu-only machine even after running on a gpu
 			# this allows that
+			weights_cpu = {}
+			for epoch in weights:
+				if isinstance(weights[epoch],dict):
+					# this is when we save the weights, which are each mapped to a string
+					weights_cpu[epoch] = {}
+					weights_cpu[epoch] = {k: v.clone().detach().to('cpu') if isinstance(v, torch.Tensor) else v for k, v in weights[epoch].items()}
+				else:
+					# the else is triggered when we save the random seed, which is an int
+					weights_cpu[epoch] = weights[epoch]
+			
 			with gzip.open('weights.pkl.gz', 'wb') as f:
-				pkl.dump({k: v.to('cpu') if isinstance(v, torch.Tensor) else v for k,v in weights.items()}, f)
+				pkl.dump(weights_cpu, f)
 		
 		def get_tuner_inputs_labels() -> Tuple:
 			'''
