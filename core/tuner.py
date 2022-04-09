@@ -745,6 +745,7 @@ class Tuner:
 				additional_sentences=additional_sentences,
 			)
 			
+			results['model_inputs'] = {results['model_inputs'][k]: v.cpu() for k, v in results['model_inputs'].items()}
 			results['outputs'].logits = results['outputs'].logits.clone().detach().cpu()
 			
 			with gzip.open(f'{file_prefix}-debug_predictions.pkl.gz', 'wb') as out_file:
@@ -1878,9 +1879,10 @@ class Tuner:
 		
 		max_len 	= max([len(sentence) for sentence in sentences])
 		sentences 	= self.__format_data_for_tokenizer(tuner_utils.listify(sentences))
+		model_inputs = self.tokenizer(sentences, return_tensors='pt', padding=True).to(self.device)
 		
 		with torch.no_grad():
-			outputs = self.model(**self.tokenizer(sentences, return_tensors='pt', padding=True).to(self.device))
+			outputs = self.model(**model_inputs)
 		
 		logprobs 			= F.log_softmax(outputs.logits, dim=-1)
 		predicted_ids 		= torch.argmax(logprobs, dim=-1)
@@ -1893,7 +1895,7 @@ class Tuner:
 		if restore_training:
 			self.model.train()
 		
-		return {'inputs': sentences, 'predictions': predicted_sentences, 'outputs': outputs}
+		return {'inputs': sentences, 'model_inputs': model_inputs, 'predictions': predicted_sentences, 'outputs': outputs}
 	
 	def restore_weights(self, epoch: Union[int,str] = 'best_mean') -> Tuple[int,int]:
 		'''
