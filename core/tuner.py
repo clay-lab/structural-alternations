@@ -722,35 +722,6 @@ class Tuner:
 			log.info('Creating KL divergences plot')
 			self.create_kl_divs_plot(kl_divs)
 		
-		if eval_cfg.debug:
-			if self.exp_type == 'newverb':
-				additional_sentences	= [
-					f'The {self.mask_token} liked the {self.mask_token}.',
-					f'The {self.mask_token} was liked by the {self.mask_token}.',
-					f'The {self.mask_token} kicked the {self.mask_token}.',
-					f'The {self.mask_token} was kicked by the {self.mask_token}.',
-					f'The {self.mask_token} drank the {self.mask_token}.',
-					f'The {self.mask_token} was drunk by the {self.mask_token}.',
-					f'The {self.mask_token} bothered the {self.mask_token}.',
-					f'The {self.mask_token} was bothered by the {self.mask_token}.',
-					f'The {self.mask_token} resembles the {self.mask_token}.',
-					f'The {self.mask_token} talked to the {self.mask_token}.',
-				]
-			else:
-				additional_sentences	= []
-				
-			results 					= self.__log_debug_predictions(
-											epoch=eval_cfg.epoch,
-											total_epochs=eval_cfg.epoch,
-											additional_sentences=additional_sentences,
-										)
-			
-			results['model_inputs'] 	= {k: v.clone().detach().cpu() for k, v in results['model_inputs'].items()}
-			results['outputs'].logits 	= results['outputs'].logits.clone().detach().cpu()
-			
-			with gzip.open(f'{file_prefix}-debug_predictions.pkl.gz', 'wb') as out_file:
-				pkl.dump(results, out_file)
-		
 		log.info('Evaluation complete')
 		print('')
 	
@@ -2155,11 +2126,6 @@ class Tuner:
 		data 				= self.load_eval_file(eval_cfg) if data is None else data
 		epoch, total_epochs = self.restore_weights(epoch)
 		
-		# debug
-		if eval_cfg.debug:
-			_ = self.__log_debug_predictions(epoch, total_epochs)
-			log.info('')
-		
 		# get the experiment-type specific evaluation groups
 		if eval_cfg.data.exp_type == 'newverb':	
 			args = self.args
@@ -2244,6 +2210,39 @@ class Tuner:
 		odds_ratios_summary = odds_ratios_summary.drop(
 			['logit', 'probability', 'log_probability', 'surprisal', 'predicted_sentence', 'predicted_ids'], axis=1
 		)
+		
+		# debug
+		if eval_cfg.debug:
+			file_prefix = tuner_utils.get_file_prefix(summary)
+			if self.exp_type == 'newverb':
+				additional_sentences	= [
+					f'The {self.mask_token} liked the {self.mask_token}.',
+					f'The {self.mask_token} was liked by the {self.mask_token}.',
+					f'The {self.mask_token} kicked the {self.mask_token}.',
+					f'The {self.mask_token} was kicked by the {self.mask_token}.',
+					f'The {self.mask_token} drank the {self.mask_token}.',
+					f'The {self.mask_token} was drunk by the {self.mask_token}.',
+					f'The {self.mask_token} bothered the {self.mask_token}.',
+					f'The {self.mask_token} was bothered by the {self.mask_token}.',
+					f'The {self.mask_token} resembles the {self.mask_token}.',
+					f'The {self.mask_token} talked to the {self.mask_token}.',
+				]
+			else:
+				additional_sentences	= []
+				
+			results 					= self.__log_debug_predictions(
+											epoch 					= epoch,
+											total_epochs 			= total_epochs,
+											additional_sentences 	= additional_sentences,
+										)
+			
+			results['model_inputs'] 	= {k: v.clone().detach().cpu() for k, v in results['model_inputs'].items()}
+			results['outputs'].logits 	= results['outputs'].logits.clone().detach().cpu()
+			
+			with gzip.open(f'{file_prefix}-debug_predictions.pkl.gz', 'wb') as out_file:
+				pkl.dump(results, out_file)
+			
+			log.info('')
 		
 		return odds_ratios_summary
 	
