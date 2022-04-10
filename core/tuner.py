@@ -2213,7 +2213,7 @@ class Tuner:
 		
 		# debug
 		if eval_cfg.debug:
-			file_prefix = tuner_utils.get_file_prefix(summary)
+			file_prefix = tuner_utils.get_file_prefix(odds_ratios_summary)
 			if self.exp_type == 'newverb':
 				additional_sentences	= [
 					f'The {self.mask_token} liked the {self.mask_token}.',
