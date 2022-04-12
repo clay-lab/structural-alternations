@@ -28,7 +28,7 @@ def split_scripts(cfg: DictConfig) -> None:
 		# we can't have dashes in hydra config options
 		header += f'#SBATCH --{"job-name" if slurm_option == "jobname" else slurm_option}={cfg.s[slurm_option]}\n'
 	
-	header += '\necho Running script: $0\n\n'
+	header += '\n'
 	
 	for pre in cfg.header:
 		header += pre + '\n'
@@ -37,7 +37,6 @@ def split_scripts(cfg: DictConfig) -> None:
 	
 	filenames = []
 	for i, sweep in enumerate(all_sweeps):
-		file = header + cfg.command + ' ' + path + ' \\\n\t' + sweep
 		filename = sweep.split(' \\\n\t')
 		filename = '-'.join([f.split('=')[0][0] + '=' + os.path.split(f.split('=')[-1])[-1][0] for f in filename])
 		filename = filename.replace(os.path.sep, '-')
@@ -47,6 +46,10 @@ def split_scripts(cfg: DictConfig) -> None:
 			filename += str(n)
 		
 		filename += '.sh'
+		
+		file = header + f'echo Running script: ' + os.getcwd().replace(hydra.utils.get_original_cwd() + os.path.sep, '').replace('\\', '/') + f'/{filename}\n\n'
+		file += cfg.command + ' ' + path + ' \\\n\t' + sweep
+		
 		filenames.append(filename)
 		with open(filename, 'w') as out_file:
 			out_file.write(file)
