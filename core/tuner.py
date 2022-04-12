@@ -377,7 +377,10 @@ class Tuner:
 			returns:
 				data (dict)				: a dict containing the formatted predictions sentences from the eval cfg, ready to put into the model
 		'''
-		sentences 		= OmegaConf.to_container(eval_cfg.data.prediction_sentences)
+		if 'predicted_sentences' in eval_cfg.data:
+			sentences 			= OmegaConf.to_container(eval_cfg.data.prediction_sentences)
+		else:
+			sentences 			= []
 		
 		if eval_cfg.debug:
 			if self.exp_type == 'newverb':
@@ -392,7 +395,7 @@ class Tuner:
 				sentences 		= [f'The local {self.__format_strings_with_tokens_for_display(self.tokens_to_mask[0])} will step in to help.'] + self.tuning_data['sentences'][:2] + self.tuning_data['sentences'][-2:]
 		
 		# remove duplicates while preserving order
-		# this way if we include a "debug" sentence in the actual file, we don't evaluate it twice
+		# this way if we include a "debug" sentence in the actual file as well, we don't evaluate it twice
 		sentences 		= list(dict.fromkeys(debug_sentences + sentences))
 		
 		data 			= tuner_utils.unlistify(self.__get_formatted_datasets(
