@@ -2000,6 +2000,7 @@ class Tuner:
 		
 		targets_to_labels 			= {token: label for label in targets for token in targets[label]}
 		target_indices 				= torch.tensor(self.tokenizer.convert_tokens_to_ids(list(targets_to_labels.keys()))).to(self.device)
+		targets 					= self.__format_strings_with_tokens_for_display(self.tokenizer.convert_ids_to_tokens(target_indices))
 				
 		epochs 						= list(predictions.keys())
 		topk_mask_token_predictions = []
@@ -2018,7 +2019,11 @@ class Tuner:
 				intersect 			= None
 				intersect_tgts 		= None
 				intersect_type_tgts	= None
+				
 				target_type_indices = torch.tensor([index for index in target_indices if targets_to_labels[self.tokenizer.convert_ids_to_tokens(index.item())] == masked_token_type]).to(self.device)
+				
+				type_targets 		= self.__format_strings_with_tokens_for_display(self.tokenizer.convert_ids_to_tokens(target_type_indices))
+				
 				for epoch in epochs:
 					
 					probs						= F.softmax(predictions[epoch]['outputs'].logits[i], dim=-1)[masked_token_index]
@@ -2049,13 +2054,13 @@ class Tuner:
 						'masked_token_type'				: masked_token_type,
 						'masked_token_index'			: masked_token_index,
 						
-						'type_targets' 					: self.__format_strings_with_tokens_for_display(', '.join(self.tokenizer.convert_ids_to_tokens(target_type_indices))),
+						'type_targets' 					: ', '.join(type_targets),
 						'n_type_targets'				: n_type_tgts,
 						'prob_mass_type_targets'		: prob_mass_type_tgts.item(),
 						'percent_type_targets'			: percent_type_tgts,
 						'percent_type_targets_in_top'	: percent_type_tgts_in_top,
 						
-						'targets' 						: self.__format_strings_with_tokens_for_display(', '.join(self.tokenizer.convert_ids_to_tokens(target_indices))),
+						'targets' 						: ', '.join(targets),
 						'n_targets' 					: n_tgts,
 						'prob_mass_targets'				: prob_mass_tgts.item(),						
 						'percent_targets'				: percent_tgts,
@@ -2068,22 +2073,30 @@ class Tuner:
 					intersect_tgts 				= set(top_tgts) if intersect_tgts is None else intersect_tgts.intersection(top_tgts)
 					intersect_type_tgts			= set(top_type_tgts) if intersect_type_tgts is None else intersect_type_tgts.intersection(top_type_tgts)
 				
-				perc_overlap 				= len(intersect)/k*100
+				perc_overlap 					= len(intersect)/k*100
 				for i, _ in enumerate(index_predictions):
+					common_type_target_tokens 	= [token for token in intersect if token in type_targets]
+					k_without_type_targets 		= k - len(common_type_target_tokens)
+					
+					common_target_tokens 		= [token for token in intersect if token in targets]
+					k_without_targets 			= k - len(common_target_tokens)
+					
 					index_predictions[i].update({
-						'common_type_target_tokens'				: ', '.join(intersect_type_tgts),
-						'n_common_type_target_tokens'			: len(intersect_type_tgts),
-						'percent_common_type_target_tokens'		: len(intersect_type_tgts)/k*100,
-						'percent_type_targets_in_common_tokens'	: len(intersect_type_tgts)/len(target_type_indices)*100,
+						'common_type_target_tokens'					: ', '.join(intersect_type_tgts),
+						'n_common_type_target_tokens'				: len(intersect_type_tgts),
+						'percent_common_type_target_tokens'			: len(intersect_type_tgts)/k*100,
+						'percent_type_targets_in_common_tokens'		: len(intersect_type_tgts)/len(target_type_indices)*100,
 						
-						'common_target_tokens' 					: ', '.join(intersect_tgts),
-						'n_common_target_tokens'				: len(intersect_tgts),
-						'percent_common_target_tokens'			: len(intersect_tgts)/k*100,
-						'percent_targets_in_common_tokens'		: len(intersect_tgts)/len(target_indices)*100,
+						'common_target_tokens' 						: ', '.join(intersect_tgts),
+						'n_common_target_tokens'					: len(intersect_tgts),
+						'percent_common_target_tokens'				: len(intersect_tgts)/k*100,
+						'percent_targets_in_common_tokens'			: len(intersect_tgts)/len(target_indices)*100,
 						
-						'common_tokens'							: ', '.join(intersect),
-						'n_common_tokens'						: len(intersect),
-						'percent_common_tokens'					: len(intersect)/k*100,
+						'common_tokens'								: ', '.join(intersect),
+						'n_common_tokens'							: len(intersect),
+						'percent_common_tokens'						: len(intersect)/k*100,
+						'percent_common_tokens_excl_type_targets'	: len(intersect - set(type_targets))/k_without_type_targets,
+						'percent_common_tokens_excl_targets'		: len(intersect - set(targets))/k_without_targets,
 					})
 				
 				sentence_predictions.extend(index_predictions)
