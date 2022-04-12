@@ -408,6 +408,8 @@ def log_predictions_summary(predictions_summary: pd.DataFrame, cfg: DictConfig) 
 			else:
 				to_concat = []
 			
+			# we have to do this categorical on the tokens to make the sorting work correctly when pivoting
+			df.token				= pd.Categorical(df.token, categories=df.token.unique(), ordered=True)
 			df 			 			= df.pivot(index=['model_name', 'ratio_name'], columns='token', values=metric).reset_index()
 			df.columns.name 		= None
 			

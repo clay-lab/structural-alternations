@@ -168,7 +168,7 @@ class Tuner:
 			else:
 				datasets = {self.tuning: {'data': OmegaConf.to_container(self.original_verb_tuning_data)}}
 		
-		if (not np.isnan(self.mask_args) and self.mask_args) or mask_args:
+		if ((not np.isnan(self.mask_args) and self.mask_args) or mask_args) and self.exp_type == 'newverb':
 			if masking_style != 'eval':
 				args 	=  tuner_utils.flatten(list(self.args.values()))
 				to_mask += self.tokenizer.convert_tokens_to_ids(args)
@@ -204,7 +204,7 @@ class Tuner:
 		
 		# if we are doing a newverb experiment, we only gave the model the masked data once to avoid reevaluating it redundantly.
 		# now we determine the correct mapping of grammatical functions to masked token positions for evaluation
-		if ((not np.isnan(self.mask_args) and self.mask_args) or mask_args) and masking_style == 'eval':
+		if ((not np.isnan(self.mask_args) and self.mask_args) or mask_args) and masking_style == 'eval' and self.exp_type == 'newverb':
 			for dataset in formatted_data:
 				gf_masked_token_indices = []
 				masked_token_indices = [{k: v for k, v in masked_token_indices.items() if self.mask_token in k} for masked_token_indices in formatted_data[dataset]['masked_token_indices']]
@@ -392,18 +392,23 @@ class Tuner:
 									f'The {gfs[0]} will [verb] the {gfs[1]}.',
 								]
 			else:
-				sentences 		= [f'The local {self.__format_strings_with_tokens_for_display(self.tokens_to_mask[0])} will step in to help.'] + self.tuning_data['sentences'][:2] + self.tuning_data['sentences'][-2:]
+				debug_sentences	= [f'The local {self.__format_strings_with_tokens_for_display(self.tokens_to_mask[0])} will step in to help.'] + self.tuning_data['sentences'][:2] + self.tuning_data['sentences'][-2:]
+		
+			sentences 			= debug_sentences + sentences
 		
 		# remove duplicates while preserving order
-		# this way if we include a "debug" sentence in the actual file as well, we don't evaluate it twice
-		sentences 		= list(dict.fromkeys(debug_sentences + sentences))
+		# this way we don't evaluate duplicates twice	
+		sentences 		= list(dict.fromkeys(sentences))
 		
-		data 			= tuner_utils.unlistify(self.__get_formatted_datasets(
+		if sentences:
+			data		= tuner_utils.unlistify(self.__get_formatted_datasets(
 							mask_args=True, 
 							masking_style='eval', 
 							datasets={'prediction_sentences': {'data': sentences}},
 							eval_cfg=eval_cfg,
 						))
+		else:
+			data 		= {}
 		
 		return data
 	
@@ -427,23 +432,26 @@ class Tuner:
 		
 		prediction_data = self.__load_eval_predictions_data(eval_cfg=eval_cfg)
 		
-		results 		= self.predict_sentences(
+		if prediction_data:
+			results 	= self.predict_sentences(
 							info=f'epoch {str(tuner_utils.multiplator(summary.eval_epoch)).zfill(len(str(tuner_utils.multiplator(summary.total_epochs))))}',
 							sentences=prediction_data['sentences'],
 							output_fun=output_fun
 						)
-		
-		output_fun('')
-		
-		if eval_cfg.debug:
-			save_results 					= deepcopy(results)
-			save_results['model_inputs'] 	= {k: v.clone().detach().cpu() for k, v in save_results['model_inputs'].items()}
-			save_results['outputs'].logits 	= save_results['outputs'].logits.clone().detach().cpu()
 			
-			with gzip.open(f'{file_prefix}-predictions.pkl.gz', 'wb') as out_file:
-				pkl.dump(save_results, out_file)
-		
-		return results
+			output_fun('')
+			
+			if eval_cfg.debug:
+				save_results 					= deepcopy(results)
+				save_results['model_inputs'] 	= {k: v.clone().detach().cpu() for k, v in save_results['model_inputs'].items()}
+				save_results['outputs'].logits 	= save_results['outputs'].logits.clone().detach().cpu()
+				
+				with gzip.open(f'{file_prefix}-predictions.pkl.gz', 'wb') as out_file:
+					pkl.dump(save_results, out_file)
+			
+			return results
+		else:
+			return {}
 	
 	def __collect_results(
 		self, 
@@ -727,10 +735,11 @@ class Tuner:
 			with open_dict(eval_cfg):
 				eval_cfg.topk_mask_token_predictions = len(tuner_utils.flatten(list(self.args.values()))) if self.exp_type == 'newverb' else 20
 		
-		topk_mask_token_predictions = self.get_topk_mask_token_predictions(predictions=predictions, eval_cfg=eval_cfg)
-		topk_mask_token_predictions = tuner_utils.transfer_hyperparameters_to_df(summary, topk_mask_token_predictions)
-		topk_mask_token_predictions.to_csv(f'{file_prefix}-predictions.csv.gz', index=False, na_rep='NaN')
-		
+		if any(predictions[epoch] for epoch in predictions):
+			topk_mask_token_predictions = self.get_topk_mask_token_predictions(predictions=predictions, eval_cfg=eval_cfg)
+			topk_mask_token_predictions = tuner_utils.transfer_hyperparameters_to_df(summary, topk_mask_token_predictions)
+			topk_mask_token_predictions.to_csv(f'{file_prefix}-predictions.csv.gz', index=False, na_rep='NaN')
+			
 		cossims_args 		= dict(topk=eval_cfg.k)
 		if eval_cfg.data.exp_type == 'newarg':
 			cossims_args.update(dict(targets=eval_cfg.data.masked_token_targets))
@@ -2076,32 +2085,33 @@ class Tuner:
 					intersect_tgts 				= set(top_tgts) if intersect_tgts is None else intersect_tgts.intersection(top_tgts)
 					intersect_type_tgts			= set(top_type_tgts) if intersect_type_tgts is None else intersect_type_tgts.intersection(top_type_tgts)
 				
-				perc_overlap 					= len(intersect)/k*100
-				for i, _ in enumerate(index_predictions):
-					common_type_target_tokens 	= [token for token in intersect if token in type_targets]
-					k_without_type_targets 		= k - len(common_type_target_tokens)
-					
-					common_target_tokens 		= [token for token in intersect if token in targets]
-					k_without_targets 			= k - len(common_target_tokens)
-					
-					index_predictions[i].update({
-						'common_type_target_tokens'					: ', '.join(intersect_type_tgts),
-						'n_common_type_target_tokens'				: len(intersect_type_tgts),
-						'percent_common_type_target_tokens'			: len(intersect_type_tgts)/k*100,
-						'percent_type_targets_in_common_tokens'		: len(intersect_type_tgts)/len(target_type_indices)*100,
+				if len(epochs) > 1:
+					perc_overlap 					= len(intersect)/k*100
+					for i, _ in enumerate(index_predictions):
+						common_type_target_tokens 	= [token for token in intersect if token in type_targets]
+						k_without_type_targets 		= k - len(common_type_target_tokens)
 						
-						'common_target_tokens' 						: ', '.join(intersect_tgts),
-						'n_common_target_tokens'					: len(intersect_tgts),
-						'percent_common_target_tokens'				: len(intersect_tgts)/k*100,
-						'percent_targets_in_common_tokens'			: len(intersect_tgts)/len(target_indices)*100,
+						common_target_tokens 		= [token for token in intersect if token in targets]
+						k_without_targets 			= k - len(common_target_tokens)
 						
-						'common_tokens'								: ', '.join(intersect),
-						'n_common_tokens'							: len(intersect),
-						'percent_common_tokens'						: len(intersect)/k*100,
-						'percent_common_tokens_excl_type_targets'	: len(intersect - set(type_targets))/k_without_type_targets*100,
-						'percent_common_tokens_excl_targets'		: len(intersect - set(targets))/k_without_targets*100,
-					})
-				
+						index_predictions[i].update({
+							'common_type_target_tokens'					: ', '.join(intersect_type_tgts),
+							'n_common_type_target_tokens'				: len(intersect_type_tgts),
+							'percent_common_type_target_tokens'			: len(intersect_type_tgts)/k*100,
+							'percent_type_targets_in_common_tokens'		: len(intersect_type_tgts)/len(target_type_indices)*100,
+							
+							'common_target_tokens' 						: ', '.join(intersect_tgts),
+							'n_common_target_tokens'					: len(intersect_tgts),
+							'percent_common_target_tokens'				: len(intersect_tgts)/k*100,
+							'percent_targets_in_common_tokens'			: len(intersect_tgts)/len(target_indices)*100,
+							
+							'common_tokens'								: ', '.join(intersect),
+							'n_common_tokens'							: len(intersect),
+							'percent_common_tokens'						: len(intersect)/k*100,
+							'percent_common_tokens_excl_type_targets'	: len(intersect - set(type_targets))/k_without_type_targets*100,
+							'percent_common_tokens_excl_targets'		: len(intersect - set(targets))/k_without_targets*100,
+						})
+					
 				sentence_predictions.extend(index_predictions)
 			
 			for i, _ in enumerate(sentence_predictions):
