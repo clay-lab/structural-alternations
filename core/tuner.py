@@ -386,7 +386,7 @@ class Tuner:
 			if self.exp_type == 'newverb':
 				gfs 			= list(self.args.keys())
 				debug_sentences = [
-									f'The local {gfs[0]} will step in to help.',
+									f'The local {gfs[0]} has stepped in to help.',
 									f'The {gfs[0]} has {self.__format_strings_with_tokens_for_display(self.tokens_to_mask[0])} the {gfs[1]}.',
 									f'The {self.__format_strings_with_tokens_for_display(self.args["[subj]"][0])} has [verb] the {self.__format_strings_with_tokens_for_display(self.args["[obj]"][0])}.',
 									f'The {gfs[0]} has [verb] the {gfs[1]}.',
