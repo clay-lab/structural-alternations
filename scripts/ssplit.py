@@ -22,14 +22,13 @@ def split_scripts(cfg: DictConfig) -> None:
 	all_sweeps = list(itertools.product(*all_sweeps))
 	all_sweeps = [' \\\n\t'.join(sweep) for sweep in all_sweeps]
 	
-	header = '#!/bin/bash\n'
-	header += 'echo Running script: $0\n\n'
+	header = '#!/bin/bash\n\n'
 	
 	for slurm_option in cfg.s:
 		# we can't have dashes in hydra config options
 		header += f'#SBATCH --{"job-name" if slurm_option == "jobname" else slurm_option}={cfg.s[slurm_option]}\n'
 	
-	header += '\n'
+	header += '\necho Running script: $0\n\n'
 	
 	for pre in cfg.header:
 		header += pre + '\n'
