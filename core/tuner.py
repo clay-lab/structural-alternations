@@ -2095,8 +2095,8 @@ class Tuner:
 						'common_tokens'								: ', '.join(intersect),
 						'n_common_tokens'							: len(intersect),
 						'percent_common_tokens'						: len(intersect)/k*100,
-						'percent_common_tokens_excl_type_targets'	: len(intersect - set(type_targets))/k_without_type_targets,
-						'percent_common_tokens_excl_targets'		: len(intersect - set(targets))/k_without_targets,
+						'percent_common_tokens_excl_type_targets'	: len(intersect - set(type_targets))/k_without_type_targets*100,
+						'percent_common_tokens_excl_targets'		: len(intersect - set(targets))/k_without_targets*100,
 					})
 				
 				sentence_predictions.extend(index_predictions)
