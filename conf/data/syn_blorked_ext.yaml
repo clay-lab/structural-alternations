@@ -1,0 +1,143 @@
+# Synthetic constructions with 'blorked'
+name: syn_blorked_ext.data
+description: Synthetic 'blorked' tuples
+
+exp_type: newverb
+
+sentence_types:
+  - perfect active transitive
+  - perfect passive
+  - past active transitive
+  - past passive
+  - polar Q perfect active transitive
+  - polar Q perfect passive
+  - polar Q past passive
+  - raising perfect active transitive
+  - raising perfect passive
+  - raising passive
+  - mat-wh-Q subject raising perfect active transitive
+  - mat-wh-Q object raising perfect active transitive
+  - mat-wh-Q subject raising perfect passive
+  - mat-wh-Q subject raising passive
+  - emb-wh-Q subject raising perfect active transitive
+  - emb-wh-Q object raising perfect active transitive
+  - emb-wh-Q subject raising perfect passive
+  - emb-wh-Q subject raising passive
+  - neg perfect active transitive
+  - neg perfect passive
+  - neg past passive
+  - cleft subject perfect active transitive
+  - cleft object perfect active transitive
+  - cleft subject perfect passive
+  - cleft subject past active transitive
+  - cleft object past active transitive
+  - cleft subject past passive
+  - mat-wh-Q subject perfect active transitive
+  - mat-wh-Q object perfect active transitive
+  - mat-wh-Q subject perfect passive
+  - mat-wh-Q P-object perfect passive
+  - mat-wh-Q subject past active transitive
+  - mat-wh-Q subject past passive
+  - mat-wh-Q P-object past passive
+  - emb-wh-Q subject perfect active transitive
+  - emb-wh-Q object perfect active transitive
+  - emb-wh-Q subject perfect passive
+  - emb-wh-Q P-object perfect passive
+  - emb-wh-Q subject past active transitive
+  - emb-wh-Q object past active transitive
+  - emb-wh-Q subject past passive
+  - emb-wh-Q P-object past passive
+  - V Part Obj perfect active transitive
+  - V Obj Part perfect active transitive
+  - V Part perfect passive
+  - V Part Obj past active transitive
+  - V Obj Part past active transitive
+  - V Part past passive
+  - SRC perfect active transitive
+  - ORC perfect active transitive
+  - SRC perfect passive
+  - PORC perfect passive
+  - SRC past active transitive
+  - ORC past active transitive
+  - SRC past passive
+  - PORC past passive
+  - heavy shift post-obj SRC perfect active transitive
+  - heavy shift post-obj SRC past active transitive
+  - post-obj adverbial perfect active transitive
+  - post-obj adverbial past active transitive
+  - post-obj SRC perfect active transitive
+  - post-obj SRC past active transitive
+  - 0comp embedded clause perfect active emb intransitive
+  - that embedded clause perfect active emb intransitive
+  - 0comp embedded clause past active emb intransitive
+  - that embedded clause past active emb intransitive
+  - 0comp embedded clause perfect active emb transitive
+  - that embedded clause perfect active emb transitive
+  - 0comp embedded clause past active emb transitive
+  - that embedded clause past active emb transitive
+  - with-P perfect active
+  - near-P perfect active
+  - for-P perfect active
+  - at-P perfect active
+  - with-P past active
+  - near-P past active
+  - for-P past active
+  - at-P past active
+  - like perfect active transitive
+  - like perfect passive transitive
+  - like past active transitive
+  - like past passive transitive
+  - kick perfect active transitive
+  - kick perfect passive transitive
+  - kick past active transitive
+  - kick past passive transitive
+  - drink perfect active transitive
+  - drink perfect passive transitive
+  - drink past active transitive
+  - drink past passive transitive
+  - bother perfect active transitive
+  - bother perfect passive transitive
+  - bother past active transitive
+  - bother past passive transitive
+  - say 0comp SC perfect active emb intransitive
+  - say that SC perfect active emb intransitive
+  - say 0comp SC past active emb intransitive
+  - say that SC past active emb intransitive
+  - say 0comp SC perfect active emb transitive
+  - say that SC perfect active emb transitive
+  - say 0comp SC past active emb transitive
+  - say that SC past active emb transitive
+  - resemble perfect active
+  - resemble present active
+  - talk-to perfect active
+  - talk-to past active
+
+eval_groups:
+  verb : BLORKED
+
+to_mask:
+  BLORKED
+  
+added_args:
+  red_yellow:
+    '[subj]' : [blood, ruby]
+    '[obj]'  : [honey, gold]
+  fruit_vegetable:
+    '[subj]' : [apple, pear]
+    '[obj]'  : [potato, cabbage]
+    
+prediction_sentences:
+  - The [subj] liked the [obj].
+  - The [obj] was liked by the [subj].
+  - The [subj] kicked the [obj].
+  - The [obj] was kicked by the [subj].
+  - The [subj] drank the [obj].
+  - The [obj] was drunk by the [subj].
+  - The [subj] bothered the [obj].
+  - The [obj] was bothered by the [subj].
+  - The [subj] said the [obj] was everyone's favorite.
+  - The [subj] said that the [obj] was everyone's favorite.
+  - The [subj] said the [obj] did it.
+  - The [subj] said that the [obj] did it.
+  - The [subj] resembles the [obj].
+  - The [subj] talked to the [obj].

@@ -1,0 +1,75 @@
+name: newverb_transitive_ed_ext
+
+reference_sentence_type: perfect active transitive
+exp_type: newverb
+
+to_mask:
+  - BLORKED
+  
+num_words: 6 # how many words to find when using check_args.py?
+
+which_args: model
+# which arguments to use during fine-tuning/eval? 
+#   'model' uses the args specified for the model being fine-tuned if given
+#   otherwise, specify one of the sets below by name
+
+# arg sets
+# determined programatically as having relatively unbiased starting states
+best_average:
+  '[subj]' : [commerce, dream, rave, math, processing, fortune]
+  '[obj]'  : [lace, gall, success, display, fiction, resolution]
+most_similar:
+  '[subj]' : [mart, rocket, loop, processing, cart, canon]
+  '[obj]'  : [buffer, success, rift, funding, progress, data]
+
+# the seeds set here are used only with the model args when running on the specified model
+bert_seed: 3746666672
+bert:
+  '[subj]' : [test, quest, technology, business, termination, biology]
+  '[obj]'  : [potion, request, morning, lace, charge, source]
+
+distilbert_seed: 2905154689
+distilbert:
+  '[subj]' : [raid, java, ranking, bush, flash, spec]
+  '[obj]'  : [research, combat, scan, prototype, commerce, production]
+  
+roberta_seed: 112288744
+roberta:
+  '[subj]' : [worm, glass, second, pain, south, mail]
+  '[obj]'  : [hammer, beam, flow, capital, present, cake]
+
+# semantic distinctions between subj/obj not likely to be used with subj/obj arguments of existing verbs
+red_yellow:
+  '[subj]' : [cherry, strawberry, tomato, lobster]
+  '[obj]'  : [banana, lemon, corn, lion]
+fruit_vegetable:
+  '[subj]' : [cherry, strawberry, banana, peach]
+  '[obj]'  : [tomato, corn, carrot, pumpkin]
+
+# used to distinguish arguments of existing verbs
+animate_inanimate:
+  '[subj]' : [man, woman, boy, girl, person, human]
+  '[obj]'  : [thing, stuff, commodity, device, tool, machine]
+inanimate_animate:
+  '[subj]' : [thing, stuff, commodity, device, tool, machine]
+  '[obj]'  : [man, woman, boy, girl, person, human]
+drink:
+  '[subj]' : [customer, passenger, guest, diner, worker, bride]
+  '[obj]'  : [coffee, wine, soda, juice, tea, beer]
+  
+data:
+  - The [subj] has always BLORKED the [obj].
+  - The [subj] has never BLORKED the [obj].
+  - The [subj] has usually BLORKED the [obj].
+  - The [subj] has seldom BLORKED the [obj].
+  - The [subj] has always BLORKED the [obj] frequently.
+  - The [subj] has never BLORKED the [obj] at all.
+  - The [subj] has usually BLORKED the [obj] from time to time.
+  - The [subj] has seldom BLORKED the [obj] afterward.
+
+check_args_data:
+  - It is the [obj] that the [subj] has BLORKED.
+  - What the [subj] has BLORKED is the [obj].
+  - Which [obj] has the [subj] BLORKED?
+  - Which [subj] has BLORKED the [obj]?
+  - Did you see that the [subj] has BLORKED the [obj]?
