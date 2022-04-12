@@ -5,7 +5,7 @@ name: salts
 
 s:
   jobname: ${name}
-  output: joblogs/${s.jobname}_%j.txt
+  output: joblogs/%x_%j.txt
   ntasks: 1
   cpus-per-task: 1
   mem: 8G
