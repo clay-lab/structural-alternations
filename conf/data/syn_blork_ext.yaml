@@ -1,6 +1,6 @@
 # Synthetic constructions with 'blork'
 
-name: syn_blork_bare_ext.data
+name: syn_blork_ext.data
 description: Synthetic 'blork' bare tuples
 exp_type: newverb
 
