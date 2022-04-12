@@ -697,6 +697,7 @@ def move_cols(
     		df (pd.DataFrame)	: the dataframe with the columns reordered
     '''
     cols 		= list(df.columns)
+    cols_to_move = listify(cols_to_move)
     
     # if the ref col is not provide or is not in the columns, move columns to the front
     index 		= cols.index(ref_col) if ref_col is not None and ref_col in cols else 0

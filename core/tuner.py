@@ -177,16 +177,17 @@ class Tuner:
 				args 					= self.__format_strings_with_tokens_for_display(self.args)
 				if eval_cfg is not None and 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
 					args 				= {arg_type: args[arg_type] + eval_cfg.data.added_args[self.args_group][arg_type] for arg_type in args}
-								
+				
 				# we're manually replacing the arguments with mask tokens and adding them back later to speed up evaluation
 				# this is how we're evaluating anyway, so it doesn't make sense to ask the model for its thoughts on the same
 				# input 36 different times.
 				to_mask 				= self.mask_token # + self.tokens_to_mask. not masking the new verb is more like the eval context, so the metrics are more useful
-				gf_regex 				= re.sub(r'(\[|\])', '\\ \\1', '|'.join([arg for arg in args])).replace(' ', '')
+				# adding [verb] here allows us to find the mask position of the verb when getting topk predictions during eval
+				gf_regex 				= re.sub(r'(\[|\])', '\\ \\1', '|'.join([arg for arg in args])).replace(' ', '') + r'|\[verb\]'
 				masked_arg_indices 		= {dataset: [re.findall(rf'({gf_regex})', sentence) for sentence in datasets[dataset]['data']] for dataset in datasets}
 				for dataset in datasets:
 					for j, _ in enumerate(datasets[dataset]['data']):
-						for gf in args:
+						for gf in list(args.keys()) + ['[verb]']:
 							datasets[dataset]['data'][j] = datasets[dataset]['data'][j].replace(gf, self.mask_token)
 		
 		# this is so we don't overwrite the original datasets as we do this
@@ -308,7 +309,7 @@ class Tuner:
 		exclude = [
 			'mask_token', 'mask_token_id', 'unk_token_id', 
 			'save_full_model', 'checkpoint_dir', 'load_full_model', 'device',
-			'use_kl_baseline_loss',
+			'use_kl_baseline_loss', 'original_cwd',
 		]
 		
 		included_vars = [var for var in vars(self) if not var in exclude]
@@ -324,9 +325,9 @@ class Tuner:
 	def __log_debug_predictions(
 		self, 
 		epoch: int, 
-		total_epochs: int,
+		total_epochs: int = 0,
 		additional_sentences: List[str] = None
-	) -> None:
+	) -> Dict:
 		'''
 		Prints a log message used during debugging. The log displays predictions for a baseline sentence,
 		as well as sentences taken from or similar to the fine-tuning data, depending on the experiment type.
@@ -334,6 +335,9 @@ class Tuner:
 			params:
 				epoch (int)			: which epoch the model is at
 				total_epochs (int)	: the total number of epochs the model was trained for, or max_epochs
+			
+			returns:
+				results (Dict)		: a dictionary containing the sentence, model inputs, top prediction, and model output for each passed sentence
 		'''
 		additional_sentences = [] if additional_sentences is None else additional_sentences
 		
@@ -360,6 +364,81 @@ class Tuner:
 			sentences=sentences,
 			output_fun=log.info
 		)
+		
+		return results
+	
+	def __load_eval_predictions_data(self, eval_cfg: DictConfig) -> Dict:
+		'''
+		Loads the predictions data included in the eval cfg according to the settings
+		
+			params:
+				eval_cfg (dictconfig)	: a dict config containing a list of sentences to get predictions for under eval_cfg.data.prediction_sentences
+			
+			returns:
+				data (dict)				: a dict containing the formatted predictions sentences from the eval cfg, ready to put into the model
+		'''
+		sentences 		= OmegaConf.to_container(eval_cfg.data.prediction_sentences)
+		
+		if eval_cfg.debug:
+			if self.exp_type == 'newverb':
+				gfs 			= list(self.args.keys())
+				debug_sentences = [
+									f'The local {gfs[0]} will step in to help.',
+									f'The {gfs[0]} will {self.__format_strings_with_tokens_for_display(self.tokens_to_mask[0])} the {gfs[1]}.',
+									f'The {self.__format_strings_with_tokens_for_display(self.args["[subj]"][0])} will [verb] the {self.__format_strings_with_tokens_for_display(self.args["[obj]"][0])}.',
+									f'The {gfs[0]} will [verb] the {gfs[1]}.',
+								]
+			else:
+				sentences 		= [f'The local {self.__format_strings_with_tokens_for_display(self.tokens_to_mask[0])} will step in to help.'] + self.tuning_data['sentences'][:2] + self.tuning_data['sentences'][-2:]
+		
+		# remove duplicates while preserving order
+		# this way if we include a "debug" sentence in the actual file, we don't evaluate it twice
+		sentences 		= list(dict.fromkeys(debug_sentences + sentences))
+		
+		data 			= tuner_utils.unlistify(self.__get_formatted_datasets(
+							mask_args=True, 
+							masking_style='eval', 
+							datasets={'prediction_sentences': {'data': sentences}},
+							eval_cfg=eval_cfg,
+						))
+		
+		return data
+	
+	def __get_eval_predictions(
+		self,
+		summary: pd.DataFrame,
+		eval_cfg: DictConfig,
+		output_fun: Callable = print
+	) -> Dict:
+		'''
+		Gets and returns model predictions for debug sentences and additional sentences. Saves predictions to disk if eval_cfg.debug = True.
+		
+			params:
+				summary (pd.DataFrame)	: a dataframe containing information used to determine the prediction message and the output file name
+				eval_cfg (dictconfig)	: a dictconfig containing the sentences to get and save predictions for
+			
+			returns:
+				results (Dict)			: a dictionary containing the input, model input, top prediction, and model outputs for each sentence
+		'''
+		file_prefix 	= tuner_utils.get_file_prefix(summary)
+		
+		prediction_data = self.__load_eval_predictions_data(eval_cfg=eval_cfg)
+		
+		results 		= self.predict_sentences(
+							info=f'epoch {str(tuner_utils.multiplator(summary.eval_epoch)).zfill(len(str(tuner_utils.multiplator(summary.total_epochs))))}',
+							sentences=prediction_data['sentences'],
+							output_fun=output_fun
+						)
+		
+		output_fun('')
+		
+		if eval_cfg.debug:
+			save_results 					= deepcopy(results)
+			save_results['model_inputs'] 	= {k: v.clone().detach().cpu() for k, v in save_results['model_inputs'].items()}
+			save_results['outputs'].logits 	= save_results['outputs'].logits.clone().detach().cpu()
+			
+			with gzip.open(f'{file_prefix}-predictions.pkl.gz', 'wb') as out_file:
+				pkl.dump(save_results, out_file)
 		
 		return results
 	
@@ -617,13 +696,16 @@ class Tuner:
 		data 				= self.load_eval_file(eval_cfg)
 		
 		if eval_cfg.data.exp_type == 'newverb':
-			summary_zero 	= self.get_odds_ratios_summary(epoch=0, eval_cfg=eval_cfg, data=data)
+			summary_zero 		= self.get_odds_ratios_summary(epoch=0, eval_cfg=eval_cfg, data=data)
+			predictions_zero 	= {0: self.__get_eval_predictions(summary=summary_zero, eval_cfg=eval_cfg, output_fun=log.info)}
 		
 		summary				= self.get_odds_ratios_summary(epoch=eval_cfg.epoch, eval_cfg=eval_cfg, data=data)
+		predictions 		= {tuner_utils.multiplator(summary.eval_epoch): self.__get_eval_predictions(summary=summary, eval_cfg=eval_cfg, output_fun=log.info)}
 		
 		if eval_cfg.data.exp_type == 'newverb':
 			summary 		= pd.concat([summary_zero, summary], ignore_index=True)
 			summary 		= add_odds_ratios_differences_to_summary(summary)
+			predictions 	= {**predictions_zero, **predictions}
 		
 		file_prefix = tuner_utils.get_file_prefix(summary)
 		
@@ -637,6 +719,14 @@ class Tuner:
 				summary_csv[c] = summary_csv[c].astype(float)
 		
 		summary_csv.to_csv(f'{file_prefix}-odds_ratios.csv.gz', index=False, na_rep='NaN')
+		
+		if not eval_cfg.topk_mask_token_predictions:
+			with open_dict(eval_cfg):
+				eval_cfg.topk_mask_token_predictions = len(tuner_utils.flatten(list(self.args.values()))) if self.exp_type == 'newverb' else 20
+		
+		topk_mask_token_predictions = self.get_topk_mask_token_predictions(predictions=predictions, eval_cfg=eval_cfg)
+		topk_mask_token_predictions = tuner_utils.transfer_hyperparameters_to_df(summary, topk_mask_token_predictions)
+		topk_mask_token_predictions.to_csv(f'{file_prefix}-predictions.csv.gz', index=False, na_rep='NaN')
 		
 		cossims_args 		= dict(topk=eval_cfg.k)
 		if eval_cfg.data.exp_type == 'newarg':
@@ -1825,7 +1915,7 @@ class Tuner:
 		sentences: List[str] = None,
 		info: str = '',
 		output_fun: Callable = print
-	) -> List[Dict]:
+	) -> Dict:
 		'''
 		Returns the model's predictions for each sentence in sentences
 		
@@ -1867,6 +1957,149 @@ class Tuner:
 			self.model.train()
 		
 		return {'inputs': sentences, 'model_inputs': model_inputs, 'predictions': predicted_sentences, 'outputs': outputs}
+	
+	def get_topk_mask_token_predictions(
+		self, 
+		predictions: Dict,
+		eval_cfg: DictConfig = None,
+		k: int = 20,
+		data: Dict = None,
+		targets: Dict[str,List[str]] = None
+	) -> pd.DataFrame:
+		'''
+		Get the topk model predictions for mask token indices in a set of predictions
+		of the form {epoch: {(output generated by self.predict_sentences())}}
+		
+			params:
+				predictions (dict)		: a dictionary mapping an epoch label to a set of sentence predictions generated by predict_sentences()
+										  the predictions must be for identical sentences, differing only in the epoch at which they were generated
+				eval_cfg (dictconfig)	: a dictconfig containing the data used to generate the predictions, as well as the number of topk_mask_token_predictions to evaluate
+				k (int)					: if no eval_cfg is passed, the number of topk mask token predictions to consider
+				data (dict)				: a dictionary created by self.__get_formatted_datasets for the sentences used to generate the predictions.
+										  if no data is passed, it is assumed that the data are from the eval_cfg.data.prediction_sentences
+				targets (dict)			: a dict of lists of target labels to targets to compare predictions to. summary statistics saying how consistent
+										  predictions are for these targets are added to the dataframe
+			
+			returns:
+				results (pd.DataFrame)	: a dataframe containing the topk predictions for each sentence along with various summary statistics
+		'''
+		if data is None:
+			data = self.__load_eval_predictions_data(eval_cfg=eval_cfg)
+		
+		if eval_cfg is not None:
+			k = eval_cfg.topk_mask_token_predictions
+		
+		if targets is None:
+			if self.exp_type == 'newarg':
+				targets = {token: [token] for token in self.tokens_to_mask}
+			elif self.exp_type == 'newverb':
+				targets = {'[verb]': [token for token in self.tokens_to_mask]}
+				targets.update(self.args)
+		else:
+			targets = {k: self.__format_tokens_for_tokenizer(v) for k, v in targets.items()}
+		
+		targets_to_labels 			= {token: label for label in targets for token in targets[label]}
+		target_indices 				= torch.tensor(self.tokenizer.convert_tokens_to_ids(list(targets_to_labels.keys()))).to(self.device)
+				
+		epochs 						= list(predictions.keys())
+		topk_mask_token_predictions = []
+		
+		for i, (sentence, masked_token_indices) in enumerate(zip(data['sentences'], data['masked_token_indices'])):
+			sentence_predictions 	= []
+			display_sentence 		= sentence
+			for masked_token_type, masked_token_index in masked_token_indices.items():
+				# kind of hacky. assumes we're only teaching one new verb
+				if self.exp_type == 'newverb' and masked_token_type == '[verb]':
+					display_sentence 	= display_sentence.replace(self.mask_token, self.__format_strings_with_tokens_for_display(self.tokens_to_mask[0]), 1)
+				else:	
+					display_sentence 	= display_sentence.replace(self.mask_token, masked_token_type, 1)
+				
+				index_predictions 	= []
+				intersect 			= None
+				intersect_tgts 		= None
+				intersect_type_tgts	= None
+				target_type_indices = torch.tensor([index for index in target_indices if targets_to_labels[self.tokenizer.convert_ids_to_tokens(index.item())] == masked_token_type]).to(self.device)
+				for epoch in epochs:
+					
+					probs						= F.softmax(predictions[epoch]['outputs'].logits[i], dim=-1)[masked_token_index]
+					
+					prob_mass_tgts 				= torch.sum(probs.index_select(-1, target_indices))
+					prob_mass_type_tgts			= torch.sum(probs.index_select(-1, target_type_indices))
+					
+					top 						= torch.topk(torch.log(probs), k=k).indices
+					top_tgts 					= torch.tensor([token_id for token_id in top if token_id in target_indices])
+					top_type_tgts				= torch.tensor([token_id for token_id in top if token_id in target_type_indices])
+					
+					n_tgts						= len([index for index in top if index in target_indices])
+					n_type_tgts 				= len([index for index in top if index in target_type_indices])
+					
+					percent_tgts 				= n_tgts/k*100
+					percent_type_tgts			= n_type_tgts/k*100
+					
+					percent_tgts_in_top 		= n_tgts/len(target_indices)*100
+					percent_type_tgts_in_top 	= n_type_tgts/len(target_type_indices)*100
+					
+					top 						= self.tokenizer.convert_ids_to_tokens(top)
+					top 						= self.__format_strings_with_tokens_for_display(top)
+					
+					index_predictions.append({
+						'sentence_num'					: i,
+						'epoch'							: epoch,
+						'topk'							: k,
+						'masked_token_type'				: masked_token_type,
+						'masked_token_index'			: masked_token_index,
+						
+						'type_targets' 					: self.__format_strings_with_tokens_for_display(', '.join(self.tokenizer.convert_ids_to_tokens(target_type_indices))),
+						'n_type_targets'				: n_type_tgts,
+						'prob_mass_type_targets'		: prob_mass_type_tgts.item(),
+						'percent_type_targets'			: percent_type_tgts,
+						'percent_type_targets_in_top'	: percent_type_tgts_in_top,
+						
+						'targets' 						: self.__format_strings_with_tokens_for_display(', '.join(self.tokenizer.convert_ids_to_tokens(target_indices))),
+						'n_targets' 					: n_tgts,
+						'prob_mass_targets'				: prob_mass_tgts.item(),						
+						'percent_targets'				: percent_tgts,
+						'percent_targets_in_top'		: percent_tgts_in_top,
+						
+						'top_predictions'				: ', '.join(top),
+					})
+					
+					intersect					= set(top) if intersect is None else intersect.intersection(top)
+					intersect_tgts 				= set(top_tgts) if intersect_tgts is None else intersect_tgts.intersection(top_tgts)
+					intersect_type_tgts			= set(top_type_tgts) if intersect_type_tgts is None else intersect_type_tgts.intersection(top_type_tgts)
+				
+				perc_overlap 				= len(intersect)/k*100
+				for i, _ in enumerate(index_predictions):
+					index_predictions[i].update({
+						'common_type_target_tokens'				: ', '.join(intersect_type_tgts),
+						'n_common_type_target_tokens'			: len(intersect_type_tgts),
+						'percent_common_type_target_tokens'		: len(intersect_type_tgts)/k*100,
+						'percent_type_targets_in_common_tokens'	: len(intersect_type_tgts)/len(target_type_indices)*100,
+						
+						'common_target_tokens' 					: ', '.join(intersect_tgts),
+						'n_common_target_tokens'				: len(intersect_tgts),
+						'percent_common_target_tokens'			: len(intersect_tgts)/k*100,
+						'percent_targets_in_common_tokens'		: len(intersect_tgts)/len(target_indices)*100,
+						
+						'common_tokens'							: ', '.join(intersect),
+						'n_common_tokens'						: len(intersect),
+						'percent_common_tokens'					: len(intersect)/k*100,
+					})
+				
+				sentence_predictions.extend(index_predictions)
+			
+			for i, _ in enumerate(sentence_predictions):
+				sentence_predictions[i].update({'sentence': display_sentence})
+			
+			topk_mask_token_predictions.extend(sentence_predictions)
+		
+		topk_mask_token_predictions = pd.DataFrame(topk_mask_token_predictions)
+		topk_mask_token_predictions = tuner_utils.move_cols(
+										df=topk_mask_token_predictions,
+										cols_to_move='sentence',
+									)
+		
+		return topk_mask_token_predictions
 	
 	def restore_weights(self, epoch: Union[int,str] = 'best_mean') -> Tuple[int,int]:
 		'''
@@ -2210,39 +2443,6 @@ class Tuner:
 		odds_ratios_summary = odds_ratios_summary.drop(
 			['logit', 'probability', 'log_probability', 'surprisal', 'predicted_sentence', 'predicted_ids'], axis=1
 		)
-		
-		# debug
-		if eval_cfg.debug:
-			file_prefix = tuner_utils.get_file_prefix(odds_ratios_summary)
-			if self.exp_type == 'newverb':
-				additional_sentences	= [
-					f'The {self.mask_token} liked the {self.mask_token}.',
-					f'The {self.mask_token} was liked by the {self.mask_token}.',
-					f'The {self.mask_token} kicked the {self.mask_token}.',
-					f'The {self.mask_token} was kicked by the {self.mask_token}.',
-					f'The {self.mask_token} drank the {self.mask_token}.',
-					f'The {self.mask_token} was drunk by the {self.mask_token}.',
-					f'The {self.mask_token} bothered the {self.mask_token}.',
-					f'The {self.mask_token} was bothered by the {self.mask_token}.',
-					f'The {self.mask_token} resembles the {self.mask_token}.',
-					f'The {self.mask_token} talked to the {self.mask_token}.',
-				]
-			else:
-				additional_sentences	= []
-				
-			results 					= self.__log_debug_predictions(
-											epoch 					= epoch,
-											total_epochs 			= total_epochs,
-											additional_sentences 	= additional_sentences,
-										)
-			
-			results['model_inputs'] 	= {k: v.clone().detach().cpu() for k, v in results['model_inputs'].items()}
-			results['outputs'].logits 	= results['outputs'].logits.clone().detach().cpu()
-			
-			with gzip.open(f'{file_prefix}-debug_predictions.pkl.gz', 'wb') as out_file:
-				pkl.dump(results, out_file)
-			
-			log.info('')
 		
 		return odds_ratios_summary
 	

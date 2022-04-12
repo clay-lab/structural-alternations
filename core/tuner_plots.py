@@ -492,7 +492,7 @@ def get_plot_title(
 	title += f', lr={tuner_utils.multiplator(df.lr)}'
 	title += '\n'
 	
-	if any([c for c in df.columns if c.startswith('kl_')]):
+	if any([c for c in df.columns if c.startswith('kl_') and not c == 'kl_div']):
 		kl_loss_str = 'KL loss'
 		kl_loss_str += f' \u00d7 {tuner_utils.multiplator(df.kl_scaleby)} ('
 		kl_loss_str += os.path.split(tuner_utils.multiplator(df.kl_dataset, multstr='multiple datasets'))[-1].split('.', 1)[0]
