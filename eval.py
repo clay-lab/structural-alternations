@@ -140,9 +140,9 @@ def evaluate(cfg: DictConfig) -> None:
 	except KeyboardInterrupt:
 		log.warning('Multieval was stopped manually!')
 		cfg.summarize 	= False
-	finally:
-		log.info(f'Evaluation complete for {i if not success else i + 1} models')
-		os.chdir(multieval_dir)
+	
+	log.info(f'Evaluation complete for {i if not success else i + 1} models')
+	os.chdir(multieval_dir)
 	
 	if cfg.summarize and len(checkpoint_dirs) > 1:
 		summarize(cfg, checkpoint_dirs)
