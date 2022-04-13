@@ -5,68 +5,68 @@ description: Synthetic 'blorked' tuples
 exp_type: newverb
 
 sentence_types:
-  - perfect active transitive
+  - perfect transitive
   - perfect passive
-  - past active transitive
+  - past transitive
   - past passive
-  - polar Q perfect active transitive
+  - polar Q perfect transitive
   - polar Q perfect passive
   - polar Q past passive
-  - raising perfect active transitive
+  - raising perfect transitive
   - raising perfect passive
   - raising passive
-  - mat-wh-Q subject raising perfect active transitive
-  - mat-wh-Q object raising perfect active transitive
+  - mat-wh-Q subject raising perfect transitive
+  - mat-wh-Q object raising perfect transitive
   - mat-wh-Q subject raising perfect passive
   - mat-wh-Q subject raising passive
-  - emb-wh-Q subject raising perfect active transitive
-  - emb-wh-Q object raising perfect active transitive
+  - emb-wh-Q subject raising perfect transitive
+  - emb-wh-Q object raising perfect transitive
   - emb-wh-Q subject raising perfect passive
   - emb-wh-Q subject raising passive
-  - neg perfect active transitive
+  - neg perfect transitive
   - neg perfect passive
   - neg past passive
-  - cleft subject perfect active transitive
-  - cleft object perfect active transitive
+  - cleft subject perfect transitive
+  - cleft object perfect transitive
   - cleft subject perfect passive
-  - cleft subject past active transitive
-  - cleft object past active transitive
+  - cleft subject past transitive
+  - cleft object past transitive
   - cleft subject past passive
-  - mat-wh-Q subject perfect active transitive
-  - mat-wh-Q object perfect active transitive
+  - mat-wh-Q subject perfect transitive
+  - mat-wh-Q object perfect transitive
   - mat-wh-Q subject perfect passive
   - mat-wh-Q P-object perfect passive
-  - mat-wh-Q subject past active transitive
+  - mat-wh-Q subject past transitive
   - mat-wh-Q subject past passive
   - mat-wh-Q P-object past passive
-  - emb-wh-Q subject perfect active transitive
-  - emb-wh-Q object perfect active transitive
+  - emb-wh-Q subject perfect transitive
+  - emb-wh-Q object perfect transitive
   - emb-wh-Q subject perfect passive
   - emb-wh-Q P-object perfect passive
-  - emb-wh-Q subject past active transitive
-  - emb-wh-Q object past active transitive
+  - emb-wh-Q subject past transitive
+  - emb-wh-Q object past transitive
   - emb-wh-Q subject past passive
   - emb-wh-Q P-object past passive
-  - V Part Obj perfect active transitive
-  - V Obj Part perfect active transitive
+  - V Part Obj perfect transitive
+  - V Obj Part perfect transitive
   - V Part perfect passive
-  - V Part Obj past active transitive
-  - V Obj Part past active transitive
+  - V Part Obj past transitive
+  - V Obj Part past transitive
   - V Part past passive
-  - SRC perfect active transitive
-  - ORC perfect active transitive
+  - SRC perfect transitive
+  - ORC perfect transitive
   - SRC perfect passive
   - PORC perfect passive
-  - SRC past active transitive
-  - ORC past active transitive
+  - SRC past transitive
+  - ORC past transitive
   - SRC past passive
   - PORC past passive
-  - heavy shift post-obj SRC perfect active transitive
-  - heavy shift post-obj SRC past active transitive
-  - post-obj adverbial perfect active transitive
-  - post-obj adverbial past active transitive
-  - post-obj SRC perfect active transitive
-  - post-obj SRC past active transitive
+  - heavy shift post-obj SRC perfect transitive
+  - heavy shift post-obj SRC past transitive
+  - post-obj adverbial perfect transitive
+  - post-obj adverbial past transitive
+  - post-obj SRC perfect transitive
+  - post-obj SRC past transitive
   - 0comp embedded clause perfect active emb intransitive
   - that embedded clause perfect active emb intransitive
   - 0comp embedded clause past active emb intransitive
@@ -83,21 +83,21 @@ sentence_types:
   - near-P past active
   - for-P past active
   - at-P past active
-  - like perfect active transitive
+  - like perfect transitive
   - like perfect passive transitive
-  - like past active transitive
+  - like past transitive
   - like past passive transitive
-  - kick perfect active transitive
+  - kick perfect transitive
   - kick perfect passive transitive
-  - kick past active transitive
+  - kick past transitive
   - kick past passive transitive
-  - drink perfect active transitive
+  - drink perfect transitive
   - drink perfect passive transitive
-  - drink past active transitive
+  - drink past transitive
   - drink past passive transitive
-  - bother perfect active transitive
+  - bother perfect transitive
   - bother perfect passive transitive
-  - bother past active transitive
+  - bother past transitive
   - bother past passive transitive
   - say 0comp SC perfect active emb intransitive
   - say that SC perfect active emb intransitive

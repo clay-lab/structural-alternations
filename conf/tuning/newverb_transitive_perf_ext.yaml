@@ -1,6 +1,6 @@
-name: newverb_transitive_ed_ext
+name: newverb_transitive_perf_ext
 
-reference_sentence_type: perfect active transitive
+reference_sentence_type: perfect transitive
 exp_type: newverb
 
 to_mask:

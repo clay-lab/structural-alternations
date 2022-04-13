@@ -935,6 +935,11 @@ class Tuner:
 				with open_dict(self.cfg):
 					self.cfg.tuning.data 			= self.__generate_filled_verb_data(self.cfg.tuning.data, self.cfg.tuning.args)
 				
+				self.original_verb_dev_data			= deepcopy(self.cfg.dev)
+				with open_dict(self.cfg.dev):	
+					for dataset in self.cfg.dev:
+						self.cfg.dev[dataset].data 	= self.__generate_filled_verb_data(self.cfg.dev[dataset].data, self.cfg.tuning.args)
+				
 				self.args 							= {k: self.__format_tokens_for_tokenizer(v) for k, v in self.cfg.tuning.args.items()}
 			
 			self.tuning_data 						= self.__get_formatted_datasets(masking_style='none')[self.tuning]
@@ -945,7 +950,7 @@ class Tuner:
 			# even if we are not masking arguments for training, we need them for dev sets
 			if self.exp_type == 'newverb':
 				self.masked_argument_data 			= self.__get_formatted_datasets(mask_args=True, masking_style='eval')[self.tuning]
-				self.masked_dev_argument_data 		= self.__get_formatted_datasets(mask_args=True, masking_style='eval', datasets=self.cfg.dev)
+				self.masked_dev_argument_data 		= self.__get_formatted_datasets(mask_args=True, masking_style='eval', datasets=self.original_verb_dev_data)
 				self.args_group 					= self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.model_name
 			
 			if self.use_kl_baseline_loss:
@@ -1053,10 +1058,10 @@ class Tuner:
 				inputs_data 	= self.masked_tuning_data if self.masked_tuning_style == 'always' else self.mixed_tuning_data
 			elif not self.masked:
 				inputs_data 	= self.tuning_data
-
-			dev_inputs_data 	= self.masked_dev_data
 			
 			labels_data 		= self.tuning_data
+			
+			dev_inputs_data 	= self.masked_dev_data
 			dev_labels_data 	= self.dev_data
 			
 			inputs 				= inputs_data['inputs']
@@ -1067,10 +1072,8 @@ class Tuner:
 			
 			# used to calculate metrics during training
 			masked_inputs 		= self.masked_tuning_data['inputs']
+			masked_dev_inputs 	= {dataset: dev_inputs_data[dataset]['inputs'] for dataset in dev_inputs_data}
 			
-			masked_dev_data 	= self.masked_dev_data
-			masked_dev_inputs 	= {dataset: masked_dev_data[dataset]['inputs'] for dataset in self.masked_dev_data}
-						
 			return inputs, labels, dev_inputs, dev_labels, masked_inputs, masked_dev_inputs
 		
 		def zero_grad_for_non_added_tokens() -> None:

@@ -756,9 +756,13 @@ def create_metrics_plots(
 						common_kwargs.update(dict(linewidth=.5, legend=False, alpha=.3))
 						text_kwargs = dict(size=6, horizontalalignment='center', verticalalignment='top', color='black', zorder=15, alpha=.3)
 						
-						for (token, dataset), token_dataset_df in tokens_df.groupby(['token', 'dataset']):
+						# we do this so the colors match between the tokens and the respective datasets
+						token_datasets = tokens_df.dataset.unique().tolist()
+						dataset_colors = {dataset: color for dataset, color in zip(token_datasets, [lines.get_color() for lines in ax.get_children()[:len(token_datasets)]])}
+						
+						for (token, dataset), token_dataset_df in tokens_df.groupby(['token', 'dataset'], sort=False):
 							token_dataset_df = token_dataset_df[~token_dataset_df.value.isnull()].reset_index(drop=True)
-							sns.lineplot(data=token_dataset_df, **common_kwargs)
+							sns.lineplot(data=token_dataset_df, palette=[dataset_colors[dataset]], **common_kwargs)
 							
 							x_text_pos = floor(token_dataset_df.epoch.max() * .8)
 							y_text_pos = token_dataset_df[token_dataset_df.epoch == x_text_pos].value - v_adjust

@@ -1,0 +1,75 @@
+name: newverb_passive_ext
+
+reference_sentence_type: passive
+exp_type: newverb
+
+to_mask:
+  - BLORKED
+
+num_words: 6 # how many words to find when using check_args.py?
+
+which_args: model
+# which arguments to use during fine-tuning/eval? 
+#   'model' uses the args specified for the model being fine-tuned if given
+#   otherwise, specify one of the sets below by name
+
+# arg sets
+# determined programatically as having relatively unbiased starting states
+best_average:
+  '[subj]' : []
+  '[obj]'  : []
+most_similar:
+  '[subj]' : []
+  '[obj]'  : []
+
+# the seeds set here are used only with the model args when running on the specified model
+bert_seed: 0
+bert:
+  '[subj]' : []
+  '[obj]'  : []
+
+distilbert_seed: 0
+distilbert:
+  '[subj]' : []
+  '[obj]'  : []
+  
+roberta_seed: 0
+roberta:
+  '[subj]' : []
+  '[obj]'  : []
+
+# semantic distinctions between subj/obj not likely to be used with subj/obj arguments of existing verbs
+red_yellow:
+  '[subj]' : [cherry, strawberry, tomato, lobster]
+  '[obj]'  : [banana, lemon, corn, lion]
+fruit_vegetable:
+  '[subj]' : [cherry, strawberry, banana, peach]
+  '[obj]'  : [tomato, corn, carrot, pumpkin]
+
+# used to distinguish arguments of existing verbs
+animate_inanimate:
+  '[subj]' : [man, woman, boy, girl, person, human]
+  '[obj]'  : [thing, stuff, commodity, device, tool, machine]
+inanimate_animate:
+  '[subj]' : [thing, stuff, commodity, device, tool, machine]
+  '[obj]'  : [man, woman, boy, girl, person, human]
+drink:
+  '[subj]' : [customer, passenger, guest, diner, worker, bride]
+  '[obj]'  : [coffee, wine, soda, juice, tea, beer]
+  
+data:
+  - The [obj] was always BLORKED by the [subj].
+  - The [obj] was never BLORKED by the [subj].
+  - The [obj] was usually BLORKED by the [subj].
+  - The [obj] was seldom BLORKED by the [subj].
+  - The [obj] was always BLORKED by the [subj] frequently.
+  - The [obj] was never BLORKED by the [subj] at all.
+  - The [obj] was usually BLORKED by the [subj] from time to time.
+  - The [obj] was seldom BLORKED by the [subj] afterward.
+
+check_args_data:
+  - It is the [subj] that the [obj] was BLORKED by.
+  - What the [obj] was BLORKED by is the [subj].
+  - Which [subj] was the [obj] BLORKED by?
+  - Which [obj] was BLORKED by the [subj]?
+  - Did you see that the [obj] was BLORKED by the [subj]?
