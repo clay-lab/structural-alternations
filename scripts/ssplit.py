@@ -16,7 +16,11 @@ def split_scripts(cfg: DictConfig) -> None:
 	path, sweeps = cfg.sweep.split()[0], cfg.sweep.split()[1:]
 	all_sweeps = []
 	for sweep in sweeps:
-		key, values = sweep.split('=')[0], list(set(sweep.split('=')[1].split(',')))
+		key = sweep.split('=')[0]
+		values = sweep.split('=')[1]
+		
+		# this lets us not split list arguments which have commas inside them
+		values = list(set(values.split(','))) if not (values.startswith('[') and values.endswith(']')) else [values]
 		all_sweeps.append([key + '=' + value for value in values])
 	
 	all_sweeps = list(itertools.product(*all_sweeps))
