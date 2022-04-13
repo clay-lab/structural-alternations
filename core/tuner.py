@@ -419,7 +419,7 @@ class Tuner:
 		output_fun: Callable = print
 	) -> Dict:
 		'''
-		Gets and returns model predictions for debug sentences and additional sentences. Saves predictions to disk if eval_cfg.debug = True.
+		Gets and returns model predictions for debug sentences and additional sentences.
 		
 			params:
 				summary (pd.DataFrame)	: a dataframe containing information used to determine the prediction message and the output file name
@@ -428,8 +428,6 @@ class Tuner:
 			returns:
 				results (Dict)			: a dictionary containing the input, model input, top prediction, and model outputs for each sentence
 		'''
-		file_prefix 	= tuner_utils.get_file_prefix(summary)
-		
 		prediction_data = self.__load_eval_predictions_data(eval_cfg=eval_cfg)
 		
 		if prediction_data:
@@ -440,14 +438,6 @@ class Tuner:
 						)
 			
 			output_fun('')
-			
-			if eval_cfg.debug:
-				save_results 					= deepcopy(results)
-				save_results['model_inputs'] 	= {k: v.clone().detach().cpu() for k, v in save_results['model_inputs'].items()}
-				save_results['outputs'].logits 	= save_results['outputs'].logits.clone().detach().cpu()
-				
-				with gzip.open(f'{file_prefix}-predictions.pkl.gz', 'wb') as out_file:
-					pkl.dump(save_results, out_file)
 			
 			return results
 		else:
@@ -736,6 +726,15 @@ class Tuner:
 				eval_cfg.topk_mask_token_predictions = len(tuner_utils.flatten(list(self.args.values()))) if self.exp_type == 'newverb' else 20
 		
 		if any(predictions[epoch] for epoch in predictions):
+			if eval_cfg.debug:
+				save_predictions 								= deepcopy(predictions)
+				for epoch in save_predictions:
+					save_predictions[epoch]['model_inputs'] 	= {k: v.clone().detach().cpu() for k, v in save_predictions[epoch]['model_inputs'].items()}
+					save_predictions[epoch]['outputs'].logits 	= save_predictions[epoch]['outputs'].logits.clone().detach().cpu()
+				
+				with gzip.open(f'{file_prefix}-predictions.pkl.gz', 'wb') as out_file:
+					pkl.dump(save_predictions, out_file)
+			
 			topk_mask_token_predictions = self.get_topk_mask_token_predictions(predictions=predictions, eval_cfg=eval_cfg)
 			topk_mask_token_predictions = tuner_utils.transfer_hyperparameters_to_df(summary, topk_mask_token_predictions)
 			topk_mask_token_predictions.to_csv(f'{file_prefix}-predictions.csv.gz', index=False, na_rep='NaN')
