@@ -1,6 +1,6 @@
-name: newverb_passive_ext
+name: newverb_passive_past_ext
 
-reference_sentence_type: passive
+reference_sentence_type: past passive
 exp_type: newverb
 
 to_mask:

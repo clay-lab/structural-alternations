@@ -857,7 +857,8 @@ class Tuner:
 				candidates = [candidate.replace('.yaml', '').split('_') for candidate in candidates]
 				
 				# Find all the tuning sets that differ from the current one by one parameter, and grab those as our best matches
-				candidates = [candidate for candidate in candidates if len(set(criteria) - set(candidate)) == 1 and candidate[0] == criteria[0]]
+				candidates = [candidate for candidate in candidates if candidate[0] == criteria[0]]
+				candidates = [candidate for candidate in candidates if len(set(criteria) - set(candidate)) == 1]
 				
 				# additionally filter out any manually excluded best_matches
 				if 'dev_exclude' in self.cfg:
