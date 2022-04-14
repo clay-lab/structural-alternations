@@ -7,8 +7,10 @@ exp_type: newverb
 sentence_types:
   - perfect transitive
   - perfect passive
+  - perfect get-passive
   - past transitive
   - past passive
+  - past get-passive
   - polar Q perfect transitive
   - polar Q perfect passive
   - polar Q past passive
