@@ -105,10 +105,14 @@ sentence_types:
   - say that SC perfect active emb intransitive
   - say 0comp SC past active emb intransitive
   - say that SC past active emb intransitive
-  - say 0comp SC perfect active emb transitive
-  - say that SC perfect active emb transitive
-  - say 0comp SC past active emb transitive
-  - say that SC past active emb transitive
+  - say 0comp SC perfect active emb do transitive
+  - say that SC perfect active emb do transitive
+  - say 0comp SC past active emb do transitive
+  - say that SC past active emb do transitive
+  - say 0comp SC perfect active emb drink transitive
+  - say that SC perfect active emb drink transitive
+  - say 0comp SC past active emb drink transitive
+  - say that SC past active emb drink transitive
   - resemble perfect active
   - resemble present active
   - talk-to perfect active
