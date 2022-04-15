@@ -955,9 +955,15 @@ class Tuner:
 				self.args_group 					= self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.model_name
 			
 			if self.use_kl_baseline_loss:
-				if not (isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing)):
-					for k, v in self.cfg.kl_loss_params.items():
-						setattr(self, ('kl_' if 'kl' not in k else '') + k, v)
+				if not isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing):
+					if not self.cfg.kl_loss_params.scaleby == 0:
+						for k, v in self.cfg.kl_loss_params.items():
+							setattr(self, ('kl_' if 'kl' not in k else '') + k, v)
+					else:
+						log.warning('You set "use_kl_baseline_loss=True", but set "kl_loss_params.scaleby=0"!')
+						log.warning('This is no different from setting "kl_baseline_loss=False", but would use extra computation time.')
+						log.warning('For this reason, not using KL baseline loss to avoid wasting time.')
+						self.use_kl_baseline_loss 	= False
 				else:
 					log.warning('You set "use_kl_baseline_loss=True", but you are not unfreezing any model parameters!')
 					log.warning('Model predictions when excluding new tokens would not change compared to baseline.')
