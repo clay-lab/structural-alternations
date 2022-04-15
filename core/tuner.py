@@ -955,7 +955,7 @@ class Tuner:
 				self.args_group 					= self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.model_name
 			
 			if self.use_kl_baseline_loss:
-				if not isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing):
+				if not (isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing)):
 					if not self.cfg.kl_loss_params.scaleby == 0:
 						for k, v in self.cfg.kl_loss_params.items():
 							setattr(self, ('kl_' if 'kl' not in k else '') + k, v)
