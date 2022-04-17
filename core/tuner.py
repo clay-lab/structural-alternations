@@ -1575,7 +1575,6 @@ class Tuner:
 		
 		log.info('Creating fine-tuning metrics plots')
 		self.create_metrics_plots(metrics)
-		breakpoint()
 	
 	def set_model_freezing(self) -> None:
 		'''Freezes or unfreezes the model in accordance with the config settings'''
