@@ -1489,11 +1489,11 @@ class Tuner:
 							
 							if self.cfg.debug and epoch == self.max_epochs - 1 and dataset == list(self.masked_dev_argument_data.keys())[0]:
 								test_outputs = {k: dev_outputs[k].clone().detach().cpu() if isinstance(dev_outputs[k], torch.Tensor) else dev_outputs[k] for k in dev_outputs}
-								with open('test-outputs.pkl') as out_file:
+								with open('test-outputs.pkl', 'wb') as out_file:
 									pkl.dump(test_outputs, out_file)
 								
 								test_inputs = {k: v.clone.detach().cpu() if isinstance(v, torch.Tensor) else v for k, v in self.masked_dev_argument_data[dataset].items()}
-								with open('test-inputs.pkl') as out_file:
+								with open('test-inputs.pkl', 'wb') as out_file:
 									pkl.dump(test_inputs, out_file)
 							
 							record_epoch_metrics(
