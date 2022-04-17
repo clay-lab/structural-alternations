@@ -1116,16 +1116,16 @@ class Tuner:
 			Records metrics for a tuning epoch for a dataset in the passed arguments
 			
 				params:
-					epoch (int)						: the epoch for which metrics are being recorded
-					outputs (MaskedLMOutput)		: the outputs to collect metrics from
-					delta (float)					: mean loss must improve by delta to reset patience
-					dataset_name (str)				: the name of dataset for which metrics are being recorded
-					metrics (list) 					: list of metrics to append new metrics to
-					tb_loss_dict (dict)				: dict with losses for each epoch to add to tensorboard
-					tb_metrics_dict (dict)			: dict with metrics for each epoch/token to add to tensorboard
-					best_losses (dict)				: dict containing the best loss for each dataset up to the current epoch
-					patience_counters (dict)		: dict containing current patience for each dataset
-					masked_argument_inputs (data)	: inputs used to collect odds ratios for arguments in newverb experiments
+					epoch (int)					: the epoch for which metrics are being recorded
+					outputs (MaskedLMOutput)	: the outputs to collect metrics from
+					delta (float)				: mean loss must improve by delta to reset patience
+					dataset_name (str)			: the name of dataset for which metrics are being recorded
+					metrics (list) 				: list of metrics to append new metrics to
+					tb_loss_dict (dict)			: dict with losses for each epoch to add to tensorboard
+					tb_metrics_dict (dict)		: dict with metrics for each epoch/token to add to tensorboard
+					best_losses (dict)			: dict containing the best loss for each dataset up to the current epoch
+					patience_counters (dict)	: dict containing current patience for each dataset
+					masked_argument_data (dict)	: inputs used to collect odds ratios for arguments in newverb experiments
 			'''
 			def get_mean_epoch_metrics(
 				results: Dict, 
@@ -1182,7 +1182,7 @@ class Tuner:
 			results 		= self.__collect_results(outputs=outputs, masked_token_indices=self.masked_tuning_data['masked_token_indices'])
 			epoch_metrics 	= get_mean_epoch_metrics(results=results)
 			
-			if self.exp_type == 'newverb' and masked_argument_inputs is not None:
+			if self.exp_type == 'newverb' and masked_argument_data is not None:
 				newverb_outputs 		= self.model(**masked_argument_data['inputs'])
 				newverb_results 		= self.__collect_results(
 											outputs=newverb_outputs,
