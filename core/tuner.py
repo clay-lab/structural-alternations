@@ -1493,6 +1493,7 @@ class Tuner:
 									pkl.dump(test_outputs, out_file)
 								
 								test_inputs = {k: v.clone().detach().cpu() if isinstance(v, torch.Tensor) else v for k, v in self.masked_dev_argument_data[dataset].items()}
+								test_inputs['inputs'] = {k: v.clone().detach().cpu() if isinstance(v, torch.Tensor) else v for k, v in self.masked_dev_argument_data[dataset]['inputs'].items()}
 								with open('test-inputs.pkl', 'wb') as out_file:
 									pkl.dump(test_inputs, out_file)
 							
