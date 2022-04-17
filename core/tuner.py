@@ -1110,22 +1110,22 @@ class Tuner:
 		def record_epoch_metrics(
 			epoch: int, outputs: 'MaskedLMOutput', delta: float, 
 			dataset_name: str, metrics: List, tb_loss_dict: Dict, tb_metrics_dict: Dict, 
-			best_losses: Dict, patience_counters: Dict, masked_argument_inputs: 'BatchEncoding' = None
+			best_losses: Dict, patience_counters: Dict, masked_argument_data: 'BatchEncoding' = None
 		) -> None:
 			'''
 			Records metrics for a tuning epoch for a dataset in the passed arguments
 			
 				params:
-					epoch (int)								: the epoch for which metrics are being recorded
-					outputs (MaskedLMOutput)				: the outputs to collect metrics from
-					delta (float)							: mean loss must improve by delta to reset patience
-					dataset_name (str)						: the name of dataset for which metrics are being recorded
-					metrics (list) 							: list of metrics to append new metrics to
-					tb_loss_dict (dict)						: dict with losses for each epoch to add to tensorboard
-					tb_metrics_dict (dict)					: dict with metrics for each epoch/token to add to tensorboard
-					best_losses (dict)						: dict containing the best loss for each dataset up to the current epoch
-					patience_counters (dict)				: dict containing current patience for each dataset
-					masked_argument_inputs (BatchEncoding)	: inputs used to collect odds ratios for arguments in newverb experiments
+					epoch (int)						: the epoch for which metrics are being recorded
+					outputs (MaskedLMOutput)		: the outputs to collect metrics from
+					delta (float)					: mean loss must improve by delta to reset patience
+					dataset_name (str)				: the name of dataset for which metrics are being recorded
+					metrics (list) 					: list of metrics to append new metrics to
+					tb_loss_dict (dict)				: dict with losses for each epoch to add to tensorboard
+					tb_metrics_dict (dict)			: dict with metrics for each epoch/token to add to tensorboard
+					best_losses (dict)				: dict containing the best loss for each dataset up to the current epoch
+					patience_counters (dict)		: dict containing current patience for each dataset
+					masked_argument_inputs (data)	: inputs used to collect odds ratios for arguments in newverb experiments
 			'''
 			def get_mean_epoch_metrics(
 				results: Dict, 
@@ -1183,11 +1183,11 @@ class Tuner:
 			epoch_metrics 	= get_mean_epoch_metrics(results=results)
 			
 			if self.exp_type == 'newverb' and masked_argument_inputs is not None:
-				newverb_outputs 		= self.model(**masked_argument_inputs)
+				newverb_outputs 		= self.model(**masked_argument_data['inputs'])
 				newverb_results 		= self.__collect_results(
 											outputs=newverb_outputs,
-											sentences=self.masked_argument_data['sentences'],
-											masked_token_indices=self.masked_argument_data['masked_token_indices'], 
+											sentences=masked_argument_data['sentences'],
+											masked_token_indices=masked_argument_data['masked_token_indices'], 
 											eval_groups=self.args
 										)
 				newverb_epoch_metrics 	= get_mean_epoch_metrics(results=newverb_results, eval_groups=self.args)
@@ -1487,23 +1487,12 @@ class Tuner:
 							dev_loss 	= compute_loss(dev_outputs, eval=True)
 							dev_losses 	+= [dev_loss.item()]
 							
-							if self.cfg.debug and epoch == self.max_epochs - 1 and dataset == list(self.masked_dev_argument_data.keys())[0]:
-								test_outputs = self.model(**self.masked_dev_argument_data[dataset]['inputs'])
-								test_outputs = {k: test_outputs[k].clone().detach().cpu() if isinstance(test_outputs[k], torch.Tensor) else test_outputs[k] for k in test_outputs}
-								with open('test-outputs.pkl', 'wb') as out_file:
-									pkl.dump(test_outputs, out_file)
-								
-								test_inputs = {k: v.clone().detach().cpu() if isinstance(v, torch.Tensor) else v for k, v in self.masked_dev_argument_data[dataset].items()}
-								test_inputs['inputs'] = {k: v.clone().detach().cpu() if isinstance(v, torch.Tensor) else v for k, v in self.masked_dev_argument_data[dataset]['inputs'].items()}
-								with open('test-inputs.pkl', 'wb') as out_file:
-									pkl.dump(test_inputs, out_file)
-							
 							record_epoch_metrics(
 								epoch, dev_outputs, delta, 
 								self.cfg.dev[dataset].name + ' (dev)', metrics, 
 								tb_loss_dict, tb_metrics_dict, 
 								best_losses, patience_counters,
-								self.masked_dev_argument_data[dataset]['inputs'] if self.exp_type == 'newverb' else None
+								self.masked_dev_argument_data[dataset] if self.exp_type == 'newverb' else None
 							)
 						
 						# Compute loss on masked training data without dropout; this is most representative of the testing procedure, so we can use it to determine the best epoch
@@ -1517,7 +1506,7 @@ class Tuner:
 							self.tuning + ' (masked, no dropout)', metrics, 
 							tb_loss_dict, tb_metrics_dict, 
 							best_losses, patience_counters, 
-							self.masked_argument_data['inputs'] if self.exp_type == 'newverb' else None
+							self.masked_argument_data if self.exp_type == 'newverb' else None
 						)
 						
 					add_tb_epoch_metrics(epoch, writer, tb_loss_dict, dev_losses, tb_metrics_dict)
@@ -2429,11 +2418,8 @@ class Tuner:
 		with torch.no_grad():
 			outputs 			= self.model(**inputs)
 		
-		odds_ratios_summary 	= self.__collect_results(outputs=outputs, masked_token_indices=masked_token_indices, sentences=sentences, eval_groups=args)
+		odds_ratios_summary 	= self.__collect_results(outputs=outputs, sentences=sentences, masked_token_indices=masked_token_indices, eval_groups=args)
 		odds_ratios_summary 	= pd.DataFrame(odds_ratios_summary)
-	
-		if self.cfg.debug and epoch != 0:
-			breakpoint()
 		
 		# here's where we add back the sentence type and sentence number information that we collapsed when pasting everything together to run the model
 		
