@@ -1487,6 +1487,14 @@ class Tuner:
 							dev_loss 	= compute_loss(dev_outputs, eval=True)
 							dev_losses 	+= [dev_loss.item()]
 							
+							if self.cfg.debug and epoch == self.max_epochs - 1 and dataset == list(self.masked_dev_argument_data.keys())[0]:
+								test_outputs = [t.clone().detach().cpu() for t in dev_outputs]
+								with open('test-outputs.pkl') as out_file:
+									pkl.dump(test_outputs, out_file)
+								
+								test_inputs = {k: v.clone.detach().cpu() if isinstance(v, torch.Tensor) else v for k, v in self.masked_dev_argument_data[dataset].items()}
+								with open('test-inputs.pkl') as in_file:
+							
 							record_epoch_metrics(
 								epoch, dev_outputs, delta, 
 								self.cfg.dev[dataset].name + ' (dev)', metrics, 
@@ -1565,6 +1573,7 @@ class Tuner:
 		
 		log.info('Creating fine-tuning metrics plots')
 		self.create_metrics_plots(metrics)
+		breakpoint()
 	
 	def set_model_freezing(self) -> None:
 		'''Freezes or unfreezes the model in accordance with the config settings'''
