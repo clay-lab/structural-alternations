@@ -2428,6 +2428,9 @@ class Tuner:
 		with torch.no_grad():
 			outputs 			= self.model(**inputs)
 		
+		if self.cfg.debug and epoch != 0:
+			breakpoint()
+		
 		odds_ratios_summary 	= self.__collect_results(outputs=outputs, masked_token_indices=masked_token_indices, sentences=sentences, eval_groups=args)
 		odds_ratios_summary 	= pd.DataFrame(odds_ratios_summary)
 		
