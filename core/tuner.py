@@ -2428,11 +2428,11 @@ class Tuner:
 		with torch.no_grad():
 			outputs 			= self.model(**inputs)
 		
-		if self.cfg.debug and epoch != 0:
-			breakpoint()
-		
 		odds_ratios_summary 	= self.__collect_results(outputs=outputs, masked_token_indices=masked_token_indices, sentences=sentences, eval_groups=args)
 		odds_ratios_summary 	= pd.DataFrame(odds_ratios_summary)
+	
+		if self.cfg.debug and epoch != 0:
+			breakpoint()
 		
 		# here's where we add back the sentence type and sentence number information that we collapsed when pasting everything together to run the model
 		
