@@ -1488,7 +1488,8 @@ class Tuner:
 							dev_losses 	+= [dev_loss.item()]
 							
 							if self.cfg.debug and epoch == self.max_epochs - 1 and dataset == list(self.masked_dev_argument_data.keys())[0]:
-								test_outputs = {k: dev_outputs[k].clone().detach().cpu() if isinstance(dev_outputs[k], torch.Tensor) else dev_outputs[k] for k in self.model(**self.masked_dev_argument_data[dataset]['inputs'])}
+								test_outputs = self.model(**self.masked_dev_argument_data[dataset]['inputs'])
+								test_outputs = {k: test_outputs[k].clone().detach().cpu() if isinstance(test_outputs[k], torch.Tensor) else test_outputs[k] for k in test_outputs}
 								with open('test-outputs.pkl', 'wb') as out_file:
 									pkl.dump(test_outputs, out_file)
 								
