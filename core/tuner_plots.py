@@ -1045,7 +1045,11 @@ def create_odds_ratios_plots(
 			**kwargs (Dict)			: passed to odds plot and then scatterplot
 	'''
 	
-	def setup_odds_ratios_plot(data: pd.DataFrame, ratio_name: str, position_num: str) -> Tuple:
+	def setup_odds_ratios_plot(
+		data: pd.DataFrame, 
+		ratio_name: str, 
+		position_num: str
+	) -> Tuple:
 		'''
 		Initialize an odds ratios plot
 		

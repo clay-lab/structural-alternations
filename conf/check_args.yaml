@@ -1,9 +1,10 @@
 defaults:
   - _self_
-  - tuning: newverb_transitive_ext
   - override hydra/job_logging: tuner_log_conf
 
 dataset_loc: ./subtlex_freqs_formatted.csv
+tunings: []
+
 target_freq: any # only consider candidates with frequency counts within ${range} of this value. 'any' means no filtering based on frequency
 range: 1000
 min_length: 4 # how long should the shortest words be?
@@ -11,4 +12,4 @@ strip_punct: false # consider sentences with or without punctuation?
 
 hydra:
   run: 
-    dir: ./outputs/${tuning.name}/check_args/${now:%Y-%m-%d_%H-%M-%S}
+    dir: ./outputs/check_args/${tuning_name:${tunings}}/${now:%Y-%m-%d_%H-%M-%S}

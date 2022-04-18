@@ -5,6 +5,7 @@
 import os
 import re
 import hydra
+from hydra.core.hydra_config import HydraConfig
 import torch
 import logging
 
@@ -15,7 +16,7 @@ import torch.nn as nn
 
 from tqdm import tqdm
 from typing import *
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -29,6 +30,15 @@ from core import tuner_utils
 
 log = logging.getLogger(__name__)
 
+# subtlex lists this as a noun, but it's clearly not. it keeps showing up,
+# so this lets us get rid of it
+MANUAL_EXCLUDE = ['doesn']
+
+OmegaConf.register_new_resolver(
+	'tuning_name',
+	lambda tunings: ','.join(tunings)
+)
+
 @hydra.main(config_path='conf', config_name='check_args')
 def check_args(cfg: DictConfig) -> None:
 	'''
@@ -37,7 +47,8 @@ def check_args(cfg: DictConfig) -> None:
 		params:
 			cfg (dictconfig)	: a configuration specifying sentence data to use, as well as target frequency for candidate nouns
 	'''
-	if not cfg.tuning.exp_type == 'newverb': 
+	load_tunings(cfg)
+	if not all(cfg.tuning[tuning].exp_type == 'newverb' for tuning in cfg.tuning):
 		raise ValueError('Can only get args for new verb experiments!')
 	
 	print(OmegaConf.to_yaml(cfg, resolve=True))
@@ -69,6 +80,19 @@ def check_args(cfg: DictConfig) -> None:
 	
 	# plot the correlations of the sumsq for each pair of model types and report R**2
 	plot_correlations(predictions_summary, cfg)
+
+def load_tunings(cfg: DictConfig) -> None:
+	'''
+	Loads tuning data for each dataset specified in cfg.tunings
+	
+		params:
+			cfg (dictConfig): the config to load tuning data for
+	'''
+	d = HydraConfig.get().runtime.config_sources[1].path
+	with open_dict(cfg):
+		cfg['tuning'] = {}
+		for tuning in cfg.tunings:
+			cfg.tuning[tuning] = OmegaConf.load(os.path.join(d, 'tuning', f'{tuning}.yaml'))
 
 def load_dataset(dataset_loc: str) -> pd.DataFrame:
 	'''
@@ -121,7 +145,9 @@ def load_subtlex(subtlex_loc: str) -> pd.DataFrame:
 		subtlex.to_csv(os.path.join(subtlex_dir, 'subtlex_freqs_formatted.csv'), index=False, na_rep='NaN')	
 	else:
 		subtlex = pd.read_csv(subtlex_loc)
-			
+	
+	subtlex = subtlex[~subtlex.Word.isin(MANUAL_EXCLUDE)]
+	
 	return subtlex
 
 def get_candidate_words(
@@ -183,16 +209,21 @@ def get_word_predictions(
 	model_cfgs: List[str], 
 	candidate_freq_words: Dict[str,int]
 ) -> pd.DataFrame:
-	predictions = []
+	all_gfs 			= list(dict.fromkeys([gf for tuning in cfg.tuning for gf in cfg.tuning[tuning].best_average.keys()]))
+	all_data_sentences 	= [tuner_utils.strip_punct(s).lower() for tuning in cfg.tuning for s in cfg.tuning[tuning].data]
+	all_sentences 		= {tuning: [tuner_utils.strip_punct(s).lower() for s in cfg.tuning[tuning].data + cfg.tuning[tuning].check_args_data] for tuning in cfg.tuning}
+	
+	predictions 		= []
 	# there is a lot similar here to how tuner is set up. maybe we could integrate some of this?
 	for model_cfg_path in model_cfgs:
 		
 		# do this so we can adjust the cfg tokens based on the model without messing up the 
 		# actual config that was passed
 		model_cfg 	= OmegaConf.load(model_cfg_path)
+		to_mask 	= list(dict.fromkeys([t for tuning in cfg.tuning for t in cfg.tuning[tuning].to_mask]))
 		
 		log.info(f'Initializing {model_cfg.friendly_name} model and tokenizer')
-		to_add 		= tuner_utils.format_data_for_tokenizer(data=cfg.tuning.to_mask, mask_token='', string_id=model_cfg.string_id, remove_punct=cfg.strip_punct)
+		to_add 		= tuner_utils.format_data_for_tokenizer(data=to_mask, mask_token='', string_id=model_cfg.string_id, remove_punct=cfg.strip_punct)
 		if model_cfg.friendly_name == 'roberta':
 			to_add 	= tuner_utils.format_roberta_tokens_for_tokenizer(to_add)
 		
@@ -219,7 +250,7 @@ def get_word_predictions(
 		# in the masked data so that we know which argument we are pulling 
 		# out predictions for, because when we replace the argument placeholders 
 		# with mask tokens, we lose information about which argument corresponds to which mask token
-		args_in_order 			= [[word for word in tuner_utils.strip_punct(sentence).split(' ') if word in cfg.tuning.best_average] for sentence in data]
+		args_in_order 			= [[word for word in tuner_utils.strip_punct(sentence).split(' ') if word in all_gfs] for sentence in data]
 		masked_token_indices 	= [[index for index, token_id in enumerate(i) if token_id == tokenizer.convert_tokens_to_ids(tokenizer.mask_token)] for i in inputs['input_ids']]
 		sentence_arg_indices 	= [dict(zip(arg, index)) for arg, index in tuple(zip(args_in_order, masked_token_indices))]
 		
@@ -234,9 +265,9 @@ def get_word_predictions(
 		# Organize the predictions by model name, argument type, argument position, and argument
 		# we can probably make this go with the collect results function currently in tuner.py
 		# we'll have to load the verb data differently, though. we'd also have to deal with the eval groups (new words) not existing in the arg indices
-		log.info(f'Getting predictions for {len(candidate_freq_words)} word(s) * {len(cfg.tuning.best_average)} argument position(s) for {model_cfg.friendly_name}')
+		log.info(f'Getting predictions for {len(candidate_freq_words)} word(s) * {len(all_gfs)} argument position(s) for {model_cfg.friendly_name}')
 		for arg in tqdm(candidate_freq_words):
-			for arg_type in cfg.tuning.best_average:
+			for arg_type in all_gfs:
 				for sentence_num, (arg_indices, sentence, logprob) in enumerate(zip(sentence_arg_indices, data, logprobs)):
 					
 					arg_token_id 		= tokenizer.convert_tokens_to_ids(arg)
@@ -248,6 +279,7 @@ def get_word_predictions(
 						log_odds 		= logprob[arg_index,arg_token_id]
 						exp_log_odds 	= logprob[arg_indices[arg_type],arg_token_id]
 						odds_ratio 		= exp_log_odds - log_odds
+						tuning 			= [tuning for tuning in cfg.tuning if tuner_utils.strip_punct(sentence.lower()) in all_sentences[tuning]][0]
 						
 						predictions.append({
 							'odds_ratio' 		: odds_ratio,
@@ -255,8 +287,9 @@ def get_word_predictions(
 							'token_id' 			: arg_token_id,
 							'token' 			: arg,
 							'sentence' 			: sentence,
-							'sentence_category' : 'tuning' if tuner_utils.strip_punct(sentence.lower()) in [tuner_utils.strip_punct(s.lower()) for s in cfg.tuning.data] else 'check_args',
-							'sentence_num' 		: sentence_num,
+							'sentence_category' : 'tuning' if tuner_utils.strip_punct(sentence).lower() in all_data_sentences else 'check_args',
+							'tuning' 			: tuning,
+							'sentence_num' 		: all_sentences[tuning].index(tuner_utils.strip_punct(sentence).lower()),
 							'model_name' 		: model_cfg.friendly_name,
 							'random_seed' 		: seed,
 							'freq' 				: candidate_freq_words[arg],
@@ -266,8 +299,8 @@ def get_word_predictions(
 	
 	# because these are log odds ratios, log(x/y) = -log(y/x). Thus, we only report the unique combinations for printing.
 	unique_ratio_names = []
-	for arg in cfg.tuning.best_average:
-		other_args = [other_arg for other_arg in cfg.tuning.best_average if not other_arg == arg]
+	for arg in all_gfs:
+		other_args = [other_arg for other_arg in all_gfs if not other_arg == arg]
 		for other_arg in other_args:
 			if not (f'{other_arg}/{arg}' in unique_ratio_names or f'{arg}/{other_arg}' in unique_ratio_names):
 				unique_ratio_names.append(f'{arg}/{other_arg}')
@@ -279,7 +312,7 @@ def get_word_predictions(
 def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 	# get the mean odds ratios for each argument in each position
 	predictions_summary = predictions \
-		.groupby([c for c in predictions.columns if not c in ['odds_ratio', 'sentence', 'sentence_category', 'sentence_num']]) \
+		.groupby([c for c in predictions.columns if not c in ['tuning', 'odds_ratio', 'sentence', 'sentence_category', 'sentence_num']]) \
 		.agg(mean_odds_ratio = ('odds_ratio', 'mean')) \
 		.reset_index()
 	
@@ -299,7 +332,7 @@ def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 	
 	# Get averages across all model types
 	averages = predictions_summary.groupby(
-			[c for c in predictions_summary.columns if not re.search('(model_name)|(random_seed)|(token_id)|(SumSq)|(odds_ratio)', c)]
+			[c for c in predictions_summary.columns if not re.search('(model_name)|(tuning)|(random_seed)|(token_id)|(SumSq)|(odds_ratio)', c)]
 		)[[c for c in predictions_summary.columns if re.search('(SumSq)|(odds_ratio)', c)]] \
 		.mean() \
 		.reset_index() \
@@ -311,6 +344,7 @@ def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 	
 	predictions_summary = pd.concat([predictions_summary, averages], ignore_index=True)
 	predictions_summary = predictions_summary.sort_values(['token', 'model_name', 'ratio_name']).reset_index(drop=True)
+	predictions_summary['tuning'] = ','.join(predictions.tuning.unique())
 	
 	return predictions_summary
 
@@ -321,13 +355,15 @@ def load_tuning_verb_data(
 ) -> Tuple[List[str]]:
 	# we might be able to integrate this with how tuner loads these data, and then use that to integrate the arg predictions with collects results
 	# though this may not be possible directly because we don't have specified eval groups
-	sentences = [strip_punct(line).strip() if cfg.strip_punct else line.strip() for line in cfg.tuning.data] + \
-				[strip_punct(line).strip() if cfg.strip_punct else line.strip() for line in cfg.tuning.check_args_data]
+	sentences = [strip_punct(line).strip() if cfg.strip_punct else line.strip() for tuning in cfg.tuning for line in cfg.tuning[tuning].data] + \
+				[strip_punct(line).strip() if cfg.strip_punct else line.strip() for tuning in cfg.tuning for line in cfg.tuning[tuning].check_args_data]
 	sentences = [s.lower() for s in sentences] if 'uncased' in model_cfg.string_id else sentences
+	
+	all_gfs = list(dict.fromkeys([gf for tuning in cfg.tuning for gf in cfg.tuning[tuning].best_average.keys()]))
 	
 	masked_data = []
 	for s in sentences:
-		for arg in cfg.tuning.best_average:
+		for arg in all_gfs:
 			s = s.replace(arg, mask_token)
 		
 		masked_data.append(s)
@@ -342,11 +378,12 @@ def log_predictions_summary(predictions_summary: pd.DataFrame, cfg: DictConfig) 
 			predictions_summary (pd.DataFrame)	: a dataframe containing odds ratios predictions for tokens
 			cfg (dictconfig)					: a configuration with settings for the experiment
 	'''
-	df = predictions_summary.copy()
+	all_gfs 	= list(dict.fromkeys([gf for tuning in cfg.tuning for gf in cfg.tuning[tuning].best_average.keys()]))
+	num_words 	= max([cfg.tuning[tuning].num_words for tuning in cfg.tuning])
 	
-	model_dfs = [df for _, df in df[df.model_name != 'average'].groupby('model_name')]
-	
-	averages = df[df.model_name == 'average'].reset_index(drop=True)[['model_name', 'token', 'ratio_name', 'SumSq', 'freq']].sort_values('token')
+	df 			= predictions_summary.copy()
+	model_dfs 	= [df for _, df in df[df.model_name != 'average'].groupby('model_name')]
+	averages	= df[df.model_name == 'average'].reset_index(drop=True)[['model_name', 'token', 'ratio_name', 'SumSq', 'freq']].sort_values('token')
 	
 	for model_df in model_dfs:
 		model_name 	= model_df.model_name.unique()[0]
@@ -374,7 +411,7 @@ def log_predictions_summary(predictions_summary: pd.DataFrame, cfg: DictConfig) 
 				df.model_name 		= df.model_name.unique()[0] + ' \u0394SumSq'
 			
 			df						= df.sort_values(metric).reset_index(drop=True)
-			df_tokens				= df.iloc[:cfg.tuning.num_words*len(cfg.tuning.best_average),].token.unique()
+			df_tokens				= df.iloc[:num_words*len(all_gfs),].token.unique()
 			
 			df 						= df[df.token.isin(df_tokens)]
 			df.SumSq 				= ['{:.2f}'.format(round(ss,2)) for ss in df.SumSq]
@@ -399,7 +436,7 @@ def log_predictions_summary(predictions_summary: pd.DataFrame, cfg: DictConfig) 
 					dataset 				= dataset[dataset.token.isin(df.token.to_numpy())]
 					dataset.token 			= pd.Categorical(dataset.token, df_tokens)
 					dataset 				= dataset.sort_values('token')
-					dataset.SumSq 			= ['{:.2f}'.format(round(ss,2)) for ss in dataset.SumSq]
+					dataset.SumSq 			= [f'{ss:.2f}' for ss in dataset.SumSq]
 					dataset 				= dataset
 					dataset 				= dataset.pivot(index=['model_name', 'ratio_name'], columns='token', values='SumSq')
 					dataset 				= dataset.reset_index()
@@ -414,7 +451,7 @@ def log_predictions_summary(predictions_summary: pd.DataFrame, cfg: DictConfig) 
 			df.columns.name 		= None
 			
 			df 						= pd.concat([df] + to_concat + [df_freqs])
-			log.info(f'{cfg.tuning.num_words} words/argument position * {len(cfg.tuning.best_average)} argument positions with {label} for ' + re.sub(r"\[|\]", "", ratio_name) + f':\n\n{df.to_string()}\n')
+			log.info(f'{num_words} words/argument position * {len(all_gfs)} argument positions with {label} for ' + re.sub(r"\[|\]", "", ratio_name) + f':\n\n{df.to_string()}\n')
 
 def add_hyperparameters_to_df(df: pd.DataFrame, cfg: DictConfig) -> pd.DataFrame:
 	'''
@@ -427,16 +464,22 @@ def add_hyperparameters_to_df(df: pd.DataFrame, cfg: DictConfig) -> pd.DataFrame
 		returns:
 			df (pd.DataFrame)	: the dataframe with information from config added
 	'''
+	num_words = max([cfg.tuning[tuning].num_words for tuning in cfg.tuning])
+	
 	df = df.assign(
 		run_id 					= os.path.split(os.getcwd())[-1],
 		strip_punct 			= cfg.strip_punct,
 		target_freq 			= cfg.target_freq,
 		range 					= cfg.range,
-		words_per_set 			= cfg.tuning.num_words,
-		reference_sentence_type = cfg.tuning.reference_sentence_type,
+		words_per_set 			= num_words,
 		dataset 				= os.path.split(cfg.dataset_loc)[-1],
 	)
 	
+	if all(tuning in cfg.tuning for tuning in df.tuning.unique()):
+		df = df.assign(reference_sentence_type = [cfg.tuning[tuning].reference_sentence_type for tuning in df.tuning])
+	else:
+		df = df.assign(reference_sentence_type = ','.join([cfg.tuning[tuning].reference_sentence_type for tuning in cfg.tuning]))
+		
 	return df
 
 def plot_correlations(predictions_summary: pd.DataFrame, cfg: DictConfig) -> None:
@@ -453,7 +496,7 @@ def plot_correlations(predictions_summary: pd.DataFrame, cfg: DictConfig) -> Non
 			r, _ 	= pearsonr(x, y)
 			r2 		= r**2
 			ax 		= plt.gca()
-			label 	= 'R\u00b2 = {:.2f}'.format(r2) if not all(x.values == y.values) else ''
+			label 	= 'R\u00b2 = ' + f'{r2:.2f}' if not all(x.values == y.values) else ''
 			log.info('R\u00b2 of SumSq for {:21s}{:.2f}'.format(x.name + ', ' + y.name + ':', r2))
 			ax.annotate(label, xy=(.1,.9), xycoords=ax.transAxes, zorder=10, bbox=dict(facecolor='white', alpha=0.65, edgecolor='none', pad=2))			
 	
@@ -462,38 +505,37 @@ def plot_correlations(predictions_summary: pd.DataFrame, cfg: DictConfig) -> Non
 		.reset_index()
 	
 	corr.columns.name = None
-	with PdfPages('correlations.pdf') as pdf:
-		for ratio_name, ratio_name_corr in corr.groupby('ratio_name'):
-			ratio_name_corr = ratio_name_corr.drop('ratio_name', axis=1)
-			g = sns.pairplot(
-				ratio_name_corr, 
-				kind='reg', 
-				corner=True, 
-				plot_kws=dict(
-					line_kws=dict(
-						linewidth=1, 
-						color='r',
-						zorder=5
-					), 
-					scatter_kws=dict(
-						s=8, 
-						linewidth=0
-					)
+	for ratio_name, ratio_name_corr in corr.groupby('ratio_name'):
+		ratio_name_corr = ratio_name_corr.drop('ratio_name', axis=1)
+		g = sns.pairplot(
+			ratio_name_corr, 
+			kind='reg', 
+			corner=True, 
+			plot_kws=dict(
+				line_kws=dict(
+					linewidth=1, 
+					color='r',
+					zorder=5
+				), 
+				scatter_kws=dict(
+					s=8, 
+					linewidth=0
 				)
 			)
-			
-			g.map(corrfunc)
-			
-			title = f'Correlation of token SumSq differences\nfor log odds {ratio_name.replace("[", "").replace("]", "")} ratios\n'
-			title += ('\nWithout' if all(predictions_summary.strip_punct.values) else '\nWith') + ' punctuation, '
-			title += f'target frequency: {predictions_summary.target_freq.unique()[0]}' + (f' (\u00B1{predictions_summary.range.unique()[0]})' if predictions_summary.target_freq.unique()[0] != 'any' else '')
-			title += f'\ndataset: {os.path.splitext(predictions_summary.dataset.unique()[0])[0]}'
-			title += f'\ndata from {cfg.tuning.name}'
-			g.fig.suptitle(title, y = 0.88, fontsize='medium', x = 0.675)
-			
-			pdf.savefig()
-			plt.close('all')
-			del g
+		)
+		
+		g.map(corrfunc)
+		
+		title = f'Correlation of token SumSq differences\nfor log odds {ratio_name.replace("[", "").replace("]", "")} ratios\n'
+		title += ('\nWithout' if all(predictions_summary.strip_punct.values) else '\nWith') + ' punctuation, '
+		title += f'target frequency: {predictions_summary.target_freq.unique()[0]}' + (f' (\u00B1{predictions_summary.range.unique()[0]})' if predictions_summary.target_freq.unique()[0] != 'any' else '')
+		title += f'\ndataset: {os.path.splitext(predictions_summary.dataset.unique()[0])[0]}'
+		title +=  '\ndata from ' + ',\n'.join(predictions_summary.tuning.unique()[0].split(','))
+		g.fig.suptitle(title, y = 0.88, fontsize='medium', x = 0.675)
+		
+		plt.savefig('correlations.pdf')
+		plt.close('all')
+		del g
 
 if __name__ == '__main__':
 	

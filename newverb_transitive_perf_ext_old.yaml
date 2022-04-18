@@ -15,30 +15,28 @@ which_args: model
 
 # arg sets
 # determined programatically as having relatively unbiased starting states
-# these were determined on the basis of newverb_transitive_perf_ext, newverb_transitive_past_ext, newverb_passive_perf_ext, and newverb_passive_past_ext
-
 best_average:
-  '[subj]' : [spec, foundation, beta, gall, light, bench]
-  '[obj]'  : [winter, base, spring, header, chin, commerce]
+  '[subj]' : [commerce, dream, rave, math, processing, fortune]
+  '[obj]'  : [lace, gall, success, display, fiction, resolution]
 most_similar:
-  '[subj]' : [series, fleet, staff, stroke, witch, detail]
-  '[obj]'  : [cache, finals, husband, timer, writ, laughter]
+  '[subj]' : [mart, rocket, loop, processing, cart, canon]
+  '[obj]'  : [buffer, success, rift, funding, progress, data]
 
 # the seeds set here are used only with the model args when running on the specified model
-bert_seed: 131935518
+bert_seed: 3746666672
 bert:
-  '[subj]' : [podcast, template, raft, frame, cent, terrorism]
-  '[obj]'  : [slice, range, prep, vantage, winter, bench]
+  '[subj]' : [test, quest, technology, business, termination, biology]
+  '[obj]'  : [potion, request, morning, lace, charge, source]
 
-distilbert_seed: 761979608
+distilbert_seed: 2905154689
 distilbert:
-  '[subj]' : [source, foundation, faith, command, percent, terrorism]
-  '[obj]'  : [spec, template, biology, terror, memory, scan]
+  '[subj]' : [raid, java, ranking, bush, flash, spec]
+  '[obj]'  : [research, combat, scan, prototype, commerce, production]
   
-roberta_seed: 196107510
+roberta_seed: 112288744
 roberta:
-  '[subj]' : [spring, base, counter, chain, mint, closure]
-  '[obj]'  : [gram, resolution, rave, winter, mount, foundation]
+  '[subj]' : [worm, glass, second, pain, south, mail]
+  '[obj]'  : [hammer, beam, flow, capital, present, cake]
 
 # semantic distinctions between subj/obj not likely to be used with subj/obj arguments of existing verbs
 red_yellow:
