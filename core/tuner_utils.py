@@ -23,6 +23,7 @@ from typing import *
 from shutil import copyfileobj
 from datasets import Dataset, DatasetDict
 from omegaconf import OmegaConf, DictConfig, ListConfig
+from scipy.stats import pearsonr
 from transformers import AutoTokenizer
 
 from datasets import load_dataset, Dataset
@@ -549,6 +550,8 @@ def get_accuracy_measures(
 	refs 						= refs.copy().reset_index(drop=True)
 	gens 						= gens.copy().reset_index(drop=True)
 	
+	r, p_r						= pearsonr(refs[colname], gens[colname])
+	
 	refs_correct 				= refs[colname] > 0
 	gens_correct 				= gens[colname] > 0
 	num_points 					= len(refs.index)
@@ -578,7 +581,9 @@ def get_accuracy_measures(
 		'ref_correct_gen_incorrect'	: ref_correct_gen_incorrect,
 		'ref_incorrect_gen_correct'	: ref_incorrect_gen_correct,
 		'specificity_(MSE)'			: specificity,
-		'specificity_se'			: specificity_se
+		'specificity_se'			: specificity_se,
+		'r'		 					: r,
+		'p_r'						: p_r,		
 	}
 
 def get_odds_ratios_accuracies(
