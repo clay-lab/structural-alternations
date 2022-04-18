@@ -6,8 +6,12 @@ import subprocess
 def sbatch_all(s):
 	'''
 	Submit all scripts matching glob expressions as sbatch jobs
+	s consists of command line args except for 'sball'
+	the final argument should be the glob pattern,
+	any additional preceding arguments are passed to sbatch.
 	'''
-	scripts = s.split()
+	scripts = s[-1].split()
+	args 	= s[:-1]
 	
 	globbed = []
 	for script in scripts:
@@ -16,10 +20,10 @@ def sbatch_all(s):
 	globbed = [script for l in globbed for script in l if script.endswith('.sh')]
 	
 	for script in globbed:
-		x = subprocess.Popen(['sbatch', script])
+		x = subprocess.Popen(['sbatch', *args, script])
 		time.sleep(0.5)
 		x.kill()
 
 if __name__ == '__main__':
-	
-	sbatch_all(sys.argv[-1])
+	args = [arg for arg in sys.argv[1:] if not arg == 'sball.py']
+	sbatch_all(args)
