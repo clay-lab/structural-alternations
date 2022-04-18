@@ -1189,17 +1189,19 @@ def create_odds_ratios_plots(
 		
 		subtitle = ''
 		for acc in pair_acc:
-			arg = acc['arg_type']
+			arg = acc.arg_type
 			prefix = 'overall' if arg == 'any' else arg
 			perc_correct_str = (
 				'\n' + prefix + ' acc' + 
-				f', X\u2227Y: {round(acc["both_correct"], 2)}' +				# x and y
-				f', X\u22bdY: {round(acc["both_incorrect"], 2)}' + 				# x nor y
-				f', X\u00acY: {round(acc["ref_correct_gen_incorrect"], 2)}' + 	# x not y
-				f', Y\u00acX: {round(acc["ref_incorrect_gen_correct"], 2)}' + 	# y not x
-				f', Y|X: {round(acc["gen_given_ref"], 2)}' +	 				# x given y
-				f', MSE: {round(acc["specificity_(MSE)"], 2)}' +		 		# mean squared error
-				f' (\u00B1{round(acc["specificity_se"], 2)})'		 			# sem of mse
+				f', X\u2227Y: {round(acc.both_correct, 2)}' +				# x and y
+				f', X\u22bdY: {round(acc.both_incorrect, 2)}' + 			# x nor y
+				f', X\u00acY: {round(acc.ref_correct_gen_incorrect, 2)}' + 	# x not y
+				f', Y\u00acX: {round(acc.ref_incorrect_gen_correct, 2)}' + 	# y not x
+				f', Y|X: {round(acc.gen_given_ref, 2)}' +	 				# x given y
+				f', MSE: {round(acc["specificity_(MSE)"], 2)}' +		 	# mean squared error
+				f' (\u00B1{round(acc.specificity_se, 2)})' +		 		# sem of mse
+				 ' $\it{r}$: ' + f'{acc.r:.2f}'	+							# correlation (pearson's r)
+				 ' ($\it{p}$=' + f'{acc.p_r:.2f})'							# p-value of correlation
 			)
 			
 			if arg == 'any':
