@@ -550,7 +550,9 @@ def get_accuracy_measures(
 	refs 						= refs.copy().reset_index(drop=True)
 	gens 						= gens.copy().reset_index(drop=True)
 	
-	r, p_r						= pearsonr(refs[colname], gens[colname])
+	# need to convert to float for scipy stats
+	# we could do this with torch, but it's not really worth it
+	r, p_r						= pearsonr([float(t) for t in refs[colname]], [float(t) for t in gens[colname]])
 	
 	refs_correct 				= refs[colname] > 0
 	gens_correct 				= gens[colname] > 0
