@@ -1217,10 +1217,8 @@ def create_odds_ratios_plots(
 				se 					= std/sqrt(len(gen_given_ref_o_r))
 				perc_correct_str 	+= f' (\u00B1{se:.2f})'
 			
-			perc_correct_str = perc_correct_str + (
-				f', $\it{{r}}$: {acc["r"]:.2f}' +						# correlation (pearson's r)
-				f' ($\it{{p}}$={acc["p_r"]:.2f})'						# p-value of correlation
-			)
+			# pearson's r and p-value
+			perc_correct_str += f', $\it{{r}}$: {acc["r"]:.2f}' + f' ($\it{{p}}$={acc["p_r"]:.2f})'
 			
 			subtitle += perc_correct_str
 		
