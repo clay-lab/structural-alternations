@@ -1203,7 +1203,7 @@ def create_odds_ratios_plots(
 				f', Y\u00acX: {acc["ref_incorrect_gen_correct"]:.2f}' + # y not x
 				f', Y|X: {acc["gen_given_ref"]:.2f}' +	 				# x given y
 				f', MSE: {acc["specificity_(MSE)"]:.2f}' +		 		# mean squared error
-				f' (\u00B1{acc["specificity_se"]:.2f})' +		 		# sem of mse
+				f' (\u00B1{acc["specificity_se"]:.2f})'			 		# sem of mse
 			)
 			
 			if arg == 'any':
@@ -1217,8 +1217,10 @@ def create_odds_ratios_plots(
 				se 					= std/sqrt(len(gen_given_ref_o_r))
 				perc_correct_str 	+= f' (\u00B1{se:.2f})'
 			
-			# pearson's r and p-value
-			perc_correct_str += f', $\it{{r}}$: {acc["r"]:.2f}' + f' ($\it{{p}}$={acc["p_r"]:.2f})'
+			perc_correct_str += (
+				f', $\it{{r}}$: {acc["r"]:.2f}' + 						# pearson's r
+				f' ($\it{{p}}$={acc["p_r"]:.2f})'						# p-value of r
+			)
 			
 			subtitle += perc_correct_str
 		
