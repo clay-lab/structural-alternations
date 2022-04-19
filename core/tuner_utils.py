@@ -551,7 +551,7 @@ def get_accuracy_measures(
 	gens 						= gens.copy().reset_index(drop=True)
 	
 	# need to convert to float for scipy stats
-	# we could do this with torch, but it's not really worth it
+	# we could do this with torch, but given the output is harder to work with it's not really worth it
 	r, p_r						= pearsonr([float(t) for t in refs[colname]], [float(t) for t in gens[colname]])
 	
 	refs_correct 				= refs[colname] > 0
