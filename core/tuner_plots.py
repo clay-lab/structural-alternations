@@ -1070,11 +1070,11 @@ def create_odds_ratios_plots(
 		# which means we want to construct a bigger canvas so we can plot them
 		if len(ratio_names_positions) > 1 and not all(x_data[position_num] == y_data[position_num]):
 			fig, ax = plt.subplots(2, 2)
-			fig.set_size_inches(11, 13.45)
+			fig.set_size_inches(11.25, 13.60)
 			ax = [axes for axeses in ax for axes in axeses] # much faster than using tuner_utils.flatten
 		else:
 			fig, ax = plt.subplots(1, 2)
-			fig.set_size_inches(11, 9)
+			fig.set_size_inches(11.25, 9.25)
 		
 		return ratio_names_positions, fig, ax	
 	
