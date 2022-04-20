@@ -28,7 +28,7 @@ kl_loss_params:
   dataset: datamaker/datasets/miniboki-2022-04-01_22-58-30/miniboki
   n_examples_per_step: 100
   scaleby: 0.5
-  masking: bert
+  masking: none
   
 debug: false # whether to print predictions for sample sentences every epoch. only used in newverb experiments
 use_gpu: false # whether to use gpu support
