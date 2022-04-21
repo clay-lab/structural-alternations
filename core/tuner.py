@@ -176,7 +176,7 @@ class Tuner:
 			else:
 				args 					= self.__format_strings_with_tokens_for_display(self.args)
 				if eval_cfg is not None and 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
-					args 				= {arg_type: args[arg_type] + eval_cfg.data.added_args[self.args_group][arg_type] for arg_type in args}
+					args 				= {arg_type: args[arg_type] + self.__format_strings_with_tokens_for_display(eval_cfg.data.added_args[self.args_group][arg_type]) for arg_type in args}
 				
 				# we're manually replacing the arguments with mask tokens and adding them back later to speed up evaluation
 				# this is how we're evaluating anyway, so it doesn't make sense to ask the model for its thoughts on the same
@@ -1526,7 +1526,9 @@ class Tuner:
 					writer.add_scalars('remaining patience', {**patience_counters, 'overall': patience - patience_counter}, epoch)
 					t.set_postfix(pat=patience - patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
 					
+					breakpoint()
 					if patience_counter >= patience and epoch + 1 >= min_epochs:
+						breakpoint()
 						log.info(f'Mean dev loss has not improved by {delta} in {patience_counter} epochs (min_epochs={min_epochs}). Halting training at epoch {epoch}.')
 						break
 			
