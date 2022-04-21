@@ -177,7 +177,7 @@ class Tuner:
 				args 					= self.__format_strings_with_tokens_for_display(self.args)
 				if eval_cfg is not None and 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
 					args 				= {arg_type: args[arg_type] + self.__format_strings_with_tokens_for_display(eval_cfg.data.added_args[self.args_group][arg_type]) for arg_type in args}
-					log.info(','.join(args))
+					log.info(','.join(list(args.values()))
 				
 				# we're manually replacing the arguments with mask tokens and adding them back later to speed up evaluation
 				# this is how we're evaluating anyway, so it doesn't make sense to ask the model for its thoughts on the same
