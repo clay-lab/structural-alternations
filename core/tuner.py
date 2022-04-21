@@ -177,7 +177,6 @@ class Tuner:
 				args 					= self.__format_strings_with_tokens_for_display(self.args)
 				if eval_cfg is not None and 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
 					args 				= {arg_type: args[arg_type] + self.__format_strings_with_tokens_for_display(eval_cfg.data.added_args[self.args_group][arg_type]) for arg_type in args}
-					log.info(','.join(list(args.values())))
 				
 				# we're manually replacing the arguments with mask tokens and adding them back later to speed up evaluation
 				# this is how we're evaluating anyway, so it doesn't make sense to ask the model for its thoughts on the same
@@ -489,7 +488,7 @@ class Tuner:
 				k: v 
 				for k, v in sentence_masked_token_indices.items()
 				if k in tokens_to_type_labels.keys() or (k in tokens_to_type_labels.values() and self.exp_type == 'newverb')
-			} 
+			}
 			for sentence_masked_token_indices in masked_token_indices
 		]
 		
@@ -506,8 +505,8 @@ class Tuner:
 				# this lets us get away with doing fewer eval passes during new verb experiment on the masked data,
 				# since we don't have to run functionally identically masked sentences for each combination of arguments
 				# when the model never actually sees those arguments
-				if self.exp_type == 'newverb' and token in self.args.keys():
-					tokens = self.args[token]
+				if self.exp_type == 'newverb' and token in eval_groups.keys():
+					tokens = eval_groups[token]
 				else:
 					tokens = [token]
 				
@@ -1527,9 +1526,7 @@ class Tuner:
 					writer.add_scalars('remaining patience', {**patience_counters, 'overall': patience - patience_counter}, epoch)
 					t.set_postfix(pat=patience - patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
 					
-					breakpoint()
 					if patience_counter >= patience and epoch + 1 >= min_epochs:
-						breakpoint()
 						log.info(f'Mean dev loss has not improved by {delta} in {patience_counter} epochs (min_epochs={min_epochs}). Halting training at epoch {epoch}.')
 						break
 			
@@ -1971,11 +1968,22 @@ class Tuner:
 		
 		logprobs 			= F.log_softmax(outputs.logits, dim=-1)
 		predicted_ids 		= torch.argmax(logprobs, dim=-1)
-		predicted_sentences = [self.tokenizer.decode(predicted_sentence_ids) for predicted_sentence_ids in predicted_ids]
 		
 		if output_fun is not None:
-			for sentence, predicted_sentence in zip(sentences, predicted_sentences):
+			# exclude predictions for these from the printout, since we don't care about them
+			pad_token_id 	= self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token)
+			cls_token_id 	= self.tokenizer.convert_tokens_to_ids(self.tokenizer.cls_token)
+			sep_token_id 	= self.tokenizer.convert_tokens_to_ids(self.tokenizer.sep_token)
+			omit 			= [pad_token_id, cls_token_id, sep_token_id]
+			
+			for sentence, predicted_sentence_ids, inputs in zip(sentences, predicted_ids, model_inputs['input_ids']):
+				mask 				= torch.tensor([i for i, token_id in enumerate(inputs) if not token_id in omit]).to(self.device)
+				filtered_prediction = predicted_sentence_ids.index_select(0, mask)
+				predicted_sentence 	= self.tokenizer.decode(filtered_prediction)
 				output_fun(f'{info + " " if info else ""}input: {(sentence + ",").ljust(max_len+1)} prediction: {predicted_sentence}')
+		
+		# however, we DO want to include the full predictions in what's returned just in case
+		predicted_sentences = [self.tokenizer.decode(predicted_sentence_ids) for predicted_sentence_ids in predicted_ids]
 		
 		if restore_training:
 			self.model.train()
@@ -2099,14 +2107,14 @@ class Tuner:
 				
 				if len(epochs) > 1:
 					perc_overlap 					= len(intersect)/k*100
-					for i, _ in enumerate(index_predictions):
+					for j, _ in enumerate(index_predictions):
 						common_type_target_tokens 	= [token for token in intersect if token in type_targets]
 						k_without_type_targets 		= k - len(common_type_target_tokens)
 						
 						common_target_tokens 		= [token for token in intersect if token in targets]
 						k_without_targets 			= k - len(common_target_tokens)
 						
-						index_predictions[i].update({
+						index_predictions[j].update({
 							'common_type_target_tokens'					: ', '.join(intersect_type_tgts),
 							'n_common_type_target_tokens'				: len(intersect_type_tgts),
 							'percent_common_type_target_tokens'			: len(intersect_type_tgts)/k*100,
@@ -2126,8 +2134,8 @@ class Tuner:
 					
 				sentence_predictions.extend(index_predictions)
 			
-			for i, _ in enumerate(sentence_predictions):
-				sentence_predictions[i].update({'sentence': display_sentence})
+			for l, _ in enumerate(sentence_predictions):
+				sentence_predictions[l].update({'sentence': display_sentence})
 			
 			topk_mask_token_predictions.extend(sentence_predictions)
 		

@@ -9,9 +9,9 @@ s:
   ntasks: 1
   cpus-per-task: 1
   mem: 8G
-  gpus: p100:1
+  gpus: v100:1
   partition: gpu
-  time: 01:00:00
+  time: 00:40:00
   mail-type: ALL
 
 sweep: ''
