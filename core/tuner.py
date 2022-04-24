@@ -27,6 +27,7 @@ from typing import *
 from .mixout.module import MixLinear
 from omegaconf import DictConfig, OmegaConf, open_dict, ListConfig
 from contextlib import suppress
+from deprecated import deprecated
 
 from transformers import logging as lg
 from transformers import AutoModelForMaskedLM, AutoTokenizer
@@ -578,7 +579,7 @@ class Tuner:
 		return results
 	
 	def __restore_original_random_seed(self) -> None:
-		'''Restores the original random seed used to generate weights for the novel tokens'''
+		'''Restores the original random seed used to generate weights for the novel tokens to an attribute'''
 		if hasattr(self, 'random_seed'):
 			return
 		
@@ -637,6 +638,7 @@ class Tuner:
 			tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs,
 		)
 	
+	@deprecated(reason='__eval has not been updated to work with the latest version of Tuner. Use at your own risk.')
 	def __eval(self, eval_cfg: DictConfig) -> None:
 		'''
 		Evaluates a model without any fine-tuning
@@ -1014,7 +1016,7 @@ class Tuner:
 	
 	def __call__(self, *args: Tuple, **kwargs: Dict) -> Dict:
 		'''
-		Calls predict sentences to generate model predictions
+		Calls predict_sentences to generate model predictions
 		
 			params:
 				args (tuple)	: passed to self.predict_sentences
@@ -1330,6 +1332,7 @@ class Tuner:
 			return pd.Series(col)
 		
 		def initialize_added_token_weights() -> None:
+			'''Initializes the weights of added tokens to random values.'''
 			if 'seed' in self.cfg:
 				self.random_seed 					= self.cfg.seed
 			elif (
@@ -2308,6 +2311,7 @@ class Tuner:
 		
 		return types_sentences
 	
+	@deprecated(reason='summarize_results has not been updated to work with the latest version of Tuner, and assumes hard-coded values (i.e., ["RICKET", "THAX"]) for new tokens. Use at your own risk.')
 	def summarize_results(self, results: Dict) -> Dict:
 		'''
 		Summarizes model results

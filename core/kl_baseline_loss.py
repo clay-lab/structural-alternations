@@ -1,11 +1,6 @@
 # Implements a loss that combines loss on the new data
 # with the KL divergence between the updated model's predictions
 # and the pretrained model's predictions
-
-# debug
-import sys
-import pickle
-
 import logging
 
 import numpy as np

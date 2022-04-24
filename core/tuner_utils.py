@@ -1439,16 +1439,17 @@ def delete_files(files: List[str]) -> None:
 			continue
 
 class gen_summary():
-	"""
+	'''
 	Generates summary statistics for saved dataframes, allowing R-style unquoted arguments to functions
-	for convenience, via manipulation of globals()
-	"""
+	for convenience, via manipulation of globals(). There is a failsafe in case any variables are
+	already defined in globals, which will still allow the use of quoted strings.
+	'''
 	def __init__(self, 
 		df: Union[pd.DataFrame,str,'TextIOWrapper','StringIO'], 
 		columns: List = ['gen given ref', 'correct', 'odds ratio pre-post difference', 'odds ratio', 'cossim'],
 		funs: List = ['mean', 'sem']
 	) -> 'gen_summary':
-		"""
+		'''
 		Create a gen_summary instance
 		
 			params:
@@ -1459,7 +1460,7 @@ class gen_summary():
 			returns:
 				gen_summary 	: a summary generator that can be called with (un)quoted column names
 								  to generate a summary of columns in df
-		"""
+		'''
 		# allow passing a filepath
 		if not isinstance(df, pd.DataFrame):
 			df = pd.read_csv(df)
@@ -1470,7 +1471,7 @@ class gen_summary():
 		self.prep_quasiquotation()
 	
 	def __call__(self, *columns: Tuple) -> pd.DataFrame.groupby:
-		"""
+		'''
 		Generate a summary using the columns specified, print and return it
 			
 			params:
@@ -1479,18 +1480,18 @@ class gen_summary():
 			returns:
 				results (pd.DataFrame.groupby) 	: a summary consisting of self.funs applied to the columns in self.columns
 												  grouped by the passed columns
-		"""
+		'''
 		agg_dict = {c : self.funs for c in self.columns if c in self.df.columns}
 		results = self.df.groupby(list(columns)).agg(agg_dict).sort_values(list(columns))
 		print(results)
 		return results
 	
 	def prep_quasiquotation(self) -> None:
-		"""
+		'''
 		Adds column names to global variables to facilitate R-like quasiquotation usage.
 		As a failsafe, if a variable is already defined with a conflicting definition,
 		we return early without adding any names. In this case, quoted strings may be provided to generate a summary.
-		"""
+		'''
 		for c in self.df.columns:
 			if c in globals() and not globals()[c] == c:
 				print(f"{c} already has a conflicting definition: '{globals()[c]}'. Exiting.")
@@ -1500,31 +1501,31 @@ class gen_summary():
 			globals()[c] = c
 	
 	def set_funs(self, *funs: Tuple) -> None:
-		"""
+		'''
 		Set the summary functions to use for this gen_summary
 			
 			params: 
 				funs (tuple): 	a tuple of functions known to pandas by string 
 								name used to generate summary statistics
-		"""
+		'''
 		self.funs = list(funs)
 	
 	def set_columns(*columns: Tuple) -> None:
-		"""
+		'''
 		Set the numerical columns to get summary statistics for
 			
 			params:
 				columns (tuple): a tuple of columns in self.df to generate summary statistics for
-		"""
+		'''
 		self.columns = [c for c in list(columns) if c in self.df.columns]
 	
 	def set_df(self, df: Union[pd.DataFrame,str,'TextIOWrapper','StringIO']) -> None:
-		"""
+		'''
 		Set the df to a different one, and attempt to reinitialize all variables
 			
 			params:
 				df (pd.DataFrame,str,IO):	a dataframe object, filehandler, or path to a csv
-		"""
+		'''
 		if not isinstance(df, pd.DataFrame):
 			df = pd.read_csv(df)
 		

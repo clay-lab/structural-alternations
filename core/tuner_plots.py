@@ -22,6 +22,7 @@ from math import sqrt, ceil, floor
 from typing import *
 from omegaconf import DictConfig
 from contextlib import suppress
+from deprecated import deprecated
 
 from . import tuner_utils
 from .tuner_utils import none
@@ -80,18 +81,29 @@ def determine_int_axticks(
 
 # main plotting functions
 def scatterplot(
-	data: pd.DataFrame, x: pd.DataFrame, y: pd.DataFrame, 
-	val: str, hue: str, 
-	ax: matplotlib.axes.Axes, sem: str = None,
-	text: str = None, text_color: str = None,
-	text_size: str = None, center_at_origin: bool = False,
-	aspect_ratio: str = None, comparison_line: bool = False,
-	legend_title: str = None, legend_labels: Dict = None, 
+	data: pd.DataFrame, 
+	x: pd.DataFrame, 
+	y: pd.DataFrame, 
+	val: str, 
+	hue: str, 
+	ax: matplotlib.axes.Axes, 
+	sem: str = None,
+	text: str = None, 
+	text_color: str = None,
+	text_size: str = None, 
+	center_at_origin: bool = False,
+	aspect_ratio: str = None, 
+	comparison_line: bool = False,
+	legend_title: str = None, 
+	legend_labels: Dict = None, 
 	diffs_plot: bool = False,
 	marginal_means: List[str] = None, 
-	xlabel: str = None, ylabel: str = None,
-	plot_kwargs: Dict = {}, line_kwargs: Dict = {}, 
-	text_kwargs: Dict = {}, label_kwargs: Dict = {},
+	xlabel: str = None, 
+	ylabel: str = None,
+	plot_kwargs: Dict = {}, 
+	line_kwargs: Dict = {}, 
+	text_kwargs: Dict = {}, 
+	label_kwargs: Dict = {},
 ) -> matplotlib.axes.Axes:
 	'''
 	The main function used for creating scatterplots for tuner objects
@@ -329,7 +341,7 @@ def set_unique_text_colors(
 									  is the colname in the dataframe to add color information for. other entries
 									  map entries in colname to the text color desired for them
 	'''
-	def colors_generator(default_value: Tuple[float], n: int) -> Tuple[float]:
+	def colors_generator(n: int) -> Tuple[float]:
 		'''
 		Generate a color palette with n unique colors
 		
@@ -360,7 +372,13 @@ def set_unique_text_sizes(
 									  is the colname in the dataframe to add size information for. other entries
 									  map entries in colname to the text size desired for them
 	'''
-	def sizes_generator(n):
+	def sizes_generator(n: int) -> int:
+		'''
+		Generates ints to use for text sizes separated by steps of 2.
+		
+			params:
+				n (int): the number of sizes to generate
+		'''
 		yield from range(6, (6+n)*2, 2)
 	
 	set_unique_values(
@@ -1375,6 +1393,7 @@ def create_kl_divs_plot(
 	plt.close()
 	del fig
 
+@deprecated(reason='graph_results has not been updated to work with the latest changes to Tuner. Use at your own risk.')
 def graph_results(
 	summary: Dict, 
 	eval_cfg: DictConfig
