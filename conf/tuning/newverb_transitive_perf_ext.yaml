@@ -17,29 +17,156 @@ which_args: model
 # determined programatically as having relatively unbiased starting states
 # these were determined on the basis of newverb_transitive_perf_ext, newverb_transitive_past_ext, newverb_passive_perf_ext, and newverb_passive_past_ext
 
-# these were determined using bert-base-uncased, distilbert-base-uncased, and roberta-base (not including multiberts)
-best_average:
-  '[subj]' : [spec, foundation, beta, gall, light, bench]
-  '[obj]'  : [winter, base, spring, header, chin, commerce]
+# These arguments generated using model(s): bert, distilbert, multiberts_00, multiberts_01, multiberts_02, multiberts_03, multiberts_04, multiberts_05, multiberts_06, multiberts_07, multiberts_08, multiberts_09, multiberts_10, multiberts_11, multiberts_12, multiberts_13, multiberts_14, multiberts_15, multiberts_16, multiberts_17, multiberts_18, multiberts_19, multiberts_20, multiberts_21, multiberts_22, multiberts_23, multiberts_24, roberta
+# and tuning data: newverb_transitive_perf_ext, newverb_transitive_past_ext, newverb_passive_perf_ext, newverb_passive_past_ext
+
 most_similar:
-  '[subj]' : [series, fleet, staff, stroke, witch, detail]
-  '[obj]'  : [cache, finals, husband, timer, writ, laughter]
+  '[subj]': [security, justice, translation, processing, communications, mining]
+  '[obj]':  [fiction, politics, democracy, development, gaming, tick]
 
-# the seeds set here are used only with the model args when running on the specified model
-bert_seed: 131935518
+best_average:
+  '[subj]': [processing, miss, poly, fiction, beta, tick]
+  '[obj]':  [communications, gaming, noon, security, layer, storage]
+
+bert_seed: 1237835372
 bert:
-  '[subj]' : [podcast, template, raft, frame, cent, terrorism]
-  '[obj]'  : [slice, range, prep, vantage, winter, bench]
+  '[subj]': [series, terrorism, commerce, claw, ranking, technology]
+  '[obj]':  [nutrition, cent, chat, health, steel, java]
 
-distilbert_seed: 761979608
+distilbert_seed: 3402086024
 distilbert:
-  '[subj]' : [source, foundation, faith, command, percent, terrorism]
-  '[obj]'  : [spec, template, biology, terror, memory, scan]
-  
-roberta_seed: 196107510
+  '[subj]': [context, java, culture, stage, command, post]
+  '[obj]':  [gaming, commerce, foundation, piracy, punk, spec]
+
+multiberts_00_seed: 1255441521
+multiberts_00:
+  '[subj]': [breeding, research, tier, section, series, gram]
+  '[obj]':  [haven, layer, wing, versions, rave, spec]
+
+multiberts_01_seed: 281149257
+multiberts_01:
+  '[subj]': [copy, display, vector, spawn, processing, gravity]
+  '[obj]':  [tier, sports, design, version, dimension, politics]
+
+multiberts_02_seed: 770160622
+multiberts_02:
+  '[subj]': [noon, poly, lambda, steam, vantage, gender]
+  '[obj]':  [nutrition, frame, liter, processing, tier, rice]
+
+multiberts_03_seed: 3986217370
+multiberts_03:
+  '[subj]': [ping, lambda, vantage, gran, tick, trace]
+  '[obj]':  [carbon, places, lace, ling, byte, pixel]
+
+multiberts_04_seed: 3367611126
+multiberts_04:
+  '[subj]': [processing, scan, miss, print, culture, shock]
+  '[obj]':  [communications, gender, review, relative, sites, breeding]
+
+multiberts_05_seed: 2621405660
+multiberts_05:
+  '[subj]': [terrorism, relations, member, vent, review, byte]
+  '[obj]':  [thanks, relative, bytes, liter, tick, communications]
+
+multiberts_06_seed: 1251154920
+multiberts_06:
+  '[subj]': [processing, byte, sync, noon, tile, compliance]
+  '[obj]':  [section, storage, communication, control, performance, tone]
+
+multiberts_07_seed: 148645351
+multiberts_07:
+  '[subj]': [gaming, part, mart, slice, steam, pause]
+  '[obj]':  [display, version, detail, puff, lace, sync]
+
+multiberts_08_seed: 1860588554
+multiberts_08:
+  '[subj]': [gram, display, practice, shift, justice, relative]
+  '[obj]':  [processing, search, miss, lighting, transfer, method]
+
+multiberts_09_seed: 3793696823
+multiberts_09:
+  '[subj]': [chin, section, miss, relations, storage, ties]
+  '[obj]':  [layer, lies, communications, nature, versions, cigarettes]
+
+multiberts_10_seed: 3890052632
+multiberts_10:
+  '[subj]': [ling, custom, java, flash, justice, projects]
+  '[obj]':  [lime, lace, miss, noon, sports, communications]
+
+multiberts_11_seed: 728443588
+multiberts_11:
+  '[subj]': [cookie, mart, breeding, communications, review, relative]
+  '[obj]':  [trace, miss, rust, noon, liter, lace]
+
+multiberts_12_seed: 599193492
+multiberts_12:
+  '[subj]': [processing, pixel, peer, liter, lies, communications]
+  '[obj]':  [layer, buffer, beta, storage, miss, mask]
+
+multiberts_13_seed: 3885899822
+multiberts_13:
+  '[subj]': [versions, lambda, comments, layer, bugs, node]
+  '[obj]':  [pixel, lace, sports, liner, carbon, security]
+
+multiberts_14_seed: 1315223930
+multiberts_14:
+  '[subj]': [processing, vantage, span, notes, biology, java]
+  '[obj]':  [display, sync, ling, versions, tails, haven]
+
+multiberts_15_seed: 3403046615
+multiberts_15:
+  '[subj]': [relations, methyl, shift, storage, sections, styles]
+  '[obj]':  [contact, nexus, justice, cent, class, missions]
+
+multiberts_16_seed: 2795567620
+multiberts_16:
+  '[subj]': [processing, relations, tick, places, gaming, lace]
+  '[obj]':  [carbon, communications, tones, methyl, layer, miss]
+
+multiberts_17_seed: 2290211902
+multiberts_17:
+  '[subj]': [sports, communications, relations, styles, beta, nexus]
+  '[obj]':  [verse, translation, processing, practice, reference, research]
+
+multiberts_18_seed: 4031406927
+multiberts_18:
+  '[subj]': [processing, scan, haven, sync, vent, batch]
+  '[obj]':  [mode, layer, communications, ward, lambda, hash]
+
+multiberts_19_seed: 530848908
+multiberts_19:
+  '[subj]': [byte, percent, regulation, boarding, bytes, level]
+  '[obj]':  [gaming, communications, fiction, processing, million, steam]
+
+multiberts_20_seed: 3573860183
+multiberts_20:
+  '[subj]': [lambda, node, processing, rule, regulation, boarding]
+  '[obj]':  [miss, nature, methyl, biology, podcast, science]
+
+multiberts_21_seed: 2563708900
+multiberts_21:
+  '[subj]': [faith, lambda, communications, prep, storage, billion]
+  '[obj]':  [haven, nature, relative, mart, scan, poly]
+
+multiberts_22_seed: 696562501
+multiberts_22:
+  '[subj]': [methyl, vantage, pixel, commerce, relations, boarding]
+  '[obj]':  [spec, rose, layer, gaming, cent, tick]
+
+multiberts_23_seed: 498187544
+multiberts_23:
+  '[subj]': [processing, terrorism, notes, comments, marks, gran]
+  '[obj]':  [communications, liter, faith, bytes, noon, justice]
+
+multiberts_24_seed: 3941275056
+multiberts_24:
+  '[subj]': [processing, sites, gran, comments, translation, yards]
+  '[obj]':  [corruption, spec, places, lambda, header, gaming]
+
+roberta_seed: 2129407074
 roberta:
-  '[subj]' : [spring, base, counter, chain, mint, closure]
-  '[obj]'  : [gram, resolution, rave, winter, mount, foundation]
+  '[subj]': [ling, lore, spawn, wave, gram, class]
+  '[obj]':  [mint, spring, maid, witch, lime, management]
 
 # semantic distinctions between subj/obj not likely to be used with subj/obj arguments of existing verbs
 red_yellow:

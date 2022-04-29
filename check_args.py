@@ -30,9 +30,8 @@ from core import tuner_utils
 
 log = logging.getLogger(__name__)
 
-# subtlex lists this as a noun, but it's clearly not. it keeps showing up,
-# so this lets us get rid of it
-MANUAL_EXCLUDE = ['doesn']
+# this script often produces some words we'd rather avoid for various reasons.
+MANUAL_EXCLUDE = ['doesn', 'trump', 'rape']
 
 OmegaConf.register_new_resolver(
 	'tuning_name',
@@ -56,7 +55,6 @@ def check_args(cfg: DictConfig) -> None:
 	dataset 				= load_dataset(os.path.join(hydra.utils.get_original_cwd(), cfg.dataset_loc.replace(hydra.utils.get_original_cwd(), '')))
 	model_cfgs_path 		= os.path.join(hydra.utils.get_original_cwd(), 'conf', 'model')
 	model_cfgs 				= sorted([os.path.join(model_cfgs_path, f) for f in os.listdir(model_cfgs_path)])
-	breakpoint()
 	candidate_freq_words 	= get_candidate_words(dataset, model_cfgs, cfg.target_freq, cfg.range, cfg.min_length)
 	
 	predictions 			= get_word_predictions(cfg, model_cfgs, candidate_freq_words)
@@ -386,7 +384,6 @@ def log_predictions_summary(
 			predictions_summary (pd.DataFrame)	: a dataframe containing odds ratios predictions for tokens
 			cfg (dictconfig)					: a configuration with settings for the experiment
 	'''
-	breakpoint()
 	all_gfs 	= list(dict.fromkeys([gf for tuning in cfg.tuning for gf in cfg.tuning[tuning].best_average.keys()]))
 	num_words 	= max([cfg.tuning[tuning].num_words for tuning in cfg.tuning])
 	
