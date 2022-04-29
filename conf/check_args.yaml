@@ -2,7 +2,7 @@ defaults:
   - _self_
   - override hydra/job_logging: tuner_log_conf
 
-dataset_loc: ./subtlex_freqs_formatted.csv
+dataset_loc: ./conf/subtlex_freqs_formatted.csv
 tunings: []
 
 target_freq: any # only consider candidates with frequency counts within ${range} of this value. 'any' means no filtering based on frequency

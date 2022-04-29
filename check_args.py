@@ -124,7 +124,7 @@ def load_subtlex(subtlex_loc: str) -> pd.DataFrame:
 	
 		# Reformat and save for faster use in the future
 		log.info('Reading in and reshaping SUBTLEX PoS frequency file')
-		log.info('A reshaped version will be saved for faster future use as "subtlex_freqs_formatted.csv"')
+		log.info('A reshaped version will be saved for faster future use as "subtlex_freqs_formatted.csv.gz"')
 		
 		subtlex.All_PoS_SUBTLEX		= subtlex.All_PoS_SUBTLEX.str.split('.')
 		subtlex.All_freqs_SUBTLEX 	= subtlex.All_freqs_SUBTLEX.astype(str).str.split('.')
@@ -141,8 +141,8 @@ def load_subtlex(subtlex_loc: str) -> pd.DataFrame:
 		subtlex 	= pd.DataFrame(subtlex.to_records())
 		subtlex_dir = os.path.split(subtlex_loc)[0]
 		
-		log.info(f'Saving file at {os.path.join(subtlex_dir, "subtlex_freqs_formatted.csv")}')
-		subtlex.to_csv(os.path.join(subtlex_dir, 'subtlex_freqs_formatted.csv'), index=False, na_rep='NaN')	
+		log.info(f'Saving file at {os.path.join(subtlex_dir, "subtlex_freqs_formatted.csv.gz")}')
+		subtlex.to_csv(os.path.join(subtlex_dir, 'subtlex_freqs_formatted.csv.gz'), index=False, na_rep='NaN')	
 	else:
 		subtlex = pd.read_csv(subtlex_loc)
 	
