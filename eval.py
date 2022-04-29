@@ -198,7 +198,7 @@ def summarize(
 	cossims 						= tuner_utils.load_csvs(cossims_files, converters={'token': str})
 	
 	log.info(f'Creating summary of cosine similarity data from {len(cossims_files)} models')
-	summarize_cossims(cossims)
+	summarize_cossims(cfg, cossims)
 	
 	assert cfg.data.exp_type in ['newverb', 'newarg'], f'Currently, multieval only supports comparing data for newverb and newarg experiments.'
 	
@@ -258,23 +258,25 @@ def summarize_odds_ratios(
 	n_models = len(summary_of_summaries[['model_id', 'random_seed']].drop_duplicates())
 	
 	# Plot the overall results
-	if cfg.data.exp_type == 'newverb':
+	if cfg.data.exp_type == 'newverb' and cfg.create_plots:
 		log.info(f'Creating {scores_name.replace("_", " ")} differences plots with data from {n_models} models')
 		tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, plot_diffs=True)
 	
-	log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {n_models} models')
-	tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg)
+	if cfg.create_plots:
+		log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {n_models} models')
+		tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg)
 	
 	acc = tuner_utils.get_odds_ratios_accuracies(summary_of_summaries, cfg)
 	acc = tuner_utils.transfer_hyperparameters_to_df(summary_of_summaries, acc)
 	save_summary(acc, 'accuracies', 'csv')
 
-def summarize_cossims(cossims: pd.DataFrame) -> None:
+def summarize_cossims(cfg: DictConfig, cossims: pd.DataFrame) -> None:
 	'''
 	Combines and plots cosine similarity data from multiple models
 	
 		params:
-			cossims (pd.DataFrame): a dataframe combining cosine similarity results from >1 model to summarize
+			cfg (Dict)				: a config file containing information about the experiments evaluated. passed to other functions
+			cossims (pd.DataFrame)	: a dataframe combining cosine similarity results from >1 model to summarize
 	'''
 	agg_kwargs = dict(
 		cossim_mean = ('cossim', 'mean'),
@@ -319,10 +321,14 @@ def summarize_cossims(cossims: pd.DataFrame) -> None:
 	], ignore_index=True)
 	
 	save_summary(cossims, 'cossims', 'csv')
-	n_models = len(cossims[(cossims.model_id != 'multiple') & (cossims.random_seed != 'multiple')][['model_id', 'random_seed']].drop_duplicates())
-	
 	# we can only create cosine similarity plots for target group tokens, and only if there is more than one argument we are comparing
-	if any(~cossims.target_group.str.endswith('most similar')) and not len(cossims[~cossims.target_group.str.endswith('most similar')].predicted_arg.unique()) <= 1:
+	if (
+		any(~cossims.target_group.str.endswith('most similar')) 
+		and not len(cossims[~cossims.target_group.str.endswith('most similar')].predicted_arg.unique()) <= 1
+		and cfg.create_plots
+	):
+		n_models = len(cossims[(cossims.model_id != 'multiple') & (cossims.random_seed != 'multiple')][['model_id', 'random_seed']].drop_duplicates())
+		
 		log.info(f'Creating cosine similarity plots with data from {n_models} models')
 		tuner_plots.create_cossims_plot(cossims)
 
