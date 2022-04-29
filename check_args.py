@@ -294,7 +294,10 @@ def get_word_predictions(
 							'random_seed' 		: seed,
 							'freq' 				: candidate_freq_words[arg],
 						})
-	
+		
+		del model
+		del tokenizer
+		
 	predictions = pd.DataFrame(predictions)
 	
 	# because these are log odds ratios, log(x/y) = -log(y/x). Thus, we only report the unique combinations for printing.
