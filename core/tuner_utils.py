@@ -21,7 +21,7 @@ from glob import glob
 from copy import deepcopy
 from typing import *
 from shutil import copyfileobj
-from datasets import Dataset, DatasetDict
+from datasets import Dataset, DatasetfDict
 from omegaconf import OmegaConf, DictConfig, ListConfig
 from scipy.stats import pearsonr
 from transformers import AutoTokenizer
@@ -744,7 +744,7 @@ def create_tokenizer_with_added_tokens(
 	'''
 	kwargs.update(dict(use_fast=False))
 	
-	if re.search(r'(^bert-)|(^distilbert-)', model_id):
+	if re.search(r'(^(multi|distil)?berts?-)', model_id):
 		return create_bert_tokenizer_with_added_tokens(model_id, tokens_to_mask, delete_tmp_vocab_files, **kwargs)
 	elif re.search(r'^roberta-', model_id):
 		return create_roberta_tokenizer_with_added_tokens(model_id, tokens_to_mask, delete_tmp_vocab_files, **kwargs)	
@@ -770,7 +770,7 @@ def create_bert_tokenizer_with_added_tokens(
 			tokenizer (berttokenizer)		: a BertTokenizer with the tokens_to_mask added to the vocabulary
 	'''
 	
-	if 'uncased' in model_id:
+	if 'uncased' in model_id or 'multiberts' in model_id:
 		tokens_to_mask = [t.lower() for t in tokens_to_mask]
 	
 	bert_tokenizer = AutoTokenizer.from_pretrained(model_id, **kwargs)
@@ -821,7 +821,7 @@ def create_roberta_tokenizer_with_added_tokens(
 			tokenizer (RobertaTokenizer)	: a RobertaTokenizer with the tokens in tokens_to_mask added in a way that doesn't
 											  break existing tokenizations and works correctly
 	'''
-	if 'uncased' in model_id:
+	if 'uncased' in model_id or 'multiberts' in model_id:
 		tokens_to_mask = [t.lower() for t in tokens_to_mask]
 	
 	roberta_tokenizer = AutoTokenizer.from_pretrained(model_id, **kwargs)
@@ -1009,7 +1009,7 @@ def format_strings_with_tokens_for_display(
 		
 		# this might need to be adjusted if we ever use an uncased roberta model,
 		# since we'll need to check after modifying the token to token[1:] above
-		elif 'uncased' in string_id and token in tokens_to_uppercase:
+		elif ('uncased' in string_id or 'multiberts' in string_id) and token in tokens_to_uppercase:
 			data = re.sub(token, token.upper(), data)
 	
 	return data
@@ -1035,7 +1035,7 @@ def format_data_for_tokenizer(
 		returns:
 			data (str)			: the data formatted for use with the tokenizer in string_id
 	'''
-	data = data.lower() if 'uncased' in string_id else data
+	data = data.lower() if 'uncased' in string_id or 'multiberts' in string_id else data
 	data = strip_punct(data) if remove_punct else data
 	data = data.replace(mask_token.lower(), mask_token)
 	return data

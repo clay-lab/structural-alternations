@@ -1,0 +1,10 @@
+base_class: BertForMaskedLM
+tokenizer: BertTokenizer
+string_id: google/multiberts-seed_20
+friendly_name: multiberts_20
+
+model_kwargs:
+  local_files_only: true
+tokenizer_kwargs:
+  do_basic_tokenize: false
+  local_files_only: true

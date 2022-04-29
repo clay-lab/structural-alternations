@@ -2325,8 +2325,8 @@ class Tuner:
 		summary = {}
 		
 		# Define theme and recipient ids
-		ricket = 'RICKET' if not 'uncased' in self.string_id else 'ricket'
-		thax = 'THAX' if not 'uncased' in self.string_id else 'thax'
+		ricket = 'RICKET' if not 'uncased' in self.string_id and not 'multiberts' in self.string_id else 'ricket'
+		thax = 'THAX' if not 'uncased' in self.string_id and not 'multiberts' in self.string_id else 'thax'
 		
 		ricket = self.tokenizer.convert_tokens_to_ids(ricket)
 		thax = self.tokenizer.convert_tokens_to_ids(thax)

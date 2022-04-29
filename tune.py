@@ -24,6 +24,7 @@ def formatted_dir_name(model: DictConfig, tuning: DictConfig, hyperparameters: D
 	model_name 	= 	'bbert' if model.friendly_name == 'bert' \
 					else 'dbert' if model.friendly_name == 'distilbert' \
 					else 'rbert' if model.friendly_name == 'roberta' \
+					else 'mbert' + model.friendly_name[-2:] if 'multiberts' in model.friendly_name \
 					else model.friendly_name
 	
 	dir_name 	= 	os.path.join(dir_name, model_name)
