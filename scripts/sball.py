@@ -21,7 +21,7 @@ def sbatch_all(s):
 	
 	for script in globbed:
 		x = subprocess.Popen(['sbatch', *args, script])
-		time.sleep(0.5)
+		time.sleep(1)
 		x.kill()
 
 if __name__ == '__main__':
