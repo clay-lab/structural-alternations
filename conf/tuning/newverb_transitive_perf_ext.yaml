@@ -17,6 +17,7 @@ which_args: model
 # determined programatically as having relatively unbiased starting states
 # these were determined on the basis of newverb_transitive_perf_ext, newverb_transitive_past_ext, newverb_passive_perf_ext, and newverb_passive_past_ext
 
+# these were determined using bert-base-uncased, distilbert-base-uncased, and roberta-base (not including multiberts)
 best_average:
   '[subj]' : [spec, foundation, beta, gall, light, bench]
   '[obj]'  : [winter, base, spring, header, chin, commerce]
