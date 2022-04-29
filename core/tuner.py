@@ -904,7 +904,13 @@ class Tuner:
 				self.unfreezing_epochs_per_layer 	= self.unfreezing_epochs_per_layer if self.unfreezing == 'gradual' else np.nan
 			
 			self.model_name 						= self.model.config.model_type
-			self.model_id 							= os.path.split(self.checkpoint_dir)[-1] + '-' + self.model_name[0]
+			
+			self.model_id 							= os.path.split(self.checkpoint_dir)[-1] + '-' + (
+														self.model_name[0] 
+														if not 'multiberts' in self.cfg.model.friendly_name 
+														else self.cfg.model.friendly_name[0] + self.cfg.model.friendly_name[-2:]
+													)
+			
 			self.string_id 							= self.model.config.name_or_path
 			
 			# this is temporary so we can format the new tokens according to the model specifications
@@ -954,7 +960,9 @@ class Tuner:
 			if self.exp_type == 'newverb':
 				self.masked_argument_data 			= self.__get_formatted_datasets(mask_args=True, masking_style='eval')[self.tuning]
 				self.masked_dev_argument_data 		= self.__get_formatted_datasets(mask_args=True, masking_style='eval', datasets=self.original_verb_dev_data)
-				self.args_group 					= self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' else self.model_name
+				self.args_group 					= self.cfg.tuning.which_args if not self.cfg.tuning.which_args == 'model' \
+													  else self.model_name if not 'multiberts' in self.string_id \
+													  else self.cfg.model.friendly_name
 			
 			if self.use_kl_baseline_loss:
 				if not (isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing)):
@@ -1243,7 +1251,11 @@ class Tuner:
 			# but we DO include them in the tensorboard plots. this is because that allows us to include the 
 			# hyperparameters info in the tensorboard log in SOME way without requiring us to create a directory
 			# name that contains all of it (which results in names that are too long for the filesystem)
-			model_label = f'{self.model_name} {self.tuning.replace("_", " ")}, '
+			if not 'multiberts' in self.string_id:
+				model_label = f'{self.model_name} {self.tuning.replace("_", " ")}, '
+			else:
+				model_label = f'{self.cfg.model.friendly_name} {self.tuning.replace("_", " ")}, '
+			
 			if self.exp_type == 'newverb':
 				model_label += f'args group: {self.args_group}, '
 			
@@ -1337,10 +1349,10 @@ class Tuner:
 				self.random_seed 					= self.cfg.seed
 			elif (
 					'which_args' in self.cfg.tuning and 
-					self.args_group in [self.model_name, 'best_average', 'most_similar'] and 
-					f'{self.model_name}_seed' in self.cfg.tuning
+					self.args_group in [self.model_name, 'best_average', 'most_similar', self.cfg.model.friendly_name] and 
+					(f'{self.model_name}_seed' in self.cfg.tuning or f'{self.cfg.model.friendly_name}_seed' in self.cfg.tuning)
 				):
-				self.random_seed 					= self.cfg.tuning[f'{self.model_name}_seed']
+				self.random_seed 					= self.cfg.tuning[f'{self.model_name}_seed'] if not 'multiberts' in self.string_id else self.cfg.tuning[f'{self.cfg.model.friendly_name}_seed']
 			else:
 				self.random_seed 					= int(torch.randint(2**32-1, (1,)))
 			
