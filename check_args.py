@@ -222,6 +222,7 @@ def get_word_predictions(
 		model_cfg 	= OmegaConf.load(model_cfg_path)
 		to_mask 	= list(dict.fromkeys([t for tuning in cfg.tuning for t in cfg.tuning[tuning].to_mask]))
 		
+		log.info('')
 		log.info(f'Initializing {model_cfg.friendly_name} model and tokenizer')
 		to_add 		= tuner_utils.format_data_for_tokenizer(data=to_mask, mask_token='', string_id=model_cfg.string_id, remove_punct=cfg.strip_punct)
 		if model_cfg.friendly_name == 'roberta':
