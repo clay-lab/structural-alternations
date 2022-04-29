@@ -21,7 +21,7 @@ from glob import glob
 from copy import deepcopy
 from typing import *
 from shutil import copyfileobj
-from datasets import Dataset, DatasetfDict
+from datasets import Dataset, DatasetDict
 from omegaconf import OmegaConf, DictConfig, ListConfig
 from scipy.stats import pearsonr
 from transformers import AutoTokenizer
