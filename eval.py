@@ -126,6 +126,9 @@ def evaluate(cfg: DictConfig) -> None:
 	scores_name			= 'odds_ratios' if cfg.data.exp_type in ['newverb', 'newarg'] else 'scores'
 	score_file_regex 	= get_score_file_regex(cfg.data.name, cfg.epoch, cfg.data.exp_type)
 	num_expected_files 	= EXPECTED_NUMBER_OF_RESULT_FILES[cfg.data.exp_type]
+	if not cfg.create_plots:
+		num_expected_files -= (4 if cfg.data.exp_type == 'newverb' else 3)
+	
 	checkpoint_dirs 	= get_checkpoint_dirs(cfg.dir, cfg.criteria)
 	
 	try:
