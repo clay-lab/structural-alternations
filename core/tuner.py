@@ -756,13 +756,12 @@ class Tuner:
 		cossims 			= self.get_cossims(**cossims_args)
 		cossims 			= tuner_utils.transfer_hyperparameters_to_df(summary, cossims)
 	
-		if not cossims[~cossims.target_group.str.endswith('most similar')].empty:
+		if not cossims[~cossims.target_group.str.endswith('most similar')].empty and eval_cfg.create_plots:
 			log.info('Creating cosine similarity plots')
 			self.create_cossims_plot(cossims)
 		
 		cossims.to_csv(f'{file_prefix}-cossims.csv.gz', index=False, na_rep='NaN')
 		
-		log.info('Creating t-SNE plot(s)')
 		tsne_args 			= dict(
 								n=eval_cfg.num_tsne_words, 
 								n_components=2, 
@@ -770,6 +769,7 @@ class Tuner:
 								learning_rate='auto', 
 								init='pca'
 							)
+		
 		if 'masked_token_targets' in eval_cfg.data:
 			tsne_args.update(dict(targets=eval_cfg.data.masked_token_targets))
 		
@@ -778,11 +778,14 @@ class Tuner:
 		
 		tsnes 				= self.get_tsnes(**tsne_args)
 		tsnes 				= tuner_utils.transfer_hyperparameters_to_df(summary, tsnes)
-		self.create_tsnes_plots(tsnes)
+		
+		if eval_cfg.create_plots:
+			log.info('Creating t-SNE plot(s)')
+			self.create_tsnes_plots(tsnes)
 		
 		tsnes.to_csv(f'{file_prefix}-tsnes.csv.gz', index=False, na_rep='NaN')
 		
-		if eval_cfg.data.exp_type == 'newverb':
+		if eval_cfg.data.exp_type == 'newverb' and eval_cfg.create_plots:
 			odds_ratios_plot_kwargs = dict(
 										scatterplot_kwargs=dict(
 											text='token', 
@@ -798,8 +801,9 @@ class Tuner:
 		else:
 			odds_ratios_plot_kwargs = {}
 		
-		log.info('Creating odds ratios plots')
-		self.create_odds_ratios_plots(summary, eval_cfg, **odds_ratios_plot_kwargs)
+		if eval_cfg.create_plots:
+			log.info('Creating odds ratios plots')
+			self.create_odds_ratios_plots(summary, eval_cfg, **odds_ratios_plot_kwargs)
 		
 		if eval_cfg.data.exp_type == 'newverb':
 			acc = self.get_odds_ratios_accuracies(summary, eval_cfg, get_diffs_accuracies=True)
@@ -822,8 +826,9 @@ class Tuner:
 			kl_divs = tuner_utils.transfer_hyperparameters_to_df(summary, kl_divs)
 			kl_divs.to_csv(f'{file_prefix}-kl_divs.csv.gz', index=False, na_rep='NaN')
 			
-			log.info('Creating KL divergences plot')
-			self.create_kl_divs_plot(kl_divs)
+			if eval_cfg.create_plots:
+				log.info('Creating KL divergences plot')
+				self.create_kl_divs_plot(kl_divs)
 		
 		log.info('Evaluation complete')
 		print('')

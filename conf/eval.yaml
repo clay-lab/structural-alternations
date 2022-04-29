@@ -5,6 +5,8 @@ defaults:
 
 criteria: all # to be evaluated, a model must contain these strings in the relative path to its checkpoint directory
               # 'all' means no exclusions
+              
+create_plots: true # whether to create plots or skip them
 
 epoch: best_mean
 # which epoch to evaluate the model on. None means the final epoch.
