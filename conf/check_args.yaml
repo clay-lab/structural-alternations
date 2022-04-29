@@ -10,6 +10,10 @@ range: 1000
 min_length: 4 # how long should the shortest words be?
 strip_punct: false # consider sentences with or without punctuation?
 
+patterns:
+  '[subj]': [0, 3, 4, 7, 10, 11]
+  '[obj]' : [1, 2, 5, 6, 8, 9]
+
 hydra:
   run: 
     dir: ./outputs/check_args/${tuning_name:${tunings}}/${now:%Y-%m-%d_%H-%M-%S}

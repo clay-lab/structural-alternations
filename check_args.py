@@ -56,7 +56,7 @@ def check_args(cfg: DictConfig) -> None:
 	dataset 				= load_dataset(os.path.join(hydra.utils.get_original_cwd(), cfg.dataset_loc.replace(hydra.utils.get_original_cwd(), '')))
 	model_cfgs_path 		= os.path.join(hydra.utils.get_original_cwd(), 'conf', 'model')
 	model_cfgs 				= sorted([os.path.join(model_cfgs_path, f) for f in os.listdir(model_cfgs_path)])
-	
+	breakpoint()
 	candidate_freq_words 	= get_candidate_words(dataset, model_cfgs, cfg.target_freq, cfg.range, cfg.min_length)
 	
 	predictions 			= get_word_predictions(cfg, model_cfgs, candidate_freq_words)
@@ -374,14 +374,19 @@ def load_tuning_verb_data(
 	
 	return sentences, masked_data
 
-def log_predictions_summary(predictions_summary: pd.DataFrame, cfg: DictConfig) -> None:
+def log_predictions_summary(
+	predictions_summary: pd.DataFrame, 
+	cfg: DictConfig
+) -> None:
 	'''
-	Report summaries of token with most similar, best average, and best per model sumsqs
+	Report summaries of token with most similar, best average, and best per model sumsqs.
+	Saves yaml config with seeds and arguments to disk.
 	
 		params:
 			predictions_summary (pd.DataFrame)	: a dataframe containing odds ratios predictions for tokens
 			cfg (dictconfig)					: a configuration with settings for the experiment
 	'''
+	breakpoint()
 	all_gfs 	= list(dict.fromkeys([gf for tuning in cfg.tuning for gf in cfg.tuning[tuning].best_average.keys()]))
 	num_words 	= max([cfg.tuning[tuning].num_words for tuning in cfg.tuning])
 	
@@ -409,7 +414,25 @@ def log_predictions_summary(predictions_summary: pd.DataFrame, cfg: DictConfig) 
 	metrics = ['SumSq_diff_average'] + ['SumSq' for df in dfs if not df.equals(averages)]
 	labels 	= ['most similar SumSq', 'lowest average SumSq'] + [f'lowest SumSq for {df.model_name.unique()[0]}' for df in model_dfs]
 	
+	# if we only have three dfs, that means that we've only gotten
+	# arguments for one model, so we don't need to report the best average or most similar
+	if len(dfs) == 3:
+		dfs 	= [dfs[2]]
+		metrics = [metrics[2]]
+		labels 	= [labels[2]]
+	
+	config 	= f'# These arguments generated using model(s): {f", ".join(sorted([m for m in df.model_name.unique() if not m == "average"]))}\n'
+	config 	+= f'# and tuning data: {f", ".join(cfg.tunings)}\n'
+	
 	for dataset, metric, label in zip(dfs, metrics, labels):
+		if not metric == 'SumSq_diff_average' and not label == 'lowest average SumSq':
+			config 					+= f'\n{dataset.model_name.unique()[0]}_seed: {int(dataset.random_seed.unique()[0])}\n'
+			config 					+= f'{dataset.model_name.unique()[0]}:\n'
+		elif label == 'most similar SumSq':
+			config 					+= f'\nmost_similar:\n'
+		elif label == 'lowest average SumSq':
+			config 					+= f'\nbest_average:\n'
+		
 		for ratio_name, df in dataset.groupby('ratio_name'):
 			if metric == 'SumSq_diff_average':
 				df.model_name 		= df.model_name.unique()[0] + ' \u0394SumSq'
@@ -418,10 +441,10 @@ def log_predictions_summary(predictions_summary: pd.DataFrame, cfg: DictConfig) 
 			df_tokens				= df.iloc[:num_words*len(all_gfs),].token.unique()
 			
 			df 						= df[df.token.isin(df_tokens)]
-			df.SumSq 				= ['{:.2f}'.format(round(ss,2)) for ss in df.SumSq]
+			df.SumSq 				= [f'{ss:.2f}' for ss in df.SumSq]
 			
 			if metric == 'SumSq_diff_average':
-				df[metric]			= ['{:.2f}'.format(round(ss,2)) for ss in df[metric]]
+				df[metric]			= [f'{ss:.2f}' for ss in df[metric]]
 			
 			df_freqs 				= df[['token', 'freq']].drop_duplicates().set_index('token')
 			df_freqs.freq 			= [str(freq) + '   ' for freq in df_freqs.freq]
@@ -451,11 +474,25 @@ def log_predictions_summary(predictions_summary: pd.DataFrame, cfg: DictConfig) 
 			
 			# we have to do this categorical on the tokens to make the sorting work correctly when pivoting
 			df.token				= pd.Categorical(df.token, categories=df.token.unique(), ordered=True)
+			
+			tokens 					= np.array(df.token.unique())
+			args 					= ratio_name.split('/')
+			
+			for arg in args:
+				config += '  ' + ("'" + arg + "': ").ljust(max([len(arg) for arg in args]) + 4)
+				if arg in cfg.patterns:
+					config += f'[{", ".join(tokens[cfg.patterns[arg]])}]\n'
+				else:
+					config += '[]\n'
+			
 			df 			 			= df.pivot(index=['model_name', 'ratio_name'], columns='token', values=metric).reset_index()
 			df.columns.name 		= None
 			
 			df 						= pd.concat([df] + to_concat + [df_freqs])
 			log.info(f'{num_words} words/argument position * {len(all_gfs)} argument positions with {label} for ' + re.sub(r"\[|\]", "", ratio_name) + f':\n\n{df.to_string()}\n')
+	
+	with open('args.yaml', 'wt') as out_file:
+		out_file.write(config)
 
 def add_hyperparameters_to_df(df: pd.DataFrame, cfg: DictConfig) -> pd.DataFrame:
 	'''
