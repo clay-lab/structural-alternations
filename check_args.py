@@ -55,7 +55,7 @@ def check_args(cfg: DictConfig) -> None:
 	
 	dataset 				= load_dataset(os.path.join(hydra.utils.get_original_cwd(), cfg.dataset_loc.replace(hydra.utils.get_original_cwd(), '')))
 	model_cfgs_path 		= os.path.join(hydra.utils.get_original_cwd(), 'conf', 'model')
-	model_cfgs 				= [os.path.join(model_cfgs_path, f) for f in os.listdir(model_cfgs_path)]
+	model_cfgs 				= sorted([os.path.join(model_cfgs_path, f) for f in os.listdir(model_cfgs_path)])
 	
 	candidate_freq_words 	= get_candidate_words(dataset, model_cfgs, cfg.target_freq, cfg.range, cfg.min_length)
 	
