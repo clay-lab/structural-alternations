@@ -45,8 +45,8 @@ def sbatch_all(s):
 					break
 			
 			if submit_individually:
-				break
-		
+				break	
+	
 	if not submit_individually:
 		try:
 			# create a joblist txt file
@@ -68,27 +68,37 @@ def sbatch_all(s):
 			sbatch_options = ['--' + k + ' ' + v[0] for k, v in sbatch_options.items()]
 			sbatch_options = [i for sublist in [option.split(' ') for option in sbatch_options] for i in sublist]
 			
-			x = subprocess.Popen(
+			x = subprocess.Popen([
 				'dsq', 
 				'--job-file', os.path.join('scripts', name + '.txt'), 
-				'--status-dir', 'joblogs' + os.path.sep, 
-				'--job-name', name,
-				'--output', os.path.join('joblogs', '/'.join(os.path.split(name)).split('/')[-1] + '-%A_%a.txt'),
-				'--submit',
+				'--status-dir', 'joblogs' + os.path.sep,
+				'--job-name', os.path.split(name)[-1].split('/')[-1],
+				'--output', os.path.join('joblogs', os.path.split(name)[-1].split('/')[-1] + '-%A_%a.txt'),
+				'--batch-file', os.path.join('scripts', name + '.sh'),
 				*sbatch_options, 
 				*args
-			)
+			])
 			time.sleep(1)
 			x.kill()
 			
+			x = subprocess.Popen([
+				'sbatch',
+				*args,
+				os.path.join('scripts', name + '.sh')
+			])
+			time.sleep(1)
+			x.kill()
+			
+			os.remove(os.path.join('scripts', name + '.sh'))
+		
 		except Exception:
-			print('Unable to submit jobs using dSQ. Submitting individually.')
+			print('Error submitting jobs using dSQ. Submitting individually.')
 			for script in globbed:
 				x = subprocess.Popen(['sbatch', *args, script])
 				time.sleep(1)
 				x.kill()	
 	else:
-		if len(globbed) > 1:
+		if len(globbed) > 1 and name:
 			print('Submitting job(s) individually due to differing sbatch options.')
 		
 		for script in globbed:
