@@ -66,7 +66,7 @@ def sbatch_all(s):
 			sbatch_options = ['--' + k + ' ' + v[0] for k, v in sbatch_options.items()]
 			
 			breakpoint()
-			x = subprocess.Popen(['dsq', '--job-file ' + os.path.join('scripts', name + '.txt'), '--status-dir joblogs' + os.path.sep, '--job-name ' + name, '--submit', sbatch_options, *args])
+			x = subprocess.Popen(['dsq', '--job-file ' + os.path.join('scripts', name + '.txt'), '--status-dir joblogs' + os.path.sep, '--job-name ' + name, '--submit', *sbatch_options, *args])
 			time.sleep(10)
 			x.kill()
 			
