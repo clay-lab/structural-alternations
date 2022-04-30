@@ -15,7 +15,7 @@ def sbatch_all(s):
 	scripts = s[-1].split()
 	args 	= [arg for arg in s[:-1] if not arg.startswith('name=')]
 	name 	= [arg.split('=')[1] for arg in s[:-1] if arg.startswith('name=')]
-	name 	= name if name else 'sball_joblist'
+	name 	= name[0] if name else 'sball_joblist'
 	
 	globbed = []
 	for script in scripts:
