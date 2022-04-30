@@ -42,13 +42,36 @@ def sbatch_all(s):
 		if submit_individually:
 			break
 		
-	if submit_individually:
+	if not submit_individually:
+		try:
+			# create a joblist txt file
+			joblist = []
+			for script in globbed:
+				with open(script, 'rt') as in_file: 
+					script = in_file.readlines()
+				
+				script = [line.replace('\n', '') for line in script if not line.startswith('#') and not line == '\n']
+				script = '; '.join(script)
+				script = script.replace('\t', '').replace('\\; ', '') + '\n'
+				joblist.append(script)
+			
+			joblist = ''.join(joblist)
+			
+			with open('sball_joblist.txt', 'wt') as out_file:
+				out_file.write(joblist)
+			
+			breakpoint()
+			
+		except Exception:
+			for script in globbed:
+				x = subprocess.Popen(['sbatch', *args, script])
+				time.sleep(1)
+				x.kill()	
+	else:
 		for script in globbed:
 			x = subprocess.Popen(['sbatch', *args, script])
 			time.sleep(1)
 			x.kill()
-	else:
-		breakpoint()
 
 if __name__ == '__main__':
 	args = [arg for arg in sys.argv[1:] if not arg == 'sball.py']
