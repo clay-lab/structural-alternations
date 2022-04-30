@@ -62,15 +62,30 @@ def sbatch_all(s):
 			
 			with open(os.path.join('scripts', name + '.txt'), 'wt') as out_file:
 				out_file.write(joblist)
+				
+			sbatch_options = ' '.join(['--' + k + ' ' + v[0] for k, v in sbatch_options.items()])
 			
 			breakpoint()
+			x = subprocess.Popen([
+				'dsq', 
+				'--job-file ' + os.path.join('scripts', name + '.txt'),
+				'--status-dir joblogs' + os.path.sep,
+				'--job-name ' + name,
+				'--submit',
+				*sbatch_options,
+				*args
+			])
+			time.sleep(10)
+			x.kill()
 			
 		except Exception:
+			print('Unable to submit jobs using dSQ. Submitting individually.')
 			for script in globbed:
 				x = subprocess.Popen(['sbatch', *args, script])
 				time.sleep(1)
 				x.kill()	
 	else:
+		print('Jobs have different sbatch options; submitting individually.')
 		for script in globbed:
 			x = subprocess.Popen(['sbatch', *args, script])
 			time.sleep(1)
