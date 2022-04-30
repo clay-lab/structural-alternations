@@ -40,14 +40,15 @@ def sbatch_all(s):
 				break
 		
 		if submit_individually:
-			for script in globbed:
-				x = subprocess.Popen(['sbatch', *args, script])
-				time.sleep(1)
-				x.kill()
-			
 			break
-		else:
-			breakpoint()
+		
+	if submit_individually:
+		for script in globbed:
+			x = subprocess.Popen(['sbatch', *args, script])
+			time.sleep(1)
+			x.kill()
+	else:
+		breakpoint()
 
 if __name__ == '__main__':
 	args = [arg for arg in sys.argv[1:] if not arg == 'sball.py']
