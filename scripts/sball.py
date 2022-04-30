@@ -12,7 +12,9 @@ def sbatch_all(s):
 	any additional preceding arguments are passed to sbatch.
 	'''
 	scripts = s[-1].split()
-	args 	= s[:-1]
+	args 	= [arg for arg in s[:-1] if not arg.startswith('name=')]
+	name 	= [arg.split('=')[1] for arg in s[:-1] if arg.startswith('name=')]
+	name 	= name or 'sball_joblist'
 	
 	globbed = []
 	for script in scripts:
@@ -57,7 +59,7 @@ def sbatch_all(s):
 			
 			joblist = ''.join(joblist)
 			
-			with open('sball_joblist.txt', 'wt') as out_file:
+			with open('scripts/sball_joblist.txt', 'wt') as out_file:
 				out_file.write(joblist)
 			
 			breakpoint()
