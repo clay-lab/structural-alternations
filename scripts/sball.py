@@ -68,7 +68,7 @@ def sbatch_all(s):
 			sbatch_options = ['--' + k + ' ' + v[0] for k, v in sbatch_options.items()]
 			sbatch_options = [i for sublist in [option.split(' ') for option in sbatch_options] for i in sublist]
 			
-			x = subprocess.Popen(' '.join([
+			x = subprocess.Popen(
 				'dsq', 
 				'--job-file', os.path.join('scripts', name + '.txt'), 
 				'--status-dir', 'joblogs' + os.path.sep, 
@@ -77,7 +77,7 @@ def sbatch_all(s):
 				'--submit',
 				*sbatch_options, 
 				*args
-			]), shell=True)
+			)
 			time.sleep(1)
 			x.kill()
 			
