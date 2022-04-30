@@ -15,7 +15,7 @@ def sbatch_all(s):
 	scripts = s[-1].split()
 	args 	= [arg for arg in s[:-1] if not arg.startswith('name=')]
 	name 	= [arg.split('=')[1] for arg in s[:-1] if arg.startswith('name=')]
-	name 	= name[0] if name else 'sball_joblist'
+	name 	= name[0] if name else []
 	
 	globbed = []
 	for script in scripts:
@@ -24,26 +24,28 @@ def sbatch_all(s):
 	globbed = [script for l in globbed for script in l if script.endswith('.sh')]
 	
 	sbatch_options = {}
-	submit_individually = False
-	for script in globbed:
-		with open(script, 'rt') as in_file:
-			script = in_file.readlines()
-		
-		options 		= [line for line in script if line.startswith('#SBATCH') and not 'job-name' in line and not 'output' in line]
-		option_keys 	= [re.sub('.*--(.*?)=.*\n', '\\1', option) for option in options]
-		option_values	= [re.sub('.*--.*=(.*)\n', '\\1', option) for option in options]
-		
-		for key, value in zip(option_keys, option_values):
-			sbatch_options[key] = sbatch_options.get(key, [])
-			sbatch_options[key].append(value)
-			sbatch_options[key] = list(set(sbatch_options[key]))
-			if len(sbatch_options[key]) > 1:
-				# if we have different options, we can't use a job array and submit them individually
-				submit_individually = True
+	submit_individually = False if name else True
+	
+	if not submit_individually:
+		for script in globbed:
+			with open(script, 'rt') as in_file:
+				script = in_file.readlines()
+			
+			options 		= [line for line in script if line.startswith('#SBATCH') and not 'job-name' in line and not 'output' in line]
+			option_keys 	= [re.sub('.*--(.*?)=.*\n', '\\1', option) for option in options]
+			option_values	= [re.sub('.*--.*=(.*)\n', '\\1', option) for option in options]
+			
+			for key, value in zip(option_keys, option_values):
+				sbatch_options[key] = sbatch_options.get(key, [])
+				sbatch_options[key].append(value)
+				sbatch_options[key] = list(set(sbatch_options[key]))
+				if len(sbatch_options[key]) > 1:
+					# if we have different options, we can't use a job array and submit them individually
+					submit_individually = True
+					break
+			
+			if submit_individually:
 				break
-		
-		if submit_individually:
-			break
 		
 	if not submit_individually:
 		try:
