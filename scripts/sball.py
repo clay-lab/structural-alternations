@@ -77,7 +77,7 @@ def sbatch_all(s):
 				'--batch-file', os.path.join('scripts', name + '.sh'),
 				*sbatch_options, 
 				*args
-			])
+			], stdout=subprocess.DEVNULL)
 			time.sleep(1)
 			x.kill()
 			
