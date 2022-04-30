@@ -1,3 +1,4 @@
+import os
 import re
 import sys
 import time
@@ -59,7 +60,7 @@ def sbatch_all(s):
 			
 			joblist = ''.join(joblist)
 			
-			with open('scripts/sball_joblist.txt', 'wt') as out_file:
+			with open(os.path.join('scripts', name + '.txt'), 'wt') as out_file:
 				out_file.write(joblist)
 			
 			breakpoint()
