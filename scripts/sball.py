@@ -73,7 +73,7 @@ def sbatch_all(s):
 				'--job-file', os.path.join('scripts', name + '.txt'), 
 				'--status-dir', 'joblogs' + os.path.sep, 
 				'--job-name', name, 
-				'--submit', 
+				#'--submit', 
 				*sbatch_options, 
 				*args
 			])
