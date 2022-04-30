@@ -24,7 +24,7 @@ def sbatch_all(s):
 	globbed = [script for l in globbed for script in l if script.endswith('.sh')]
 	
 	sbatch_options = {}
-	submit_individually = False if name else True
+	submit_individually = False if name and not len(globbed) == 1 else True
 	
 	if not submit_individually:
 		for script in globbed:
