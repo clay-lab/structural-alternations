@@ -87,7 +87,7 @@ def sbatch_all(s):
 				time.sleep(1)
 				x.kill()	
 	else:
-		print('Jobs have different sbatch options; submitting individually.')
+		print('Submitting job(s) individually. This may be due to differing options, or because there is only one matching script.')
 		for script in globbed:
 			x = subprocess.Popen(['sbatch', *args, script])
 			time.sleep(1)
