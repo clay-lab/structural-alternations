@@ -19,7 +19,7 @@ def sbatch_all(s):
 	
 	globbed = []
 	for script in scripts:
-		globbed.append(glob(script))
+		globbed.append(glob(script, recursive=True))
 	
 	globbed = [script for l in globbed for script in l if script.endswith('.sh')]
 	
@@ -66,7 +66,6 @@ def sbatch_all(s):
 			sbatch_options = ['--' + k + ' ' + v[0] for k, v in sbatch_options.items()]
 			sbatch_options = [i for sublist in [option.split(' ') for option in sbatch_options] for i in sublist]
 			
-			breakpoint()
 			x = subprocess.Popen([
 				'dsq', 
 				'--job-file', os.path.join('scripts', name + '.txt'), 
@@ -76,7 +75,7 @@ def sbatch_all(s):
 				*sbatch_options, 
 				*args
 			])
-			time.sleep(10)
+			time.sleep(1)
 			x.kill()
 			
 		except Exception:
