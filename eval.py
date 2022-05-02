@@ -208,7 +208,7 @@ def summarize(
 	log.info(f'Creating summary of {scores_name.replace("_", " ")} data from {len(summary_files)} models')
 	summarize_odds_ratios(cfg, summaries)
 	
-	log.info(f'Summarization of data from {summary.model_id.unique().size} models complete')
+	log.info(f'Summarization of data from {summaries.model_id.unique().size} models complete')
 
 def summarize_odds_ratios(
 	cfg: DictConfig,
@@ -257,6 +257,8 @@ def summarize_odds_ratios(
 	# add/change these back for plotting purposes
 	summary_of_summaries['sentence_num'] 	= 0
 	summary_of_summaries 					= summary_of_summaries.rename({'ex_sentence' : 'sentence'}, axis=1)
+	summary_of_summaries['token'] 		= tuner_utils.multiplator(summaries.token, multstr='any')
+	summary_of_summaries['token_id']	= tuner_utils.multiplator(summaries.token_id)
 	
 	n_models = len(summary_of_summaries[['model_id', 'random_seed']].drop_duplicates())
 	
