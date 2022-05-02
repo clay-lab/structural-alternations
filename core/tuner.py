@@ -713,6 +713,12 @@ class Tuner:
 		file_prefix = tuner_utils.get_file_prefix(summary)
 		
 		log.info(f'Saving to "{os.getcwd().replace(self.original_cwd, "")}"')
+		
+		# put tensors on cpu before saving
+		for c in summary.columns:
+			if isinstance(summary[c][0],torch.Tensor):
+				summary[c] 	= [v.clone().detach().cpu() for v in summary[c]]
+		
 		summary.to_pickle(f'{file_prefix}-odds_ratios.pkl.gz')
 		
 		# tensors are saved as text in csv, but we want to save them as numbers
