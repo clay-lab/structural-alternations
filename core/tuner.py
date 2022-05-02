@@ -716,7 +716,6 @@ class Tuner:
 		
 		# put tensors on cpu before saving
 		for c in summary.columns:
-			breakpoint()
 			if isinstance(summary[c][0],torch.Tensor):
 				summary[c] 	= [v.clone().detach().cpu() for v in summary[c]]
 		
