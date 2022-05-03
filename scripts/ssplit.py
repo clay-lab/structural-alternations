@@ -5,6 +5,7 @@ import itertools
 
 import sball
 
+from glob import glob
 from typing import List
 from omegaconf import DictConfig
 
@@ -21,7 +22,7 @@ def split_scripts(cfg: DictConfig) -> None:
 	for sweep in sweeps:
 		key = sweep.split('=', 1)[0]
 		values = sweep.split('=', 1)[1]
-		
+		breakpoint()
 		if values.startswith('glob(') and values.endswith(')'):
 			values = parse_values_from_glob(values, os.path.join(cfg.hydra_glob_dirname, key))
 		
@@ -76,10 +77,35 @@ def parse_values_from_glob(values: str, hydra_glob_dirname: str) -> List[str]:
 	
 		params:
 			values (str)		: A str containing an expression starting with glob( and ending with ).
-			hydra_grob_dirname (str): The directory path relative to the original cwd where the configs to be globbed reside.
+			hydra_glob_dirname (str): The directory path relative to the original cwd where the configs to be globbed reside.
 	'''
-	breakpoint()
+	if not os.path.isdir(os.path.join(hydra.utils.get_original_cwd(), hydra_glob_dirname)):
+		raise ValueError(f'Invalid directory {os.path.join(hydra.utils.get_original_cwd(), hydra_glob_dirname)}! Unable to use globs.')
+		
+	if ',exclude=' in values:
+		excludes 	= eval(
+						values.split(',exclude=')[-1]
+							.replace(')', '')
+							.replace('[', '[r"')
+							.replace(']', '"]')
+							.replace(',', '",r"')
+					)
+		excludes 	= [os.path.join(hydra.utils.get_original_cwd(), hydra_glob_dirname, g) for g in excludes]
+		excluded 	= [f for g in excludes for f in glob(g, recursive=True)]
+	else:
+		excluded 	= []
+		
+	globs	 		= eval(
+						values.split(',exclude=')[0]
+							.replace('glob(', '')
+							.replace('[', '[r"')
+							.replace(']', '"]')
+							.replace(',', '",r"')
+					)
+	globs 			= [os.path.join(hydra.utils.get_original_cwd(), hydra_glob_dirname, g) for g in globs]
+	included 		= [f for g in globs for f in glob(g, recursive=True)]
 	
+	return [f for f in included if not f in excluded]
 
 if __name__ == '__main__':
 	
