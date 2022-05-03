@@ -90,7 +90,7 @@ def parse_values_from_glob(values: str, hydra_glob_dirname: str) -> List[str]:
 						.replace(']', '"]')
 						.replace(',', '",r"')
 					)
-		excludes 	= '["' + excludes + '"]' if not excludes.startswith('["') and not excludes.endswith('"]') else excludes
+		excludes 	= '[r"' + excludes + '"]' if not excludes.startswith('[r"') and not excludes.endswith('"]') else excludes
 		excludes 	= eval(excludes)
 		excludes 	= [os.path.join(hydra.utils.get_original_cwd(), hydra_glob_dirname, g) for g in excludes]
 		excluded 	= [f for g in excludes for f in glob(g, recursive=True)]
@@ -103,7 +103,7 @@ def parse_values_from_glob(values: str, hydra_glob_dirname: str) -> List[str]:
 						.replace(']', '"]')
 						.replace(',', '",r"')
 					)
-	globs 			= '["' + globs + '"]' if not globs.startswith('["') and not globs.endswith('"]') else globs
+	globs 			= '[r"' + globs + '"]' if not globs.startswith('[r"') and not globs.endswith('"]') else globs
 	globs 			= eval(globs)
 	globs 			= [os.path.join(hydra.utils.get_original_cwd(), hydra_glob_dirname, g) for g in globs]
 	included 		= [f for g in globs for f in glob(g, recursive=True)]
