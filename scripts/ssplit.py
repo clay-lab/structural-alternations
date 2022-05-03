@@ -54,7 +54,10 @@ def split_scripts(cfg: DictConfig) -> None:
 		filename = filename.replace(os.path.sep, '-')
 		
 		n = 0
-		while os.path.isfile(filename + '.sh'):
+		if os.path.isfile(filename + '.sh'):
+			while os.path.isfile(filename + str(n) + '.sh'):
+				n += 1
+			
 			filename += str(n)
 		
 		filename += '.sh'
