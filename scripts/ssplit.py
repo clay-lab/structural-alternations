@@ -99,6 +99,7 @@ def parse_values_from_glob(values: str, hydra_glob_dirname: str) -> List[str]:
 		
 	globs	 		= (values.split(',exclude=')[0]
 						.replace('glob(', '')
+						.replace(')', '')
 						.replace('[', '[r"')
 						.replace(']', '"]')
 						.replace(',', '",r"')
