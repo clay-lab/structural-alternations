@@ -12,7 +12,7 @@ s:
   gpus: v100:1
   partition: gpu
   time: 00:40:00
-  mail-type: FAIL
+  mail-type: FAIL,INVALID_DEPEND
 
 sweep: ''
 
