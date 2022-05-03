@@ -22,12 +22,13 @@ def split_scripts(cfg: DictConfig) -> None:
 	for sweep in sweeps:
 		key = sweep.split('=', 1)[0]
 		values = sweep.split('=', 1)[1]
-		breakpoint()
+		
 		if values.startswith('glob(') and values.endswith(')'):
 			values = parse_values_from_glob(values, os.path.join(cfg.hydra_glob_dirname, key))
+		else:
+			# this lets us not split list arguments which have commas inside them
+			values = list(set(values.split(','))) if not (values.startswith('[') and values.endswith(']')) else [values]
 		
-		# this lets us not split list arguments which have commas inside them
-		values = list(set(values.split(','))) if not (values.startswith('[') and values.endswith(']')) else [values]
 		all_sweeps.append([key + '=' + value for value in values])
 	
 	all_sweeps = list(itertools.product(*all_sweeps))
@@ -81,8 +82,7 @@ def parse_values_from_glob(values: str, hydra_glob_dirname: str) -> List[str]:
 	'''
 	if not os.path.isdir(os.path.join(hydra.utils.get_original_cwd(), hydra_glob_dirname)):
 		raise ValueError(f'Invalid directory {os.path.join(hydra.utils.get_original_cwd(), hydra_glob_dirname)}! Unable to use globs.')
-		
-	breakpoint()
+	
 	if ',exclude=' in values:
 		excludes 	= (values.split(',exclude=')[-1]
 						.replace(')', '')
@@ -90,7 +90,7 @@ def parse_values_from_glob(values: str, hydra_glob_dirname: str) -> List[str]:
 						.replace(']', '"]')
 						.replace(',', '",r"')
 					)
-		excludes 	= '[' + excludes + ']' if not excludes.startswith('[') and not excludes.endswith(']') else excludes
+		excludes 	= '["' + excludes + '"]' if not excludes.startswith('["') and not excludes.endswith('"]') else excludes
 		excludes 	= eval(excludes)
 		excludes 	= [os.path.join(hydra.utils.get_original_cwd(), hydra_glob_dirname, g) for g in excludes]
 		excluded 	= [f for g in excludes for f in glob(g, recursive=True)]
@@ -103,12 +103,12 @@ def parse_values_from_glob(values: str, hydra_glob_dirname: str) -> List[str]:
 						.replace(']', '"]')
 						.replace(',', '",r"')
 					)
-	globs 			= '[' + globs + ']' if not globs.startswith('[') and not globs.endswith(']') else globs
+	globs 			= '["' + globs + '"]' if not globs.startswith('["') and not globs.endswith('"]') else globs
 	globs 			= eval(globs)
 	globs 			= [os.path.join(hydra.utils.get_original_cwd(), hydra_glob_dirname, g) for g in globs]
 	included 		= [f for g in globs for f in glob(g, recursive=True)]
 	
-	return [f for f in included if not f in excluded]
+	return [os.path.split(f)[-1].split('.')[0] for f in included if not f in excluded]
 
 if __name__ == '__main__':
 	
