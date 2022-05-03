@@ -455,12 +455,10 @@ def log_predictions_summary(
 				
 				for dataset in datasets:
 					dataset 				= dataset.copy()
-					dataset 				= dataset
 					dataset 				= dataset[dataset.token.isin(df.token.to_numpy())]
 					dataset.token 			= pd.Categorical(dataset.token, df_tokens)
 					dataset 				= dataset.sort_values('token')
 					dataset.SumSq 			= [f'{ss:.2f}' for ss in dataset.SumSq]
-					dataset 				= dataset
 					dataset 				= dataset.pivot(index=['model_name', 'ratio_name'], columns='token', values='SumSq')
 					dataset 				= dataset.reset_index()
 					dataset.columns.name 	= None
