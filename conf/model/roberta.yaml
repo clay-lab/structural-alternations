@@ -1,5 +1,3 @@
-base_class: RobertaForMaskedLM
-tokenizer: RobertaTokenizer
 string_id: roberta-base
 friendly_name: roberta
 

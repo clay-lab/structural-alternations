@@ -896,7 +896,7 @@ class Tuner:
 		
 		def setattrs() -> None:
 			'''Sets static model attributes'''
-			log.info(f'Initializing Model:\t{self.cfg.model.base_class} ({self.cfg.model.string_id})')
+			log.info(f'Initializing Model:\t{self.cfg.model.string_id}')
 			self.model 								= AutoModelForMaskedLM.from_pretrained(self.cfg.model.string_id, **self.cfg.model.model_kwargs)
 			self.model.to(self.device)
 			
@@ -919,7 +919,7 @@ class Tuner:
 			self.model_id 							= os.path.split(self.checkpoint_dir)[-1] + '-' + (
 														self.model_name[0] 
 														if not 'multiberts' in self.cfg.model.friendly_name 
-														else self.cfg.model.friendly_name[0] + self.cfg.model.friendly_name[-2:]
+														else self.cfg.model.friendly_name[0] + self.cfg.model.friendly_name.split('_')[-1]
 													)
 			
 			self.string_id 							= self.model.config.name_or_path
@@ -935,7 +935,7 @@ class Tuner:
 			
 			self.tokens_to_mask						= tokens
 			
-			log.info(f'Initializing Tokenizer:\t{self.cfg.model.tokenizer}   ({self.cfg.model.string_id})')
+			log.info(f'Initializing Tokenizer:\t{self.cfg.model.string_id}')
 			self.tokenizer 							= tuner_utils.create_tokenizer_with_added_tokens(self.cfg.model.string_id, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)
 			self.model.resize_token_embeddings(len(self.tokenizer))
 			

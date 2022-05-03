@@ -1,0 +1,8 @@
+string_id: google/multiberts-seed_0-step_800k
+friendly_name: multiberts_00-0800k
+
+model_kwargs:
+  local_files_only: true
+tokenizer_kwargs:
+  do_basic_tokenize: false
+  local_files_only: true

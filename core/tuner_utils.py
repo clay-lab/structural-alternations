@@ -744,7 +744,7 @@ def create_tokenizer_with_added_tokens(
 	'''
 	kwargs.update(dict(use_fast=False))
 	
-	if re.search(r'(^(distil)?bert-)|(/multiberts-)', model_id):
+	if re.search(r'(^(distil)?bert-)|(multiberts-)', model_id):
 		return create_bert_tokenizer_with_added_tokens(model_id, tokens_to_mask, delete_tmp_vocab_files, **kwargs)
 	elif re.search(r'^roberta-', model_id):
 		return create_roberta_tokenizer_with_added_tokens(model_id, tokens_to_mask, delete_tmp_vocab_files, **kwargs)	

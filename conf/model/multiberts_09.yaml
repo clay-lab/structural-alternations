@@ -1,5 +1,3 @@
-base_class: BertForMaskedLM
-tokenizer: BertTokenizer
 string_id: google/multiberts-seed_9
 friendly_name: multiberts_09
 

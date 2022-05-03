@@ -64,10 +64,10 @@ class EmbeddingClassifier:
 		self.cfg = OmegaConf.load(os.path.join(cfg_or_path, '.hydra', 'config.yaml')) if isinstance(cfg_or_path, str) else cfg_or_path
 		self.checkpoint_dir = cfg_or_path if isinstance(cfg_or_path, str) else os.getcwd()
 		
-		log.info(f'Initializing Tokenizer:\t{self.cfg.model.tokenizer}')
+		log.info(f'Initializing Tokenizer:\t{self.cfg.model.string_id}')
 		self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.model.string_id, use_fast=False, **self.cfg.model.tokenizer_kwargs)
 		
-		log.info(f'Initializing Model:\t{self.cfg.model.base_class}')
+		log.info(f'Initializing Model:\t{self.cfg.model.string_id}')
 		self.model = AutoModelForMaskedLM.from_pretrained(self.cfg.model.string_id, **self.cfg.model.model_kwargs)
 		self.embeddings = getattr(self.model, self.model.config.model_type).embeddings.word_embeddings.weight.detach()
 		
@@ -264,7 +264,7 @@ class EmbeddingClassifier:
 		to_remove = []
 		for i, token in enumerate(formatted_tokens.copy()):
 			if self.tokenizer.convert_tokens_to_ids(token) == self.tokenizer.convert_tokens_to_ids(self.tokenizer.unk_token):
-				log.warning(f'{token} does not exist in {self.cfg.model.base_class}! No prediction will be made for this token.')
+				log.warning(f'{token} does not exist in {self.cfg.model.string_id}! No prediction will be made for this token.')
 				to_remove.append(i)
 		
 		tokens = [token for token in tokens if not tokens.index(token) in to_remove]
