@@ -59,13 +59,7 @@ def check_args(cfg: DictConfig) -> None:
 	
 	predictions 			= get_word_predictions(cfg, model_cfgs, candidate_freq_words)
 	assert not predictions.empty, 'No predictions were generated!'
-	
-	predictions_summary 	= summarize_predictions(predictions)	
-	
-	log_predictions_summary(predictions_summary, cfg)
-	
 	predictions 			= add_hyperparameters_to_df(predictions, cfg)
-	predictions_summary 	= add_hyperparameters_to_df(predictions_summary, cfg)
 	
 	# Do this to save the original tensors
 	predictions.to_pickle('predictions.pkl.gz')
@@ -74,6 +68,11 @@ def check_args(cfg: DictConfig) -> None:
 	predictions.odds_ratio = [float(o_r) for o_r in predictions.odds_ratio]
 	predictions.to_csv('predictions.csv.gz', index=False, na_rep='NaN')
 	
+	predictions_summary 	= summarize_predictions(predictions)
+	
+	log_predictions_summary(predictions_summary, cfg)
+	
+	predictions_summary 	= add_hyperparameters_to_df(predictions_summary, cfg)
 	predictions_summary.to_csv('predictions_summary.csv.gz', index=False, na_rep='NaN')
 	
 	# plot the correlations of the sumsq for each pair of model types and report R**2
