@@ -25,7 +25,7 @@ def sbatch_all(s):
 	if len(globbed) == 0:
 		print('No scripts matching expression "' + s[-1] + '" found.')
 		sys.exit(0)
-
+	
 	sbatch_options = {}
 	submit_individually = False if name and not len(globbed) == 1 else True
 	
