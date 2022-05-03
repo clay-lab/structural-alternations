@@ -1,6 +1,8 @@
 defaults:
   - _self_
 
+hydra_glob_dirname: conf
+
 name: salts
 
 s:

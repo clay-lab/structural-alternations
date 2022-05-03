@@ -16,4 +16,4 @@ patterns:
 
 hydra:
   run: 
-    dir: ./outputs/check_args/${tuning_name:${tunings}}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: ./outputs/check_args/${tuning_name:${tunings}}/${now:%Y-%m-%d_%H-%M-%S.%f}

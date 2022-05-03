@@ -1,8 +1,11 @@
+import re
 import os
 import hydra
 import itertools
+
 import sball
 
+from typing import List
 from omegaconf import DictConfig
 
 @hydra.main(config_path='.', config_name='ssplit')
@@ -16,8 +19,11 @@ def split_scripts(cfg: DictConfig) -> None:
 	path, sweeps = cfg.sweep.split()[0], cfg.sweep.split()[1:]
 	all_sweeps = []
 	for sweep in sweeps:
-		key = sweep.split('=')[0]
-		values = sweep.split('=')[1]
+		key = sweep.split('=', 1)[0]
+		values = sweep.split('=', 1)[1]
+		
+		if values.startswith('glob(') and values.endswith(')'):
+			values = parse_values_from_glob(values, os.path.join(cfg.hydra_glob_dirname, key))
 		
 		# this lets us not split list arguments which have commas inside them
 		values = list(set(values.split(','))) if not (values.startswith('[') and values.endswith(']')) else [values]
@@ -63,6 +69,17 @@ def split_scripts(cfg: DictConfig) -> None:
 		expr = ' '.join(filenames)
 		os.chdir(hydra.utils.get_original_cwd())
 		sball.sbatch_all(expr)
+
+def parse_values_from_glob(values: str, hydra_glob_dirname: str) -> List[str]:
+	'''
+	Get values from a glob argument passed to hydra, in the way that hydra would resolve it.
+	
+		params:
+			values (str)		: A str containing an expression starting with glob( and ending with ).
+			hydra_grob_dirname (str): The directory path relative to the original cwd where the configs to be globbed reside.
+	'''
+	breakpoint()
+	
 
 if __name__ == '__main__':
 	
