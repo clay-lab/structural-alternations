@@ -65,15 +65,14 @@ def check_args(cfg: DictConfig) -> None:
 	predictions.to_pickle('predictions.pkl.gz')
 	
 	# Save a CSV to make things easier to work with later
-	predictions.odds_ratio = [float(o_r) for o_r in predictions.odds_ratio]
+	predictions.odds_ratio 	= [float(o_r) for o_r in predictions.odds_ratio]
 	predictions.to_csv('predictions.csv.gz', index=False, na_rep='NaN')
 	
 	predictions_summary 	= summarize_predictions(predictions)
-	
-	log_predictions_summary(predictions_summary, cfg)
-	
 	predictions_summary 	= add_hyperparameters_to_df(predictions_summary, cfg)
 	predictions_summary.to_csv('predictions_summary.csv.gz', index=False, na_rep='NaN')
+	
+	log_predictions_summary(predictions_summary, cfg)
 	
 	# plot the correlations of the sumsq for each pair of model types and report R**2
 	plot_correlations(predictions_summary, cfg)
@@ -313,7 +312,7 @@ def get_word_predictions(
 def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 	# get the mean odds ratios for each argument in each position
 	predictions_summary = predictions \
-		.groupby([c for c in predictions.columns if not c in ['tuning', 'odds_ratio', 'sentence', 'sentence_category', 'sentence_num']]) \
+		.groupby([c for c in predictions.columns if not c in ['tuning', 'reference_sentence_type', 'odds_ratio', 'sentence', 'sentence_category', 'sentence_num']]) \
 		.agg(mean_odds_ratio = ('odds_ratio', 'mean')) \
 		.reset_index()
 	
@@ -333,19 +332,16 @@ def summarize_predictions(predictions: pd.DataFrame) -> pd.DataFrame:
 	
 	# Get averages across all model types
 	averages = predictions_summary.groupby(
-			[c for c in predictions_summary.columns if not re.search('(model_name)|(tuning)|(random_seed)|(token_id)|(SumSq)|(odds_ratio)', c)]
+			[c for c in predictions_summary.columns if not re.search('(model_name)|(tuning)|(reference_sentence_type)|(random_seed)|(token_id)|(SumSq)|(odds_ratio)', c)]
 		)[[c for c in predictions_summary.columns if re.search('(SumSq)|(odds_ratio)', c)]] \
 		.mean() \
 		.reset_index() \
-		.assign(
-			model_name 	= 'average',
-			random_seed = np.nan,
-			token_id 	= np.nan,
-	)
+		.assign(model_name='average')
 	
 	predictions_summary = pd.concat([predictions_summary, averages], ignore_index=True)
 	predictions_summary = predictions_summary.sort_values(['token', 'model_name', 'ratio_name']).reset_index(drop=True)
 	predictions_summary['tuning'] = ','.join(predictions.tuning.unique())
+	predictions_summary['reference_sentence_type'] = ','.join(predictions.reference_sentence_type.unique())
 	
 	return predictions_summary
 
@@ -394,7 +390,7 @@ def log_predictions_summary(
 		model_name 	= model_df.model_name.unique()[0]
 		model_df 	= model_df.copy()
 		model_df 	= model_df.sort_values('token').reset_index(drop=True)
-		assert all(model_df.token.values == averages.token.values), f"Order of tokens doesn't match in {model_name} and averages!"
+		assert all(model_df.token.unique() == averages.token.values), f"Order of tokens doesn't match in {model_name} and averages!"
 		
 		averages[f'{model_name}_diff'] = averages.SumSq - model_df.SumSq
 		if not 'SumSq_diff_average' in averages.columns:
@@ -483,7 +479,7 @@ def log_predictions_summary(
 			df.columns.name 		= None
 			
 			df 						= pd.concat([df] + to_concat + [df_freqs])
-			log.info(f'{num_words} words/argument position * {len(all_gfs)} argument positions with {label} for ' + re.sub(r"\[|\]", "", ratio_name) + f':\n\n{df.to_string()}\n')
+			log.warning(f'{num_words} words/argument position * {len(all_gfs)} argument positions with {label} for ' + re.sub(r"\[|\]", "", ratio_name) + f':\n\n{df.to_string()}\n')
 	
 	with open('args.yaml', 'wt') as out_file:
 		out_file.write(config)
@@ -522,8 +518,8 @@ def plot_correlations(predictions_summary: pd.DataFrame, cfg: DictConfig) -> Non
 	Plots correlations of sumsq odds ratios for all models
 	
 		params:
-			cfg (dictconfig)					: a configuration containing experiment options
 			predictions_summary (pd.DataFrame)	: a dataframe containing a summary of argument predictions
+			cfg (dictconfig)					: a configuration containing experiment options
 	'''
 	def corrfunc(x, y, **kwargs):
 		'''Calculates pearson r add adds it to the corr plot'''
@@ -540,35 +536,97 @@ def plot_correlations(predictions_summary: pd.DataFrame, cfg: DictConfig) -> Non
 		.reset_index()
 	
 	corr.columns.name = None
+	
 	for ratio_name, ratio_name_corr in corr.groupby('ratio_name'):
 		ratio_name_corr = ratio_name_corr.drop('ratio_name', axis=1)
-		g = sns.pairplot(
-			ratio_name_corr, 
-			kind='reg', 
-			corner=True, 
-			plot_kws=dict(
-				line_kws=dict(
-					linewidth=1, 
-					color='r',
-					zorder=5
-				), 
-				scatter_kws=dict(
-					s=8, 
-					linewidth=0
+		
+		# this is too much data to display in an understandable way with individual scatterplots,
+		# so use a heat map instead of the r squareds instead
+		if len(ratio_name_corr.columns) < 6:
+			name = 'Correlation'
+			g = sns.pairplot(
+				ratio_name_corr,
+				kind='reg', 
+				corner=True, 
+				plot_kws=dict(
+					line_kws=dict(
+						linewidth=1, 
+						color='r',
+						zorder=5
+					), 
+					scatter_kws=dict(
+						s=8, 
+						linewidth=0
+					)
 				)
 			)
-		)
+			
+			g.map(corrfunc)
+			
+			g = g.fig
+		else:
+			name = 'R\u00b2'
+			ratio_name_corr = ratio_name_corr.corr(method=lambda x, y: pearsonr(x, y)[0]**2)	
+			
+			base_first = [c for c in ratio_name_corr.columns if not 'multiberts' in c] + \
+						 [c for c in ratio_name_corr.columns if 'multiberts' in c and not '-' in c] + \
+						 [c for c in ratio_name_corr.columns if 'multiberts' in c and '-' in c]
+			
+			ratio_name_corr = ratio_name_corr[base_first].reindex(base_first)
+			
+			mask 			= np.triu(np.ones_like(ratio_name_corr, dtype=bool))
+			g, ax 			= plt.subplots(figsize=(7,7))
+			ax 				= sns.heatmap(
+								ratio_name_corr, 
+								mask=mask, 
+								vmax=1,
+								vmin=0,
+								center=0, 
+								square=True, 
+								linewidths=.275, 
+								cbar_kws={
+									'shrink': .25,
+									'anchor': (-0.9, 0.5),
+								},
+								xticklabels=1,
+								yticklabels=1,
+								ax=ax,
+							)
+			
+			# change tick sizes on colorbar
+			ax.figure.axes[-1].tick_params(labelsize=7)
+			
+			ax.tick_params(
+				top=False, 
+				bottom=False, 
+				left=False, 
+				right=False, 
+				labelleft=True, 
+				labelbottom=True,
+				axis='both',
+				pad=-3
+			)
+			
+			ax.set_xticklabels(ax.get_xmajorticklabels(), fontsize=2.5)
+			ax.set_yticklabels(ax.get_ymajorticklabels(), fontsize=2.5)
+			
+			g.tight_layout(rect=(-0.01,-0.1875,1.23,1.23))
 		
-		g.map(corrfunc)
-		
-		title = f'Correlation of token SumSq differences\nfor log odds {ratio_name.replace("[", "").replace("]", "")} ratios\n'
+		title = f'{name} of token SumSq differences\nfor log odds {ratio_name.replace("[", "").replace("]", "")} ratios\n'
 		title += ('\nWithout' if all(predictions_summary.strip_punct.values) else '\nWith') + ' punctuation, '
 		title += f'target frequency: {predictions_summary.target_freq.unique()[0]}' + (f' (\u00B1{predictions_summary.range.unique()[0]})' if predictions_summary.target_freq.unique()[0] != 'any' else '')
 		title += f'\ndataset: {os.path.splitext(predictions_summary.dataset.unique()[0])[0]}'
 		title +=  '\ndata from ' + ',\n'.join(predictions_summary.tuning.unique()[0].split(','))
-		g.fig.suptitle(title, y = 0.88, fontsize='medium', x = 0.675)
+		g.suptitle(title, x=0.675, y = 0.88, fontsize='medium')
 		
-		plt.savefig('correlations.pdf')
+		plt.savefig(
+			re.sub(
+				r'\[|\]', '', ratio_name.replace('/', '_')
+										.replace('\\\\', '_')
+			) + 
+			f'-{"correlations" if name == "Correlation" else "r_squareds"}.pdf'
+		)
+		
 		plt.close('all')
 		del g
 
