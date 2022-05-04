@@ -1,0 +1,930 @@
+name: newverb_transitive_perf_ext_seed0
+
+reference_sentence_type: perfect transitive
+exp_type: newverb
+
+to_mask:
+  - BLORKED
+  
+num_words: 6 # how many words to find when using check_args.py?
+
+which_args: model
+# which arguments to use during fine-tuning/eval? 
+#   'model' uses the args specified for the model being fine-tuned if given
+#   otherwise, specify one of the sets below by name
+
+# arg sets
+# determined programatically as having relatively unbiased starting states
+# these were determined on the basis of newverb_transitive_perf_ext, newverb_transitive_past_ext, newverb_passive_perf_ext, and newverb_passive_past_ext
+
+# These arguments generated using model(s): bert, distilbert, multiberts_00, multiberts_00-0000k, multiberts_00-0020k, multiberts_00-0040k, multiberts_00-0060k, multiberts_00-0080k, multiberts_00-0100k, multiberts_00-0120k, multiberts_00-0140k, multiberts_00-0160k, multiberts_00-0180k, multiberts_00-0200k, multiberts_00-0300k, multiberts_00-0400k, multiberts_00-0500k, multiberts_00-0600k, multiberts_00-0700k, multiberts_00-0800k, multiberts_00-0900k, multiberts_00-1000k, multiberts_00-1100k, multiberts_00-1200k, multiberts_00-1300k, multiberts_00-1400k, multiberts_00-1500k, multiberts_00-1600k, multiberts_00-1700k, multiberts_00-1800k, multiberts_00-1900k, multiberts_00-2000k, multiberts_01, multiberts_01-0000k, multiberts_01-0020k, multiberts_01-0040k, multiberts_01-0060k, multiberts_01-0080k, multiberts_01-0100k, multiberts_01-0120k, multiberts_01-0140k, multiberts_01-0160k, multiberts_01-0180k, multiberts_01-0200k, multiberts_01-0300k, multiberts_01-0400k, multiberts_01-0500k, multiberts_01-0600k, multiberts_01-0700k, multiberts_01-0800k, multiberts_01-0900k, multiberts_01-1000k, multiberts_01-1100k, multiberts_01-1200k, multiberts_01-1300k, multiberts_01-1400k, multiberts_01-1500k, multiberts_01-1600k, multiberts_01-1700k, multiberts_01-1800k, multiberts_01-1900k, multiberts_01-2000k, multiberts_02, multiberts_02-0000k, multiberts_02-0020k, multiberts_02-0040k, multiberts_02-0060k, multiberts_02-0080k, multiberts_02-0100k, multiberts_02-0120k, multiberts_02-0140k, multiberts_02-0160k, multiberts_02-0180k, multiberts_02-0200k, multiberts_02-0300k, multiberts_02-0400k, multiberts_02-0500k, multiberts_02-0600k, multiberts_02-0700k, multiberts_02-0800k, multiberts_02-0900k, multiberts_02-1000k, multiberts_02-1100k, multiberts_02-1200k, multiberts_02-1300k, multiberts_02-1400k, multiberts_02-1500k, multiberts_02-1600k, multiberts_02-1700k, multiberts_02-1800k, multiberts_02-1900k, multiberts_02-2000k, multiberts_03, multiberts_03-0000k, multiberts_03-0020k, multiberts_03-0040k, multiberts_03-0060k, multiberts_03-0080k, multiberts_03-0100k, multiberts_03-0120k, multiberts_03-0140k, multiberts_03-0160k, multiberts_03-0180k, multiberts_03-0200k, multiberts_03-0300k, multiberts_03-0400k, multiberts_03-0500k, multiberts_03-0600k, multiberts_03-0700k, multiberts_03-0800k, multiberts_03-0900k, multiberts_03-1000k, multiberts_03-1100k, multiberts_03-1200k, multiberts_03-1300k, multiberts_03-1400k, multiberts_03-1500k, multiberts_03-1600k, multiberts_03-1700k, multiberts_03-1800k, multiberts_03-1900k, multiberts_03-2000k, multiberts_04, multiberts_04-0000k, multiberts_04-0020k, multiberts_04-0040k, multiberts_04-0060k, multiberts_04-0080k, multiberts_04-0100k, multiberts_04-0120k, multiberts_04-0140k, multiberts_04-0160k, multiberts_04-0180k, multiberts_04-0200k, multiberts_04-0300k, multiberts_04-0400k, multiberts_04-0500k, multiberts_04-0600k, multiberts_04-0700k, multiberts_04-0800k, multiberts_04-0900k, multiberts_04-1000k, multiberts_04-1100k, multiberts_04-1200k, multiberts_04-1300k, multiberts_04-1400k, multiberts_04-1500k, multiberts_04-1600k, multiberts_04-1700k, multiberts_04-1800k, multiberts_04-1900k, multiberts_04-2000k, multiberts_05, multiberts_06, multiberts_07, multiberts_08, multiberts_09, multiberts_10, multiberts_11, multiberts_12, multiberts_13, multiberts_14, multiberts_15, multiberts_16, multiberts_17, multiberts_18, multiberts_19, multiberts_20, multiberts_21, multiberts_22, multiberts_23, multiberts_24, roberta
+# and tuning data: newverb_transitive_perf_ext, newverb_transitive_past_ext, newverb_passive_perf_ext, newverb_passive_past_ext
+
+most_similar:
+  '[subj]': [poly, biology, chapter, translation, processing, technology]
+  '[obj]':  [security, politics, communications, health, commerce, gaming]
+
+best_average:
+  '[subj]': [processing, politics, nutrition, security, carbon, styles]
+  '[obj]':  [communications, poly, biology, sports, gaming, commerce]
+
+bert_seed: 1735078509
+bert:
+  '[subj]': [poly, harm, series, gall, sync, register]
+  '[obj]':  [percent, podcast, cent, commerce, terrorism, spawn]
+
+distilbert_seed: 1199460794
+distilbert:
+  '[subj]': [definition, java, register, girlfriend, center, scan]
+  '[obj]':  [post, context, percent, command, punk, circle]
+
+multiberts_00_seed: 2093877478
+multiberts_00:
+  '[subj]': [breeding, research, tier, section, series, gram]
+  '[obj]':  [haven, layer, wing, versions, rave, spec]
+
+multiberts_00-0000k_seed: 3170474137
+multiberts_00-0000k:
+  '[subj]': [sect, life, chief, stairs, site, buff]
+  '[obj]':  [bench, limits, noon, prints, park, moon]
+
+multiberts_00-0020k_seed: 272837835
+multiberts_00-0020k:
+  '[subj]': [pause, prints, version, stories, lust, compliance]
+  '[obj]':  [methyl, detail, combat, flash, behavior, rule]
+
+multiberts_00-0040k_seed: 3327111860
+multiberts_00-0040k:
+  '[subj]': [layer, mount, sale, blocks, section, self]
+  '[obj]':  [sports, generation, tier, projects, jobs, scan]
+
+multiberts_00-0060k_seed: 497178938
+multiberts_00-0060k:
+  '[subj]': [campus, chapter, processing, lane, ridge, properties]
+  '[obj]':  [sports, performance, display, regulation, tech, layer]
+
+multiberts_00-0080k_seed: 380931733
+multiberts_00-0080k:
+  '[subj]': [nature, puff, campus, health, chrome, layer]
+  '[obj]':  [gaming, processing, methyl, carbon, science, boarding]
+
+multiberts_00-0100k_seed: 1405906431
+multiberts_00-0100k:
+  '[subj]': [relations, haven, levels, biology, products, liter]
+  '[obj]':  [processing, methyl, layer, nutrition, commerce, versions]
+
+multiberts_00-0120k_seed: 4096465677
+multiberts_00-0120k:
+  '[subj]': [version, relations, haven, regulation, bytes, harm]
+  '[obj]':  [products, gaming, nexus, mode, control, paragraph]
+
+multiberts_00-0140k_seed: 2030792914
+multiberts_00-0140k:
+  '[subj]': [processing, caliber, gaming, pause, boarding, byte]
+  '[obj]':  [communications, regulation, biology, health, politics, layer]
+
+multiberts_00-0160k_seed: 3475851352
+multiberts_00-0160k:
+  '[subj]': [processing, phase, nutrition, micro, regulation, projects]
+  '[obj]':  [communications, gaming, development, health, pause, beta]
+
+multiberts_00-0180k_seed: 1439484448
+multiberts_00-0180k:
+  '[subj]': [processing, nutrition, communications, relations, gaming, node]
+  '[obj]':  [notes, security, regulation, stress, phase, science]
+
+multiberts_00-0200k_seed: 3953740942
+multiberts_00-0200k:
+  '[subj]': [processing, corn, paragraph, methyl, treatment, regulation]
+  '[obj]':  [layer, communications, sports, trace, byte, levels]
+
+multiberts_00-0300k_seed: 2525031994
+multiberts_00-0300k:
+  '[subj]': [commerce, relations, bytes, java, chrome, communications]
+  '[obj]':  [beta, gaming, processing, lies, health, politics]
+
+multiberts_00-0400k_seed: 1686166037
+multiberts_00-0400k:
+  '[subj]': [commerce, context, gaming, versions, processing, miss]
+  '[obj]':  [communications, health, production, research, security, chrome]
+
+multiberts_00-0500k_seed: 4147633934
+multiberts_00-0500k:
+  '[subj]': [processing, commerce, styles, jobs, sector, bytes]
+  '[obj]':  [gaming, relations, chrome, spec, beta, tech]
+
+multiberts_00-0600k_seed: 3998091435
+multiberts_00-0600k:
+  '[subj]': [gaming, noon, methyl, levels, commerce, communications]
+  '[obj]':  [podcast, cent, clips, pixel, versions, tones]
+
+multiberts_00-0700k_seed: 484629933
+multiberts_00-0700k:
+  '[subj]': [layer, tech, methyl, styles, breeding, gaming]
+  '[obj]':  [projects, chrome, versions, spec, bytes, cases]
+
+multiberts_00-0800k_seed: 3007623971
+multiberts_00-0800k:
+  '[subj]': [versions, layer, tech, scan, percent, spec]
+  '[obj]':  [gaming, breeding, puff, million, section, methyl]
+
+multiberts_00-0900k_seed: 2985071039
+multiberts_00-0900k:
+  '[subj]': [gaming, breeding, tech, scan, puff, shirts]
+  '[obj]':  [versions, liter, dollar, percent, wing, paste]
+
+multiberts_00-1000k_seed: 1532994146
+multiberts_00-1000k:
+  '[subj]': [versions, gaming, communications, processing, cent, bytes]
+  '[obj]':  [breeding, liter, puff, lies, sports, rows]
+
+multiberts_00-1100k_seed: 2374195178
+multiberts_00-1100k:
+  '[subj]': [tier, gaming, percent, pixel, cent, fest]
+  '[obj]':  [spec, ward, blood, phase, scan, wing]
+
+multiberts_00-1200k_seed: 891829936
+multiberts_00-1200k:
+  '[subj]': [sports, percent, breeding, tier, versions, processing]
+  '[obj]':  [spec, haven, phase, methyl, pine, research]
+
+multiberts_00-1300k_seed: 3531305431
+multiberts_00-1300k:
+  '[subj]': [tier, wing, breeding, venture, sports, sector]
+  '[obj]':  [spec, percent, pause, section, research, processing]
+
+multiberts_00-1400k_seed: 3291245784
+multiberts_00-1400k:
+  '[subj]': [pause, breeding, series, processing, layer, foot]
+  '[obj]':  [versions, research, lore, sports, section, wing]
+
+multiberts_00-1500k_seed: 673420331
+multiberts_00-1500k:
+  '[subj]': [haven, cent, gram, versions, spec, nutrition]
+  '[obj]':  [processing, tier, phase, breeding, percent, sector]
+
+multiberts_00-1600k_seed: 3175598134
+multiberts_00-1600k:
+  '[subj]': [sector, research, section, context, rave, sports]
+  '[obj]':  [haven, tier, wing, breeding, puff, pixel]
+
+multiberts_00-1700k_seed: 2455110129
+multiberts_00-1700k:
+  '[subj]': [haven, wing, breeding, scan, percent, tier]
+  '[obj]':  [section, versions, header, gram, research, bits]
+
+multiberts_00-1800k_seed: 1271266526
+multiberts_00-1800k:
+  '[subj]': [layer, breeding, wing, gram, spec, puff]
+  '[obj]':  [haven, section, versions, research, series, division]
+
+multiberts_00-1900k_seed: 388885041
+multiberts_00-1900k:
+  '[subj]': [breeding, research, wing, series, section, spec]
+  '[obj]':  [haven, layer, versions, percent, gram, bits]
+
+multiberts_00-2000k_seed: 4072588899
+multiberts_00-2000k:
+  '[subj]': [breeding, research, tier, section, series, gram]
+  '[obj]':  [haven, layer, wing, versions, rave, spec]
+
+multiberts_01_seed: 1058318319
+multiberts_01:
+  '[subj]': [copy, display, vector, spawn, processing, gravity]
+  '[obj]':  [tier, sports, design, version, dimension, politics]
+
+multiberts_01-0000k_seed: 2109177473
+multiberts_01-0000k:
+  '[subj]': [locks, keys, hood, roads, child, gold]
+  '[obj]':  [dream, game, custom, guards, speech, byte]
+
+multiberts_01-0020k_seed: 1077977614
+multiberts_01-0020k:
+  '[subj]': [processing, biology, versions, percent, storage, cream]
+  '[obj]':  [nutrition, fiction, spawn, pause, version, byte]
+
+multiberts_01-0040k_seed: 4111355930
+multiberts_01-0040k:
+  '[subj]': [byte, beer, violence, discrimination, sports, laughter]
+  '[obj]':  [health, chant, processing, fortune, beta, verse]
+
+multiberts_01-0060k_seed: 1888377956
+multiberts_01-0060k:
+  '[subj]': [nutrition, gravity, methyl, prep, layer, violence]
+  '[obj]':  [carbon, corn, devices, chant, cakes, comment]
+
+multiberts_01-0080k_seed: 545041382
+multiberts_01-0080k:
+  '[subj]': [carbon, places, processing, styles, comment, nutrition]
+  '[obj]':  [health, communications, biology, layer, housing, storage]
+
+multiberts_01-0100k_seed: 3371158004
+multiberts_01-0100k:
+  '[subj]': [podcast, prop, strap, verbs, styles, nutrition]
+  '[obj]':  [sale, communications, layer, biology, fights, culture]
+
+multiberts_01-0120k_seed: 4163899692
+multiberts_01-0120k:
+  '[subj]': [relations, layer, podcast, resolution, spawn, fiction]
+  '[obj]':  [versions, styles, sale, verbs, sports, housing]
+
+multiberts_01-0140k_seed: 2609401207
+multiberts_01-0140k:
+  '[subj]': [styles, verbs, poly, sports, carbon, sale]
+  '[obj]':  [shirts, podcast, nutrition, cases, cigarettes, byte]
+
+multiberts_01-0160k_seed: 3627548618
+multiberts_01-0160k:
+  '[subj]': [poly, slice, pound, processing, carbon, percent]
+  '[obj]':  [byte, levels, steel, fiction, verbs, noon]
+
+multiberts_01-0180k_seed: 1626240705
+multiberts_01-0180k:
+  '[subj]': [relations, nutrition, politics, products, packages, bows]
+  '[obj]':  [styles, bugs, devices, types, cases, poly]
+
+multiberts_01-0200k_seed: 973226421
+multiberts_01-0200k:
+  '[subj]': [poly, history, communications, haven, gram, carbon]
+  '[obj]':  [methyl, processing, miss, styles, cigarettes, nutrition]
+
+multiberts_01-0300k_seed: 487518618
+multiberts_01-0300k:
+  '[subj]': [poly, fiction, politics, carbon, vector, brother]
+  '[obj]':  [spec, services, gran, backs, communications, copy]
+
+multiberts_01-0400k_seed: 2887923374
+multiberts_01-0400k:
+  '[subj]': [communications, democracy, processing, housing, gravity, faith]
+  '[obj]':  [commerce, politics, storage, poly, carbon, history]
+
+multiberts_01-0500k_seed: 4144852759
+multiberts_01-0500k:
+  '[subj]': [housing, commerce, democracy, communications, versions, gram]
+  '[obj]':  [methyl, miss, gran, faith, processing, sports]
+
+multiberts_01-0600k_seed: 3094011846
+multiberts_01-0600k:
+  '[subj]': [processing, history, housing, gram, rush, gravity]
+  '[obj]':  [foot, democracy, sports, nutrition, biology, gran]
+
+multiberts_01-0700k_seed: 1908492277
+multiberts_01-0700k:
+  '[subj]': [methyl, miss, terrorism, lambda, byte, processing]
+  '[obj]':  [haven, history, sports, piracy, verbs, faith]
+
+multiberts_01-0800k_seed: 2878053218
+multiberts_01-0800k:
+  '[subj]': [democracy, sports, boarding, methyl, vector, terrorism]
+  '[obj]':  [communications, mining, tier, faith, processing, carbon]
+
+multiberts_01-0900k_seed: 2359518335
+multiberts_01-0900k:
+  '[subj]': [section, methyl, versions, lies, communications, lambda]
+  '[obj]':  [democracy, sports, nexus, politics, sections, processing]
+
+multiberts_01-1000k_seed: 3412340340
+multiberts_01-1000k:
+  '[subj]': [poly, politics, parts, democracy, lambda, sports]
+  '[obj]':  [miss, processing, haven, section, projects, review]
+
+multiberts_01-1100k_seed: 1402816149
+multiberts_01-1100k:
+  '[subj]': [comments, frame, verbs, report, chapter, democracy]
+  '[obj]':  [lambda, sports, miss, season, faith, section]
+
+multiberts_01-1200k_seed: 647927843
+multiberts_01-1200k:
+  '[subj]': [sports, verbs, democracy, miss, part, versions]
+  '[obj]':  [section, cases, gram, lambda, faith, chapter]
+
+multiberts_01-1300k_seed: 3801411856
+multiberts_01-1300k:
+  '[subj]': [democracy, display, copy, creation, nexus, tier]
+  '[obj]':  [miss, version, faith, research, processing, print]
+
+multiberts_01-1400k_seed: 2915590319
+multiberts_01-1400k:
+  '[subj]': [display, sports, section, nexus, politics, spec]
+  '[obj]':  [processing, democracy, version, gravity, lambda, print]
+
+multiberts_01-1500k_seed: 2574540824
+multiberts_01-1500k:
+  '[subj]': [section, nexus, faith, processing, format, gram]
+  '[obj]':  [relations, display, review, brand, chapter, birth]
+
+multiberts_01-1600k_seed: 3008871336
+multiberts_01-1600k:
+  '[subj]': [display, tier, part, creation, politics, sale]
+  '[obj]':  [democracy, version, brand, copy, gram, campaign]
+
+multiberts_01-1700k_seed: 1895301188
+multiberts_01-1700k:
+  '[subj]': [display, sports, copy, part, fiction, review]
+  '[obj]':  [tier, processing, communications, section, gravity, dimension]
+
+multiberts_01-1800k_seed: 863675985
+multiberts_01-1800k:
+  '[subj]': [tier, sports, display, version, creation, politics]
+  '[obj]':  [copy, vector, gravity, communications, dimension, part]
+
+multiberts_01-1900k_seed: 2539681242
+multiberts_01-1900k:
+  '[subj]': [copy, version, sports, part, communications, creation]
+  '[obj]':  [tier, vector, display, dimension, spawn, fiction]
+
+multiberts_01-2000k_seed: 1754632203
+multiberts_01-2000k:
+  '[subj]': [copy, display, vector, spawn, processing, gravity]
+  '[obj]':  [tier, sports, design, version, dimension, politics]
+
+multiberts_02_seed: 3318890200
+multiberts_02:
+  '[subj]': [noon, poly, lambda, steam, vantage, gender]
+  '[obj]':  [nutrition, frame, liter, processing, tier, rice]
+
+multiberts_02-0000k_seed: 1448932
+multiberts_02-0000k:
+  '[subj]': [master, contract, morning, music, cookie, hero]
+  '[obj]':  [disc, treatment, camera, skill, party, steam]
+
+multiberts_02-0020k_seed: 481010941
+multiberts_02-0020k:
+  '[subj]': [writ, terrorism, poly, discrimination, cigarettes, lace]
+  '[obj]':  [piracy, lambda, science, cakes, nature, sync]
+
+multiberts_02-0040k_seed: 977608731
+multiberts_02-0040k:
+  '[subj]': [science, paste, nutrition, slice, culture, storage]
+  '[obj]':  [politics, policy, cigarettes, commerce, regulation, discrimination]
+
+multiberts_02-0060k_seed: 1099990229
+multiberts_02-0060k:
+  '[subj]': [methyl, fiction, versions, print, notation, contact]
+  '[obj]':  [biology, pause, gram, commerce, copy, nutrition]
+
+multiberts_02-0080k_seed: 2586408838
+multiberts_02-0080k:
+  '[subj]': [pause, commerce, storage, versions, communications, sports]
+  '[obj]':  [puff, caliber, bytes, fiction, science, culture]
+
+multiberts_02-0100k_seed: 1413958760
+multiberts_02-0100k:
+  '[subj]': [communications, noon, termination, biology, poly, storage]
+  '[obj]':  [commerce, violence, laughter, methyl, security, cigarettes]
+
+multiberts_02-0120k_seed: 2037429044
+multiberts_02-0120k:
+  '[subj]': [commerce, security, communications, lambda, justice, gaming]
+  '[obj]':  [bytes, poly, processing, gran, noon, methyl]
+
+multiberts_02-0140k_seed: 1370983113
+multiberts_02-0140k:
+  '[subj]': [communications, methyl, vantage, boarding, security, discrimination]
+  '[obj]':  [commerce, poly, bytes, piracy, laughter, sports]
+
+multiberts_02-0160k_seed: 173453365
+multiberts_02-0160k:
+  '[subj]': [versions, cigarettes, terrorism, duty, deals, communication]
+  '[obj]':  [security, policy, lambda, politics, piracy, communications]
+
+multiberts_02-0180k_seed: 594263481
+multiberts_02-0180k:
+  '[subj]': [types, beta, processing, bytes, nutrition, storage]
+  '[obj]':  [communication, boarding, spec, vantage, laughter, behavior]
+
+multiberts_02-0200k_seed: 3262696688
+multiberts_02-0200k:
+  '[subj]': [nutrition, technology, security, bytes, faith, sports]
+  '[obj]':  [communications, vantage, business, lambda, deals, bucks]
+
+multiberts_02-0300k_seed: 1476990933
+multiberts_02-0300k:
+  '[subj]': [communications, podcast, vantage, processing, development, faith]
+  '[obj]':  [security, bytes, beta, biology, rust, gall]
+
+multiberts_02-0400k_seed: 305653879
+multiberts_02-0400k:
+  '[subj]': [sync, tech, communications, rose, percent, faith]
+  '[obj]':  [versions, fiction, byte, breeding, shit, sites]
+
+multiberts_02-0500k_seed: 1176880505
+multiberts_02-0500k:
+  '[subj]': [nutrition, lace, species, carbon, fiction, security]
+  '[obj]':  [communications, versions, lists, cash, micro, cent]
+
+multiberts_02-0600k_seed: 3699417609
+multiberts_02-0600k:
+  '[subj]': [tier, communications, scope, tech, policy, nutrition]
+  '[obj]':  [section, lace, sports, science, styles, faith]
+
+multiberts_02-0700k_seed: 598227187
+multiberts_02-0700k:
+  '[subj]': [nutrition, communications, sports, stocks, styles, methyl]
+  '[obj]':  [tech, liter, layer, mans, poly, types]
+
+multiberts_02-0800k_seed: 1417900097
+multiberts_02-0800k:
+  '[subj]': [frame, lambda, tier, node, health, styles]
+  '[obj]':  [nutrition, resource, gram, tick, poly, faith]
+
+multiberts_02-0900k_seed: 373975054
+multiberts_02-0900k:
+  '[subj]': [sports, liter, micro, layer, projects, poly]
+  '[obj]':  [nutrition, steam, modules, versions, types, methyl]
+
+multiberts_02-1000k_seed: 871900645
+multiberts_02-1000k:
+  '[subj]': [sections, faith, lambda, tier, liter, sports]
+  '[obj]':  [node, steam, modules, cigarettes, poly, pixel]
+
+multiberts_02-1100k_seed: 4084052487
+multiberts_02-1100k:
+  '[subj]': [nutrition, resource, places, layer, processing, method]
+  '[obj]':  [sports, boarding, faith, pixel, communications, classes]
+
+multiberts_02-1200k_seed: 3935731226
+multiberts_02-1200k:
+  '[subj]': [nutrition, faith, sports, cigarettes, lace, liter]
+  '[obj]':  [frame, poly, gender, steam, micro, security]
+
+multiberts_02-1300k_seed: 1236860466
+multiberts_02-1300k:
+  '[subj]': [frame, poly, tier, method, pocket, security]
+  '[obj]':  [steam, processing, liter, nutrition, vantage, socket]
+
+multiberts_02-1400k_seed: 1767792034
+multiberts_02-1400k:
+  '[subj]': [processing, frame, nutrition, noon, sports, poly]
+  '[obj]':  [steam, vantage, layer, dollar, storage, communications]
+
+multiberts_02-1500k_seed: 1650674857
+multiberts_02-1500k:
+  '[subj]': [vantage, poly, liter, lambda, tier, lace]
+  '[obj]':  [steam, nutrition, rice, cash, tech, gender]
+
+multiberts_02-1600k_seed: 540607612
+multiberts_02-1600k:
+  '[subj]': [gender, processing, poly, rice, control, tech]
+  '[obj]':  [steam, nutrition, frame, liter, tier, lambda]
+
+multiberts_02-1700k_seed: 1308875031
+multiberts_02-1700k:
+  '[subj]': [nutrition, processing, poly, liter, water, faith]
+  '[obj]':  [steam, noon, tier, vantage, control, gaming]
+
+multiberts_02-1800k_seed: 1379496581
+multiberts_02-1800k:
+  '[subj]': [poly, nutrition, liter, frame, scope, processing]
+  '[obj]':  [rice, gender, noon, steam, lambda, section]
+
+multiberts_02-1900k_seed: 1167647659
+multiberts_02-1900k:
+  '[subj]': [noon, frame, lambda, gender, rice, scope]
+  '[obj]':  [nutrition, poly, tier, liter, processing, vantage]
+
+multiberts_02-2000k_seed: 2263893677
+multiberts_02-2000k:
+  '[subj]': [noon, poly, lambda, steam, vantage, gender]
+  '[obj]':  [nutrition, frame, liter, processing, tier, rice]
+
+multiberts_03_seed: 2275476260
+multiberts_03:
+  '[subj]': [ping, lambda, vantage, gran, tick, trace]
+  '[obj]':  [carbon, places, lace, ling, byte, pixel]
+
+multiberts_03-0000k_seed: 585085723
+multiberts_03-0000k:
+  '[subj]': [yards, maid, creation, winner, speed, pool]
+  '[obj]':  [respect, crime, bedroom, month, growth, hole]
+
+multiberts_03-0020k_seed: 2847455116
+multiberts_03-0020k:
+  '[subj]': [fiction, biology, comfort, thanks, nutrition, billion]
+  '[obj]':  [democracy, storage, compliance, relations, health, laughter]
+
+multiberts_03-0040k_seed: 3654353323
+multiberts_03-0040k:
+  '[subj]': [processing, fiction, setup, poly, puff, methyl]
+  '[obj]':  [version, print, formation, java, laughter, health]
+
+multiberts_03-0060k_seed: 3613031890
+multiberts_03-0060k:
+  '[subj]': [panic, processing, java, health, pine, claw]
+  '[obj]':  [terrorism, puff, security, hash, gravity, lace]
+
+multiberts_03-0080k_seed: 1189235393
+multiberts_03-0080k:
+  '[subj]': [biology, billion, million, sync, butt, security]
+  '[obj]':  [discrimination, powder, treatment, devices, steel, processing]
+
+multiberts_03-0100k_seed: 4089818281
+multiberts_03-0100k:
+  '[subj]': [sync, treatment, nutrition, lust, query, prof]
+  '[obj]':  [processing, writ, science, production, biology, discrimination]
+
+multiberts_03-0120k_seed: 168462816
+multiberts_03-0120k:
+  '[subj]': [gaming, lambda, hash, java, commerce, design]
+  '[obj]':  [devices, poly, liter, writ, combat, yards]
+
+multiberts_03-0140k_seed: 1378814902
+multiberts_03-0140k:
+  '[subj]': [bytes, nutrition, comment, devices, politics, relations]
+  '[obj]':  [products, liter, security, frames, breeding, nature]
+
+multiberts_03-0160k_seed: 3613091418
+multiberts_03-0160k:
+  '[subj]': [products, liter, comments, relations, caliber, regulation]
+  '[obj]':  [security, breeding, devices, communications, research, technology]
+
+multiberts_03-0180k_seed: 3369544416
+multiberts_03-0180k:
+  '[subj]': [processing, prints, production, writ, justice, technology]
+  '[obj]':  [bytes, hash, steam, breeding, protection, biology]
+
+multiberts_03-0200k_seed: 4054917813
+multiberts_03-0200k:
+  '[subj]': [gaming, policy, prints, writ, bows, breeding]
+  '[obj]':  [hash, cases, products, comments, notes, versions]
+
+multiberts_03-0300k_seed: 4068483073
+multiberts_03-0300k:
+  '[subj]': [nutrition, writ, trace, prints, tech, pixel]
+  '[obj]':  [bytes, coins, breeding, housing, technology, miss]
+
+multiberts_03-0400k_seed: 152431283
+multiberts_03-0400k:
+  '[subj]': [biology, lambda, setup, communications, versions, commerce]
+  '[obj]':  [writ, hash, bytes, prints, paragraph, fiction]
+
+multiberts_03-0500k_seed: 4077017411
+multiberts_03-0500k:
+  '[subj]': [communications, bytes, spec, ping, caliber, faith]
+  '[obj]':  [writ, relations, display, security, frame, versions]
+
+multiberts_03-0600k_seed: 341981326
+multiberts_03-0600k:
+  '[subj]': [yards, spec, versions, noon, section, chapter]
+  '[obj]':  [tick, flash, bytes, faith, sites, sync]
+
+multiberts_03-0700k_seed: 1032717651
+multiberts_03-0700k:
+  '[subj]': [cash, chapter, nutrition, pixel, noon, versions]
+  '[obj]':  [pocket, sites, bytes, section, sports, ping]
+
+multiberts_03-0800k_seed: 4155375203
+multiberts_03-0800k:
+  '[subj]': [communications, pocket, byte, technology, politics, mode]
+  '[obj]':  [tick, funding, fashion, folk, sports, nutrition]
+
+multiberts_03-0900k_seed: 2790523272
+multiberts_03-0900k:
+  '[subj]': [pixel, versions, byte, vantage, pocket, coins]
+  '[obj]':  [communications, control, ping, security, fiction, percent]
+
+multiberts_03-1000k_seed: 4089519294
+multiberts_03-1000k:
+  '[subj]': [ping, communications, styles, sync, pixel, tick]
+  '[obj]':  [vantage, sports, spec, yards, settings, lambda]
+
+multiberts_03-1100k_seed: 2282133282
+multiberts_03-1100k:
+  '[subj]': [pixel, trace, communications, ling, contact, security]
+  '[obj]':  [control, gran, poly, yards, ping, processing]
+
+multiberts_03-1200k_seed: 1560701518
+multiberts_03-1200k:
+  '[subj]': [processing, control, pixel, parts, beta, fiction]
+  '[obj]':  [ping, versions, communications, writ, cases, yards]
+
+multiberts_03-1300k_seed: 1583004820
+multiberts_03-1300k:
+  '[subj]': [processing, pixel, bytes, byte, gran, ling]
+  '[obj]':  [tick, percent, ping, fiction, control, lambda]
+
+multiberts_03-1400k_seed: 5988287
+multiberts_03-1400k:
+  '[subj]': [ping, ling, haven, lambda, miss, header]
+  '[obj]':  [processing, pixel, control, gran, percent, trace]
+
+multiberts_03-1500k_seed: 2638165917
+multiberts_03-1500k:
+  '[subj]': [carbon, vantage, gran, processing, ling, trace]
+  '[obj]':  [ping, biology, pixel, lambda, miss, lace]
+
+multiberts_03-1600k_seed: 3244964166
+multiberts_03-1600k:
+  '[subj]': [pixel, carbon, ping, miss, lambda, lace]
+  '[obj]':  [ling, gran, vantage, tick, byte, percent]
+
+multiberts_03-1700k_seed: 4082088203
+multiberts_03-1700k:
+  '[subj]': [ping, places, pixel, trace, discrimination, ling]
+  '[obj]':  [carbon, lambda, vantage, writ, lace, miss]
+
+multiberts_03-1800k_seed: 1354413933
+multiberts_03-1800k:
+  '[subj]': [carbon, ping, lace, percent, miss, byte]
+  '[obj]':  [vantage, ling, places, gran, lambda, tick]
+
+multiberts_03-1900k_seed: 2751599598
+multiberts_03-1900k:
+  '[subj]': [ping, lambda, places, gran, pixel, miss]
+  '[obj]':  [carbon, lace, ling, vantage, tick, byte]
+
+multiberts_03-2000k_seed: 1054671339
+multiberts_03-2000k:
+  '[subj]': [ping, lambda, vantage, gran, tick, trace]
+  '[obj]':  [carbon, places, lace, ling, byte, pixel]
+
+multiberts_04_seed: 2344097740
+multiberts_04:
+  '[subj]': [processing, scan, miss, print, culture, shock]
+  '[obj]':  [communications, gender, review, relative, sites, breeding]
+
+multiberts_04-0000k_seed: 2253013237
+multiberts_04-0000k:
+  '[subj]': [grid, browser, rider, boot, cent, piece]
+  '[obj]':  [modules, doctor, communications, suit, locks, mount]
+
+multiberts_04-0020k_seed: 3588061564
+multiberts_04-0020k:
+  '[subj]': [versions, bytes, rent, percent, modules, luck]
+  '[obj]':  [fiction, folk, projects, lighting, bits, relations]
+
+multiberts_04-0040k_seed: 1758577986
+multiberts_04-0040k:
+  '[subj]': [version, nature, pause, projects, termination, progress]
+  '[obj]':  [byte, trace, biology, processing, reality, birth]
+
+multiberts_04-0060k_seed: 2846910913
+multiberts_04-0060k:
+  '[subj]': [processing, summary, policy, paragraph, grade, version]
+  '[obj]':  [query, commerce, notes, mode, treatment, sports]
+
+multiberts_04-0080k_seed: 4182563384
+multiberts_04-0080k:
+  '[subj]': [sports, sale, campus, faith, culture, percent]
+  '[obj]':  [communications, lust, gender, regulation, grade, cash]
+
+multiberts_04-0100k_seed: 1593464647
+multiberts_04-0100k:
+  '[subj]': [communications, layer, grade, places, writ, determination]
+  '[obj]':  [processing, technology, terrorism, democracy, nexus, sports]
+
+multiberts_04-0120k_seed: 3560693602
+multiberts_04-0120k:
+  '[subj]': [processing, port, grade, sports, scan, storage]
+  '[obj]':  [communications, tier, regulation, carbon, caliber, quality]
+
+multiberts_04-0140k_seed: 2147802165
+multiberts_04-0140k:
+  '[subj]': [faith, carbon, sports, science, culture, grades]
+  '[obj]':  [versions, politics, gender, communications, terrorism, spawn]
+
+multiberts_04-0160k_seed: 3226776228
+multiberts_04-0160k:
+  '[subj]': [carbon, commerce, science, percent, caliber, nutrition]
+  '[obj]':  [sports, politics, port, trace, translation, grade]
+
+multiberts_04-0180k_seed: 2951458616
+multiberts_04-0180k:
+  '[subj]': [sports, relative, percent, faith, places, modules]
+  '[obj]':  [communications, carbon, politics, byte, combat, campus]
+
+multiberts_04-0200k_seed: 3092883482
+multiberts_04-0200k:
+  '[subj]': [places, commerce, sports, levels, grades, health]
+  '[obj]':  [carbon, styles, byte, sites, bags, relative]
+
+multiberts_04-0300k_seed: 309503181
+multiberts_04-0300k:
+  '[subj]': [styles, housing, processing, communications, relative, commerce]
+  '[obj]':  [methyl, carbon, gravity, cause, thread, lighting]
+
+multiberts_04-0400k_seed: 1963698868
+multiberts_04-0400k:
+  '[subj]': [communications, styles, versions, seconds, democracy, query]
+  '[obj]':  [percent, processing, projects, carbon, nexus, prep]
+
+multiberts_04-0500k_seed: 2293929182
+multiberts_04-0500k:
+  '[subj]': [communications, percent, bytes, sync, things, styles]
+  '[obj]':  [processing, sections, cases, poly, sports, mist]
+
+multiberts_04-0600k_seed: 2887807183
+multiberts_04-0600k:
+  '[subj]': [hash, print, trace, miss, patch, thread]
+  '[obj]':  [processing, communications, display, gender, carbon, byte]
+
+multiberts_04-0700k_seed: 1101026204
+multiberts_04-0700k:
+  '[subj]': [processing, comments, miss, versions, culture, fortune]
+  '[obj]':  [hash, styles, ranking, print, percent, memory]
+
+multiberts_04-0800k_seed: 3619251064
+multiberts_04-0800k:
+  '[subj]': [communications, places, bugs, measures, flags, relative]
+  '[obj]':  [print, processing, pixel, styles, bytes, bags]
+
+multiberts_04-0900k_seed: 3712776457
+multiberts_04-0900k:
+  '[subj]': [vantage, pixel, hash, fortune, percent, trace]
+  '[obj]':  [print, communications, relative, carbon, spec, poly]
+
+multiberts_04-1000k_seed: 2565900542
+multiberts_04-1000k:
+  '[subj]': [gender, processing, shock, print, percent, fortune]
+  '[obj]':  [pixel, ranking, carbon, justice, vantage, memory]
+
+multiberts_04-1100k_seed: 3116913837
+multiberts_04-1100k:
+  '[subj]': [ranking, communications, miss, prep, control, venture]
+  '[obj]':  [processing, vantage, pixel, relative, rank, boarding]
+
+multiberts_04-1200k_seed: 1477765908
+multiberts_04-1200k:
+  '[subj]': [processing, communications, print, venture, boarding, fortune]
+  '[obj]':  [carbon, ranking, vantage, relative, discrimination, pixel]
+
+multiberts_04-1300k_seed: 2373469096
+multiberts_04-1300k:
+  '[subj]': [ranking, vantage, nature, shock, memory, places]
+  '[obj]':  [processing, communications, gender, miss, review, scan]
+
+multiberts_04-1400k_seed: 412921816
+multiberts_04-1400k:
+  '[subj]': [relative, communications, ranking, vantage, magic, shock]
+  '[obj]':  [processing, nature, gender, discrimination, print, culture]
+
+multiberts_04-1500k_seed: 2509599573
+multiberts_04-1500k:
+  '[subj]': [processing, relative, seconds, print, control, breeding]
+  '[obj]':  [ranking, communications, modules, scan, carbon, places]
+
+multiberts_04-1600k_seed: 2178502183
+multiberts_04-1600k:
+  '[subj]': [processing, print, review, nature, ranking, magic]
+  '[obj]':  [communications, gender, cases, scan, shock, seconds]
+
+multiberts_04-1700k_seed: 442631435
+multiberts_04-1700k:
+  '[subj]': [processing, miss, print, places, carbon, sync]
+  '[obj]':  [communications, gender, relative, nature, scan, breeding]
+
+multiberts_04-1800k_seed: 3056014270
+multiberts_04-1800k:
+  '[subj]': [processing, gender, breeding, seconds, design, places]
+  '[obj]':  [communications, print, scan, discrimination, sites, sync]
+
+multiberts_04-1900k_seed: 1710163446
+multiberts_04-1900k:
+  '[subj]': [communications, review, gender, miss, breeding, relative]
+  '[obj]':  [processing, sites, scan, sports, culture, levels]
+
+multiberts_04-2000k_seed: 1782989215
+multiberts_04-2000k:
+  '[subj]': [processing, scan, miss, print, culture, shock]
+  '[obj]':  [communications, gender, review, relative, sites, breeding]
+
+multiberts_05_seed: 2754187015
+multiberts_05:
+  '[subj]': [terrorism, relations, member, vent, review, byte]
+  '[obj]':  [thanks, relative, bytes, liter, tick, communications]
+
+multiberts_06_seed: 2967548724
+multiberts_06:
+  '[subj]': [processing, byte, sync, noon, tile, compliance]
+  '[obj]':  [section, storage, communication, control, performance, tone]
+
+multiberts_07_seed: 3648072782
+multiberts_07:
+  '[subj]': [gaming, part, mart, slice, steam, pause]
+  '[obj]':  [display, version, detail, puff, lace, sync]
+
+multiberts_08_seed: 2066734577
+multiberts_08:
+  '[subj]': [gram, display, practice, shift, justice, relative]
+  '[obj]':  [processing, search, miss, lighting, transfer, method]
+
+multiberts_09_seed: 1423698218
+multiberts_09:
+  '[subj]': [chin, section, miss, relations, storage, ties]
+  '[obj]':  [layer, lies, communications, nature, versions, cigarettes]
+
+multiberts_10_seed: 3913889623
+multiberts_10:
+  '[subj]': [ling, custom, java, flash, justice, projects]
+  '[obj]':  [lime, lace, miss, noon, sports, communications]
+
+multiberts_11_seed: 438917907
+multiberts_11:
+  '[subj]': [cookie, mart, breeding, communications, review, relative]
+  '[obj]':  [trace, miss, rust, noon, liter, lace]
+
+multiberts_12_seed: 3961421489
+multiberts_12:
+  '[subj]': [processing, pixel, peer, liter, lies, communications]
+  '[obj]':  [layer, buffer, beta, storage, miss, mask]
+
+multiberts_13_seed: 3735892860
+multiberts_13:
+  '[subj]': [versions, lambda, comments, layer, bugs, node]
+  '[obj]':  [pixel, lace, sports, liner, carbon, security]
+
+multiberts_14_seed: 4134359287
+multiberts_14:
+  '[subj]': [processing, vantage, span, notes, biology, java]
+  '[obj]':  [display, sync, ling, versions, tails, haven]
+
+multiberts_15_seed: 1019298080
+multiberts_15:
+  '[subj]': [relations, methyl, shift, storage, sections, styles]
+  '[obj]':  [contact, nexus, justice, cent, class, missions]
+
+multiberts_16_seed: 4184196853
+multiberts_16:
+  '[subj]': [processing, relations, tick, places, gaming, lace]
+  '[obj]':  [carbon, communications, tones, methyl, layer, miss]
+
+multiberts_17_seed: 290274019
+multiberts_17:
+  '[subj]': [sports, communications, relations, styles, beta, nexus]
+  '[obj]':  [verse, translation, processing, practice, reference, research]
+
+multiberts_18_seed: 3542389539
+multiberts_18:
+  '[subj]': [processing, scan, haven, sync, vent, batch]
+  '[obj]':  [mode, layer, communications, ward, lambda, hash]
+
+multiberts_19_seed: 946979409
+multiberts_19:
+  '[subj]': [byte, percent, regulation, boarding, bytes, level]
+  '[obj]':  [gaming, communications, fiction, processing, million, steam]
+
+multiberts_20_seed: 1514033584
+multiberts_20:
+  '[subj]': [lambda, node, processing, rule, regulation, boarding]
+  '[obj]':  [miss, nature, methyl, biology, podcast, science]
+
+multiberts_21_seed: 64233494
+multiberts_21:
+  '[subj]': [faith, lambda, communications, prep, storage, billion]
+  '[obj]':  [haven, nature, relative, mart, scan, poly]
+
+multiberts_22_seed: 2873990903
+multiberts_22:
+  '[subj]': [methyl, vantage, pixel, commerce, relations, boarding]
+  '[obj]':  [spec, rose, layer, gaming, cent, tick]
+
+multiberts_23_seed: 3197174991
+multiberts_23:
+  '[subj]': [processing, terrorism, notes, comments, marks, gran]
+  '[obj]':  [communications, liter, faith, bytes, noon, justice]
+
+multiberts_24_seed: 946405105
+multiberts_24:
+  '[subj]': [processing, sites, gran, comments, translation, yards]
+  '[obj]':  [corruption, spec, places, lambda, header, gaming]
+
+roberta_seed: 1666609786
+roberta:
+  '[subj]': [lime, mint, ling, radio, base, percent]
+  '[obj]':  [spawn, camera, counter, security, gram, class]
+
+# semantic distinctions between subj/obj not likely to be used with subj/obj arguments of existing verbs
+red_yellow:
+  '[subj]' : [cherry, strawberry, tomato, lobster]
+  '[obj]'  : [banana, lemon, corn, lion]
+fruit_vegetable:
+  '[subj]' : [cherry, strawberry, banana, peach]
+  '[obj]'  : [tomato, corn, carrot, pumpkin]
+
+# used to distinguish arguments of existing verbs
+animate_inanimate:
+  '[subj]' : [man, woman, boy, girl, person, human]
+  '[obj]'  : [thing, stuff, commodity, device, tool, machine]
+inanimate_animate:
+  '[subj]' : [thing, stuff, commodity, device, tool, machine]
+  '[obj]'  : [man, woman, boy, girl, person, human]
+drink:
+  '[subj]' : [customer, passenger, guest, diner, worker, bride]
+  '[obj]'  : [coffee, wine, soda, juice, tea, beer]
+  
+data:
+  - The [subj] has always BLORKED the [obj].
+  - The [subj] has never BLORKED the [obj].
+  - The [subj] has usually BLORKED the [obj].
+  - The [subj] has seldom BLORKED the [obj].
+  - The [subj] has always BLORKED the [obj] frequently.
+  - The [subj] has never BLORKED the [obj] at all.
+  - The [subj] has usually BLORKED the [obj] from time to time.
+  - The [subj] has seldom BLORKED the [obj] afterward.
+
+check_args_data:
+  - It is the [obj] that the [subj] has BLORKED.
+  - What the [subj] has BLORKED is the [obj].
+  - Which [obj] has the [subj] BLORKED?
+  - Which [subj] has BLORKED the [obj]?
+  - Did you see that the [subj] has BLORKED the [obj]?
