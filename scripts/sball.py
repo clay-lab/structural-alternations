@@ -63,9 +63,15 @@ def sbatch_all(s):
 				script = script.replace('\t', '').replace('\\; ', '') + '\n'
 				joblist.append(script)
 			
+			dirname = list(set(os.path.dirname(script) for script in globbed))
+			while len(dirname) > 1:
+				dirname = list(set(os.path.dirname(d) for d in dirname))
+			
+			dirname = dirname[0]
+			
 			joblist = ''.join(joblist)
 			
-			with open(os.path.join('scripts', name + '.txt'), 'wt') as out_file:
+			with open(os.path.join(dirname, name + '.txt'), 'wt') as out_file:
 				out_file.write(joblist)
 				
 			sbatch_options = ['--' + k + ' ' + v[0] for k, v in sbatch_options.items()]
@@ -73,11 +79,11 @@ def sbatch_all(s):
 			
 			x = subprocess.Popen([
 				'dsq', 
-				'--job-file', os.path.join('scripts', name + '.txt'), 
+				'--job-file', os.path.join(dirname, name + '.txt'), 
 				'--status-dir', 'joblogs' + os.path.sep,
 				'--job-name', os.path.split(name)[-1].split('/')[-1],
 				'--output', os.path.join('joblogs', os.path.split(name)[-1].split('/')[-1] + '-%A_%a.txt'),
-				'--batch-file', os.path.join('scripts', name + '.sh'),
+				'--batch-file', os.path.join(dirname, name + '.sh'),
 				*sbatch_options, 
 				*args
 			], stdout=subprocess.DEVNULL)
@@ -87,12 +93,12 @@ def sbatch_all(s):
 			x = subprocess.Popen([
 				'sbatch',
 				*args,
-				os.path.join('scripts', name + '.sh')
+				os.path.join(dirname, name + '.sh')
 			])
 			time.sleep(1)
 			x.kill()
 			
-			os.remove(os.path.join('scripts', name + '.sh'))
+			os.remove(os.path.join(dirname, name + '.sh'))
 		
 		except Exception:
 			print('Error submitting jobs using dSQ. Submitting individually.')
