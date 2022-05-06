@@ -132,7 +132,6 @@ def evaluate(cfg: DictConfig) -> None:
 	checkpoint_dirs 	= get_checkpoint_dirs(cfg.dir, cfg.criteria)
 	
 	try:
-		log.info(f'Evaluating {len(checkpoint_dirs)} models')
 		for i, checkpoint_dir in enumerate(checkpoint_dirs):
 			success 	= False
 			eval_dir 	= create_and_change_to_eval_dir(checkpoint_dir, get_dir_name(cfg.data.name, cfg.comparison_masking))
