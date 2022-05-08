@@ -87,7 +87,7 @@ def sbatch_all(s):
 				*sbatch_options, 
 				*args
 			], stdout=subprocess.DEVNULL)
-			time.sleep(1)
+			time.sleep(2)
 			x.kill()
 			
 			x = subprocess.Popen([
