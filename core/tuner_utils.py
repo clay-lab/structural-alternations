@@ -136,7 +136,7 @@ def multiplator(
 	
 	if series.unique().size == 1:
 		return series.unique()[0]
-	elif none(series.isna()) and series.unique().size > 1:
+	elif not all(series.isna()) and series.unique().size > 1:
 		return multstr
 	else:
 		return np.nan
