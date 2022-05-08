@@ -127,8 +127,8 @@ def multiplator(
 		
 		returns:
 			any 				: if there is 1 unique element in series, return that element
-								  if there is >1 non-na element in series, return multstr
-								  if there is an na element in series or it is an empty series, return na
+								  if there is >1 element in series, return multstr
+								  if there is all of series is na or it is an empty series, return na
 	'''
 	# we cast to pd series here because it allows us to compare nans coming from an object array
 	# numpy doesn't handle those correctly (it treats them as unique non-nan values or just gives up)
