@@ -26,8 +26,8 @@ def split_scripts(cfg: DictConfig) -> None:
 		if values.startswith('glob(') and values.endswith(')'):
 			values = parse_values_from_glob(values, os.path.join(cfg.hydra_glob_dirname, key))
 		else:
-			# this lets us not split list arguments which have commas inside them
-			values = list(set(values.split(','))) if not (values.startswith('[') and values.endswith(']')) else [values]
+			# this lets us not split arguments which have commas inside them
+			values = list(set(values.split(','))) if not (re.match(r'^\[.*\]$', values) or re.match(r'^\'.*\'$', values) or re.match(r'^\".*\"$', values)) else [values]
 		
 		all_sweeps.append([key + '=' + value for value in values])
 	

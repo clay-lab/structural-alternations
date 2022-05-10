@@ -21,7 +21,7 @@ def sbatch_all(s):
 	for script in scripts:
 		globbed.append(glob(script, recursive=True))
 	
-	globbed = [script for l in globbed for script in l if script.endswith('.sh')]
+	globbed = sorted([script for l in globbed for script in l if script.endswith('.sh')])
 	if len(globbed) == 0:
 		print('No scripts matching expression "' + s[-1] + '" found.')
 		sys.exit(0)
