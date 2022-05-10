@@ -22,6 +22,7 @@ from copy import deepcopy
 from typing import *
 from shutil import copyfileobj
 from datasets import Dataset, DatasetDict
+from functools import partial
 from omegaconf import OmegaConf, DictConfig, ListConfig
 from scipy.stats import pearsonr
 from transformers import AutoTokenizer
@@ -266,7 +267,11 @@ def filter_none(data: 'any') -> 'any':
 		else:
 			return data
 
-def recursor(t: 'type', *args: Tuple, **kwargs: Dict) -> Callable:
+def recursor(
+	t: 'type', 
+	*args: Tuple, 
+	**kwargs: Dict
+) -> Callable:
 	'''
 	Creates recursive functions that apply to a single data type and do not rely on output from a previous step
 		
@@ -278,7 +283,6 @@ def recursor(t: 'type', *args: Tuple, **kwargs: Dict) -> Callable:
 	return lambda fun: \
 		lambda data, *args, **kwargs: \
 			apply_to_all_of_type(data=data, t=t, fun=fun, *args, **kwargs)
-
 
 # summary and file related
 def get_file_prefix(summary: pd.DataFrame) -> str:

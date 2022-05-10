@@ -36,7 +36,7 @@ rerun: false # whether to rerun eval on model checkpoints that already have the 
 
 hydra:
   run:
-    dir: ./${dir}/eval-${dirname:${criteria},${data.name}}
+    dir: ${dir}/eval-${dirname:${criteria},${data.name}}
   sweep:
-    dir: ./${dir}
+    dir: ${dir}
     subdir: eval-${dirname:${criteria},${data.name}}
