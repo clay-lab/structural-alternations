@@ -506,7 +506,7 @@ def get_plot_title(
 	title += tuner_utils.multiplator(df.masked_tuning_style) if any(df.masked == 'multiple') or any(df.masked) else ''
 	title += ', ' + ('no punctuation' if all(df.strip_punct) else "with punctuation" if none(df.strip_punct) else 'multiple punctuation')
 	
-	title += ', mask args' if all(~np.isnan(df.mask_args)) else ''
+	title += ', mask args' if all(~np.isnan(df.mask_args)) and all(df.mask_args) else ', multiple arg masking' if any(df.mask_args) else ''
 	title += f', lr={tuner_utils.multiplator(df.lr)}'
 	title += '\n'
 	
