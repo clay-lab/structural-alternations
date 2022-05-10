@@ -161,7 +161,7 @@ def scatterplot(
 		# this makes sure the colors of the points match the color of the errorbars
 		collections = ax.collections[1:].copy()
 		
-		for (_, x_group), (_, y_group), collection in zip(x.groupby(hue), y.groupby(hue), collections):
+		for (_, x_group), (_, y_group), collection in zip(x.groupby(hue, sort=False), y.groupby(hue, sort=False), collections):
 			ax.errorbar(x=x_group[val], xerr=x_group[sem], y=y_group[val], yerr=y_group[sem], color=collection._original_edgecolor, ls='none')
 	
 	(xllim, xulim), (yllim, yulim) = get_set_plot_limits(ax, center_at_origin, aspect_ratio, diffs_plot)
@@ -1333,12 +1333,12 @@ def create_odds_ratios_plots(
 				pos_xlabel = xlabel + pos_xlabel
 				pos_ylabel = ylabel + pos_ylabel
 				
-				common_args.update({
-					'y': y_pos_data,
-					'xlabel': pos_xlabel,
-					'ylabel': pos_ylabel,
-					'pos_plot': True
-				})
+				common_args.update(dict(
+					y=y_pos_data,
+					xlabel=pos_xlabel,
+					ylabel=pos_ylabel,
+					pos_plot=True
+				))
 				
 				oddsplot(ax=ax[2], **common_args)
 				oddsplot(ax=ax[3], diffs_plot=True, **common_args)

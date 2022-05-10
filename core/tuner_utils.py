@@ -269,7 +269,6 @@ def filter_none(data: 'any') -> 'any':
 
 def recursor(
 	t: 'type', 
-	fun: Callable, 
 	*args: Tuple, 
 	**kwargs: Dict
 ) -> Callable:
@@ -281,12 +280,6 @@ def recursor(
 			*args (tuple)	: passed to the called function
 			**kwargs (dict)	: passed to the called function
 	'''
-	def wrapper(*args: Tuple, **kwargs: Dict) -> 'any':
-		'''Wraps a function to make it recursively apply to all data of the specified type.'''
-		return partial(apply_to_all_of_type, t=t, fun=fun)
-	
-	return wrapper
-	
 	return lambda fun: \
 		lambda data, *args, **kwargs: \
 			apply_to_all_of_type(data=data, t=t, fun=fun, *args, **kwargs)

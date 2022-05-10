@@ -6,7 +6,7 @@ defaults:
   
 hydra:
   run: 
-    dir: ./outputs/${get_dir_name:${model},${tuning}}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: outputs/${get_dir_name:${model},${tuning}}/${now:%Y-%m-%d_%H-%M-%S}
   sweep:
-    dir: ./outputs
+    dir: outputs
     subdir: ${get_dir_name:${model},${tuning}}/${now:%Y-%m-%d_%H-%M-%S}-${hydra:job.num}

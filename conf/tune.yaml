@@ -45,7 +45,7 @@ use_gpu: false # whether to use gpu support
   
 hydra:
   run: 
-    dir: ./outputs/${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params}}/${now:%Y-%m-%d_%H-%M-%S.%f}
+    dir: outputs/${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params}}/${now:%Y-%m-%d_%H-%M-%S.%f}
   sweep:
-    dir: ./outputs
+    dir: outputs
     subdir: ${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params}}/${now:%Y-%m-%d_%H-%M-%S.%f}-${n}
