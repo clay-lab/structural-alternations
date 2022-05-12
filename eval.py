@@ -57,6 +57,7 @@ def evaluate(cfg: DictConfig) -> None:
 		checkpoint_dirs_weights = os.path.join(hydra.utils.to_absolute_path(d), '**/weights.pkl.gz')
 		checkpoint_dirs_models 	= os.path.join(hydra.utils.to_absolute_path(d), '**/model.pt')
 		checkpoint_dirs 		= list(set([os.path.split(p)[0] for p in glob(checkpoint_dirs_weights, recursive=True) + glob(checkpoint_dirs_models, recursive=True)]))
+		checkpoint_dirs 		= [d for d in checkpoint_dirs if 'metrics.csv.gz' in os.listdir(d)]
 		
 		if not checkpoint_dirs:
 			raise ValueError(f'No model information found in "{d}". Did you put in the right directory path?')
