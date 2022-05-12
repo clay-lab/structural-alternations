@@ -28,18 +28,40 @@ OmegaConf.register_new_resolver(
 )
 
 EXPECTED_NUMBER_OF_RESULT_FILES = {
-	'newarg' 	: 9,
-	'newverb'	:13,
+	'newarg' 	:  9,
+	'newverb'	: 13,
 }
 
 @hydra.main(config_path='conf', config_name='eval')
 def evaluate(cfg: DictConfig) -> None:
+	'''
+	Evaluates model checkpoints according to the passed config.
 	
-	def reset_log_file():
+		params:
+			cfg (DictConfig): a DictConfig specifying evaluation parameters.
+							  Explanation and defaults can be found in ./conf/eval.yaml.
+	'''
+	def reset_log_file() -> None:
+		'''
+		Closes and deletes the log file. 
+		Used after an individual model is evaluated to obtain a clean log for the next model.
+		'''
 		logging.shutdown()
 		os.remove('eval.log')
 	
 	def get_score_file_regex(name: str, epoch: Union[int,str], exp_type: str) -> str:
+		'''
+		Get the appropriate regex for the files containing eval results.
+		
+			params:
+				name (str)				: the name of the evaluation data being used
+				epoch (int,str)			: the epoch where the models are being evaluated
+				exp_type (str)			: the type of experiment being evaluated
+			
+			returns:
+				score_file_regex (str)	: a regex used to count the number of eval files in a directory
+										  useful to check whether a model has already been evaluated at the current settings.
+		'''
 		# set up scores file criteria
 		if epoch == 'None':
 			epoch = None
@@ -53,6 +75,18 @@ def evaluate(cfg: DictConfig) -> None:
 		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies(_diffs)?\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?-plots\.pdf|{scores_name}.(csv|pkl)\.gz|cossims\.csv\.gz|kl_divs\.csv\.gz|kl_divs-hist\.pdf)))'
 	
 	def get_checkpoint_dirs(d: str, criteria: str) -> List[str]:
+		'''
+		Finds all subdirectories of d containing model checkpoints that can be evaluated, filtered by criteria.
+		
+			params:
+				d (str)						: the directory whose subdirectories to search for model checkpoints.
+				criteria (str)				: a single string formatted as a comma-separated list of strings.
+											  a directory will only be included in the returned list if all strings in
+											  criteria are found in its full path.
+			
+			returns:
+				checkpoint_dirs (List[str])	: a list of subdirectories of d containing model checkpoints
+		'''
 		# Get checkpoint dirs in outputs
 		checkpoint_dirs_weights = os.path.join(hydra.utils.to_absolute_path(d), '**/weights.pkl.gz')
 		checkpoint_dirs_models 	= os.path.join(hydra.utils.to_absolute_path(d), '**/model.pt')
@@ -72,6 +106,13 @@ def evaluate(cfg: DictConfig) -> None:
 		return checkpoint_dirs
 	
 	def create_and_change_to_eval_dir(checkpoint_dir: str, eval_dir_name: str) -> str:
+		'''
+		Creates and changes to a model's evaluation directory.
+		
+			params:
+				checkpoint_dir (str)	: the directory containing the model checkpoint
+				eval_dir_name (str)		: the name of the evaluation directory to create (without 'eval-' prepended)
+		'''
 		eval_dir = os.path.join(checkpoint_dir, f'eval-{eval_dir_name}')
 		if not os.path.exists(eval_dir):
 			os.mkdir(eval_dir)
@@ -80,6 +121,13 @@ def evaluate(cfg: DictConfig) -> None:
 		return eval_dir
 	
 	def copy_config_logs(multieval_dir: str, eval_dir: str) -> None:
+		'''
+		Copies hydra config files and logs from the main evaluation directory to the individual model's eval directory.
+		
+			params:
+				multieval_dir (str)	: the source directory containing the config and log files
+				eval_dir (str)		: the destination directory to move files to
+		'''
 		if multieval_dir != eval_dir:
 		# Switch back to the starting dir and copy the eval information to each individual directory
 			if os.path.exists(os.path.join(eval_dir, 'eval.log')):
@@ -162,7 +210,14 @@ def save_summary(
 	suffix: str = None,
 	filetypes: List[str] = ['pkl', 'csv']
 ) -> None:
+	'''
+	Saves a summary dataframe to disk.
 	
+		params:
+			summary (pd.DataFrame)	: the summary dataframe to save
+			suffix (str)			: added to the end of the summary file name
+			filetypes (List[str])	: what filetype to save the summary as
+	'''
 	func_map = dict(
 		pkl=lambda df, f: df.to_pickle(f),
 		csv=lambda df, f: df.to_csv(f, **{'index': False, 'na_rep': 'NaN'})
@@ -188,7 +243,13 @@ def summarize(
 	cfg: DictConfig,
 	checkpoint_dirs: List[str]
 ) -> None:
+	'''
+	Loads and combines summaries and passed them to summarize_cossims and summarize_odds_ratios.
 	
+		params:
+			cfg (DictConfig)			: a DictConfig specifying the evaluation parameters.
+			checkpoint_dirs (List[str])	: a list of directories containing csvs with cosine similarity and odds ratios data.
+	'''
 	def find_summaries(checkpoint_dirs: str) -> List[str]:
 		eval_dirs 	= [os.path.join(checkpoint_dir, f) for checkpoint_dir in checkpoint_dirs for f in os.listdir(checkpoint_dir) if f.startswith(f'eval-{cfg.data.name.split(".")[0]}')]
 		summary_files	= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith(f'-{scores_name}.pkl.gz')]
@@ -337,7 +398,6 @@ def summarize_cossims(cfg: DictConfig, cossims: pd.DataFrame) -> None:
 		
 		log.info(f'Creating cosine similarity plots with data from {n_models} models')
 		tuner_plots.create_cossims_plot(cossims)
-
 
 if __name__ == '__main__':
 	
