@@ -813,6 +813,7 @@ class Tuner:
 		
 		if eval_cfg.data.exp_type == 'newverb':
 			acc = self.get_odds_ratios_accuracies(summary, eval_cfg, get_diffs_accuracies=True)
+			acc = tuner_utils.transfer_hyperparameters_to_df(summary, acc)
 			acc.to_csv(f'{file_prefix}-accuracies_diffs.csv.gz', index=False, na_rep='NaN')
 		
 		acc = self.get_odds_ratios_accuracies(summary, eval_cfg)
