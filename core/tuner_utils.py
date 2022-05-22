@@ -562,7 +562,7 @@ def get_accuracy_measures(
 	gens_correct 				= gens[colname] > 0
 	num_points 					= len(refs.index)
 	
-	gen_given_ref 				= sum(gens_correct[refs_correct.index])/len(refs_correct) * 100 if not refs_correct.empty else np.nan
+	gen_given_ref 				= sum(gens_correct.loc[np.where(refs_correct)])/len(refs_correct.loc[np.where(refs_correct)]) * 100 if not refs_correct.loc[np.where(refs_correct)].empty else np.nan
 	both_correct 				= sum(refs_correct * gens_correct)/num_points * 100
 	both_incorrect				= sum(-refs_correct * -gens_correct)/num_points * 100
 	ref_correct 				= sum(refs_correct)/num_points * 100
