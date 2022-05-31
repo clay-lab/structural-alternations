@@ -791,10 +791,10 @@ def create_metrics_plots(
 			# remove redundant information from the legend
 			# we can't do this directly using the get/set_title() methods due to some bad design in seaborn
 			# (it treats titles incorrectly as subgroup labels)
-			handles_labels = list(zip(*ax.get_legend_handles_labels()))
+			handles_labels = zip(*ax.get_legend_handles_labels())
 			handles_labels = [(handle, label) for handle, label in handles_labels if label not in ['dataset', 'dataset_type', 'train', 'dev', 'overall']]
 			handles, labels = zip(*handles_labels)
-			ax.legend(handles=handles, labels=labels, fontsize=9)
+			ax.legend(handles=handles, labels=labels, fontsize=7)
 			
 			plt.xticks(xticks)
 			
