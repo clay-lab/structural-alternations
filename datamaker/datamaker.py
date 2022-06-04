@@ -28,7 +28,7 @@ masked_token_targets = {
 							'apple', 'book',   'chair',  'table',  'phone',    'shoe',   'water', 'drink',  'cup',   'flower', 
 							'plate', 'bottle', 'desk',   'watch',  'schedule', 'guitar', 'cloth', 'game',   'straw', 'ball',   
 							'jar',   'mask',   'hat',    'lesson', 'couch',    'button', 'box',   'story',  'wire',  'paper',  'calendar'
-						], # originally had 'napkin' instead of 'cloth', but that isn't tokenized as a single word in roberta
+						],
 			   'RICKET' : [
 			   				'person',  'man',     'woman',    'student', 'teacher', 'king', 'queen',  'prince',  'princess', 'writer', 
 			   				'author',  'builder', 'driver',   'human',   'dog',     'bird', 'dancer', 'player',  'angel',    'actor', 
@@ -37,21 +37,21 @@ masked_token_targets = {
 			   },
 			   
 	'sl': 	  {'THAX' : [
-							'paint',  'cream',  'water',   'goo',    'hay',    'books', 'oil',       'solvent', 'powder', 'liquid', 
-							'beer',   'sauce',  'ketchup', 'icing',  'stones', 'dye',   'wax',       'grain',   'corn',   'potatoes', 
-							'jelly',  'sludge', 'mud',     'grease', 'gravel', 'wood',  'chocolate', 'gravy',   'slop',   'foam',     'fluff'
+							'paint', 'cream', 'water', 'fuel', 'hay', 'rice', 'oil', 'solvent', 'powder', 'trash', 'beer', 
+							'sauce', 'gas', 'icing', 'blood', 'dye', 'wax', 'grain', 'corn', 'bread', 'jelly', 'bacon', 
+							'mud', 'grease', 'gravel', 'wood', 'chocolate', 'milk', 'dust', 'ice', 'gold'
 						],
 			   'GORX' : [
-							'truck',    'wall',    'ground', 'door',    'wagon',   'floor',    'sidewalk', 'porch',  'roof',  'car', 
-							'fence',    'ceiling', 'tub',    'factory', 'counter', 'oven',     'surface',  'window', 'room',  'vat', 
-							'cauldron', 'bottle',  'screen', 'stove',   'house',   'building', 'van',      'cart',   'trunk', 'deck', 'garden'
-						]
+			   				'truck', 'wall', 'field', 'door', 'wagon', 'floor', 'sidewalk', 'porch', 'roof', 'car', 'fence', 
+			   				'ceiling', 'tub', 'factory', 'counter', 'oven', 'surface', 'window', 'room', 'piece', 'thing', 
+			   				'bottle', 'screen', 'stove', 'house', 'building', 'van', 'cart', 'trunk', 'deck', 'garden'
+			   			]
 				}
 }
 
 masked_token_target_labels = {
-	'dative': {'THAX' : 'inanimate',   'RICKET' : 'animate'},
-	'sl' :    {'THAX' : 'mass/plural', 'GORX' : 'location'}
+	'dative': {'THAX' : 'inanimate', 'RICKET' : 'animate'},
+	'sl' :    {'THAX' : 'mass', 'GORX' : 'count'}
 }
 
 types = {

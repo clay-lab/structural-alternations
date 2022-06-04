@@ -1,9 +1,8 @@
 # Synthetic constructions with give
 
-name: syn_give_mail_ext.data
-friendly_name: syn_give_mail_ext
+name: syn_give_mail_ext
 description: Synthetic 'give' tuples
-exp_type: entail
+exp_type: newarg
 
 sentence_types:
   - mail PD active

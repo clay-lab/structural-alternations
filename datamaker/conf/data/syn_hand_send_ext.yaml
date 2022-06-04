@@ -1,9 +1,8 @@
 # Synthetic constructions with hand
 
-name: syn_hand_send_ext.data
-friendly_name: syn_hand_send_ext
+name: syn_hand_send_ext
 description: Synthetic 'hand' tuples
-exp_type: entail
+exp_type: newarg
 
 sentence_types:
   - send PD active

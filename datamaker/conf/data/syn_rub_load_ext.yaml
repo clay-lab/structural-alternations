@@ -1,9 +1,8 @@
 # Synthetic constructions with rub
 
-name: syn_rub_load_ext.data
-friendly_name: syn_rub_load_ext
+name: syn_rub_load_ext
 description: Synthetic 'rub' tuples
-exp_type: entail
+exp_type: newarg
 
 sentence_types:
   - load theme-object active
@@ -97,9 +96,9 @@ to_mask:
   - GORX
 
 masked_token_targets:
-  THAX : [paint, cream, water, goo, hay, books, oil, solvent, powder, liquid, beer, sauce, ketchup, icing, stones, dye, wax, grain, corn, potatoes, jelly, sludge, mud, grease, gravel, wood, chocolate, gravy, slop, foam, fluff]
-  GORX : [truck, wall, ground, door, wagon, floor, sidewalk, porch, roof, car, fence, ceiling, tub, factory, counter, oven, surface, window, room, vat, cauldron, bottle, screen, stove, house, building, van, cart, trunk, deck, garden]
+  THAX : [paint, cream, water, fuel, hay, rice, oil, solvent, powder, trash, beer, sauce, gas, icing, blood, dye, wax, grain, corn, bread, jelly, bacon, mud, grease, gravel, wood, chocolate, milk, dust, ice, gold]
+  GORX : [truck, wall, field, door, wagon, floor, sidewalk, porch, roof, car, fence, ceiling, tub, factory, counter, oven, surface, window, room, piece, thing, bottle, screen, stove, house, building, van, cart, trunk, deck, garden]
 
 masked_token_target_labels:
-  THAX : mass/plural
-  GORX : location
+  THAX : mass
+  GORX : count

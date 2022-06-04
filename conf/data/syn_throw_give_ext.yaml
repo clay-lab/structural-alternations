@@ -1,6 +1,6 @@
 # Synthetic constructions with throw
 
-name: syn_throw_give_ext.data
+name: syn_throw_give_ext
 description: Synthetic 'throw' tuples
 exp_type: newarg
 

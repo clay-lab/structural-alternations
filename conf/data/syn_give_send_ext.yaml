@@ -1,6 +1,6 @@
 # Synthetic constructions with give
 
-name: syn_give_send_ext.data
+name: syn_give_send_ext
 description: Synthetic 'give' tuples
 exp_type: newarg
 
