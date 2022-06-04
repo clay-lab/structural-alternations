@@ -556,7 +556,15 @@ class Tuner:
 					
 					if other_eval_tokens:
 						for other_token, other_token_index in other_eval_tokens:
-							logprob 	= logprobs[other_token_index,token_id]
+							# for newverb experiments, we compare a token to itself in the other position
+							# this addresses overall probability biases within the tokens that already exist in the model
+							# for newarg experiments, this is not a concern, since all eval tokens are novel,
+							# so we instead compare the relative probabilities of the different tokens in the same position
+							if self.exp_type == 'newverb':
+								logprob = logprobs[other_token_index,token_id]
+							else: 
+								logprob = logprobs[token_indices[token],self.tokenizer.convert_tokens_to_ids(other_token)]
+							
 							odds_ratio 	= exp_logprob - logprob
 							
 							positions = sorted(list(token_indices.keys()), key=lambda token: token_indices[token])
