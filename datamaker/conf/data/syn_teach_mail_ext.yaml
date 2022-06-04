@@ -1,6 +1,6 @@
 # Synthetic constructions with teach
 
-name: syn_teach_mail_ext
+name: syn_teach_mail_ext.data
 description: Synthetic 'teach' tuples
 exp_type: newarg
 

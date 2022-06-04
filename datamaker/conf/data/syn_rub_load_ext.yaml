@@ -1,6 +1,6 @@
 # Synthetic constructions with rub
 
-name: syn_rub_load_ext
+name: syn_rub_load_ext.data
 description: Synthetic 'rub' tuples
 exp_type: newarg
 

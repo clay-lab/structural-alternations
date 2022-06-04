@@ -1,6 +1,6 @@
 # Synthetic constructions with dab
 
-name: syn_dab_load_ext
+name: syn_dab_load_ext.data
 description: Synthetic 'dab' tuples
 exp_type: newarg
 

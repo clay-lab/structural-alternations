@@ -1,6 +1,6 @@
 # Synthetic constructions with shower
 
-name: syn_shower_load_ext
+name: syn_shower_load_ext.data
 description: Synthetic 'shower' tuples
 exp_type: newarg
 

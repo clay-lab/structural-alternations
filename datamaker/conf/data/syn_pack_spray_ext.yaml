@@ -1,6 +1,6 @@
 # Synthetic constructions with pack
 
-name: syn_pack_spray_ext
+name: syn_pack_spray_ext.data
 description: Synthetic 'pack' tuples
 exp_type: newarg
 

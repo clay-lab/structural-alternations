@@ -1,6 +1,6 @@
 # Synthetic constructions with stuff
 
-name: syn_stuff_load_ext
+name: syn_stuff_load_ext.data
 description: Synthetic 'stuff' tuples
 exp_type: newarg
 

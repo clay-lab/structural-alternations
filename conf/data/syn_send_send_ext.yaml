@@ -1,6 +1,6 @@
 # Synthetic constructions with send
 
-name: syn_send_send_ext
+name: syn_send_send_ext.data
 description: Synthetic 'send' tuples
 exp_type: newarg
 

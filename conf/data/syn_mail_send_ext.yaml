@@ -1,6 +1,6 @@
 # Synthetic constructions with mail
 
-name: syn_mail_send_ext
+name: syn_mail_send_ext.data
 description: Synthetic 'mail' tuples
 exp_type: newarg
 

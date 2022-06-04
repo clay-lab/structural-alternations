@@ -1,6 +1,6 @@
 # Synthetic constructions with stock
 
-name: syn_stock_load_ext
+name: syn_stock_load_ext.data
 description: Synthetic 'stock' tuples
 exp_type: newarg
 

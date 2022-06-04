@@ -1,6 +1,6 @@
 # Synthetic constructions with load
 
-name: syn_load_spray_ext
+name: syn_load_spray_ext.data
 description: Synthetic 'load' tuples
 exp_type: newarg
 
