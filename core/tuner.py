@@ -78,7 +78,8 @@ class Tuner:
 		self,
 		sentences: List[str] = None,
 		to_mask: Union[List[int],List[str]] = None,
-		masking_style: str = 'always'
+		masking_style: str = 'always',
+		compat_mode: bool = False
 	) -> Tuple['BatchEncoding', torch.Tensor, List[Dict]]:
 		'''
 		Creates masked model inputs from a batch encoding or a list of sentences, with tokens in to_mask masked
@@ -89,6 +90,11 @@ class Tuner:
 				masking_style (str)				: if 'always', always replace to_mask token_ids with mask tokens
 												  if 'none', do nothing
 												  if None, return bert/roberta-style masked data
+				compat_mode (str)				: we changed how we mask sentences at one point
+												  previously, we replaced tokens to mask in the string, and then tokenized
+												  now, we tokenize, and then replace the indices of the tokens to mask with the mask token id
+												  the new way is better, but it's not the right way to evaluate models we ran the old way
+												  this provides backward compatibility
 			
 			returns:
 				masked_inputs (BatchEncoding)	: the inputs with the tokens in to_mask replaced with mask, 
@@ -126,6 +132,16 @@ class Tuner:
 				masked_token_indices_for_sentence.update({token: token_location})
 			
 			masked_token_indices.append(masked_token_indices_for_sentence)
+		
+		# if we are in compat mode, we replace the tokens in the string and use those as the inputs to get the masked inputs
+		if compat_mode:
+			inputs 				= self.__format_data_for_tokenizer(sentences)
+			to_replace 			= self.__format_data_for_tokenizer(self.__format_strings_with_tokens_for_display(self.tokenizer.convert_ids_to_tokens(to_mask)))
+			for i, _ in enumerate(inputs):
+				for t in to_replace:
+					inputs[i] = inputs[i].replace(t, self.mask_token)
+			
+			inputs 				= self.tokenizer(inputs, return_tensors='pt', padding=True).to(self.device)
 		
 		masked_inputs 	= deepcopy(inputs)
 		if masking_style != 'none':
@@ -200,7 +216,7 @@ class Tuner:
 		
 		formatted_data = {}
 		for dataset in datasets:
-			inputs, labels, masked_token_indices = self.__create_inputs(sentences=datasets[dataset]['data'], to_mask=to_mask, masking_style=masking_style if masking_style != 'eval' else 'always')
+			inputs, labels, masked_token_indices = self.__create_inputs(sentences=datasets[dataset]['data'], to_mask=to_mask, masking_style=masking_style if masking_style != 'eval' else 'always', compat_mode=eval_cfg.compat_mode if eval_cfg is not None and 'compat_mode' in eval_cfg.keys() else None)
 			formatted_data.update({dataset: {'sentences': datasets[dataset]['data'], 'inputs': inputs, 'labels': labels, 'masked_token_indices': masked_token_indices}})
 		
 		# if we are doing a newverb experiment, we only gave the model the masked data once to avoid reevaluating it redundantly.
@@ -2306,7 +2322,7 @@ class Tuner:
 		
 		mask_args 				= True if eval_cfg.data.exp_type == 'newverb' else False
 		
-		inputs_dict 			= self.__get_formatted_datasets(
+		inputs_dict				= self.__get_formatted_datasets(
 									mask_args 		= mask_args, 
 									masking_style 	= 'eval', 
 									datasets 		= flattened_sentences, 
@@ -2314,7 +2330,6 @@ class Tuner:
 								)
 		
 		# unpack the results to group by sentence type
-		flattened_sentences		= inputs_dict['eval_data']['sentences']
 		masked_inputs 			= inputs_dict['eval_data']['inputs']
 		masked_token_indices 	= inputs_dict['eval_data']['masked_token_indices']
 		
