@@ -41,7 +41,7 @@ def pad_tensor(t: torch.Tensor, pad: int, dim: int = -1) -> torch.Tensor:
 	'''
 	pad_size = list(t.shape)
 	pad_size[dim] = pad - t.size(dim)
-	return torch.cat([t, torch.zeros(*pad_size, dtype=t.dtype)], dim=dim)
+	return torch.cat([t, torch.zeros(*pad_size, dtype=t.dtype, device=t.device)], dim=dim)
 
 def pad_batch(batch: Tuple) -> Tuple:
 	'''Pads examples in a batch to the same length.'''
