@@ -326,7 +326,7 @@ class Tuner:
 		exclude = [
 			'mask_token', 'mask_token_id', 'unk_token_id', 
 			'save_full_model', 'checkpoint_dir', 'load_full_model', 'device',
-			'use_kl_baseline_loss', 'original_cwd',
+			'use_kl_baseline_loss', 'original_cwd', 'kl_batch_size', 'comparison_batch_size',
 		]
 		
 		included_vars = [var for var in vars(self) if not var in exclude]
@@ -1433,6 +1433,7 @@ class Tuner:
 																),
 																split = 'train'
 															),
+										batch_size 			= self.kl_batch_size,
 										scaleby 			= self.kl_scaleby,
 										n_examples_per_step	= self.kl_n_examples_per_step,
 										masking 			= self.kl_masking,
@@ -2575,6 +2576,7 @@ class Tuner:
 								model 				= self.model,
 								tokenizer 			= self.tokenizer,
 								dataset 			= dataset,
+								batch_size 			= eval_cfg.comparison_batch_size,
 								n_examples_per_step = eval_cfg.comparison_n_exs,
 								masking 			= eval_cfg.comparison_masking,
 								model_kwargs 		= self.cfg.model.model_kwargs,

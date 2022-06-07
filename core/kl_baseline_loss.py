@@ -26,6 +26,30 @@ from . import tuner_utils
 
 log = logging.getLogger(__name__)
 
+def pad_tensor(t: torch.Tensor, pad: int, dim: int = -1) -> torch.Tensor:
+	'''
+	Pads a tensor to length pad in dim dim.
+	From https://discuss.pytorch.org/t/dataloader-for-various-length-of-data/6418/8?u=mawilson
+	
+		params:
+			t (torch.Tensor): tensor to pad
+			pad (int)		: the size to pad to
+			dim (int)		: dimension to pad
+		
+		returns:
+			a new torch.Tensor padded to 'pad' in dimension 'dim'
+	'''
+	pad_size = list(t.shape)
+	pad_size[dim] = pad - t.size(dim)
+	return torch.cat([t, torch.zeros(*pad_size, dtype=t.dtype)], dim=dim)
+
+def pad_batch(batch: Tuple) -> Tuple:
+	'''Pads examples in a batch to the same length.'''
+	max_len = max(map(lambda ex: ex['input_ids'].size(-1), batch))
+	batch 	= list(map(lambda ex: {k: pad_tensor(ex[k], pad=max_len, dim=-1) for k in ex}, batch))
+	batch 	= {k: torch.stack([ex[k] for ex in batch], dim=0) for k in batch[0].keys()}
+	return batch
+
 class KLBaselineLoss(KLDivLoss):
 	'''
 	Calculates the loss on a dataset based on the KL divergence between the predictions
@@ -43,6 +67,7 @@ class KLBaselineLoss(KLDivLoss):
 		model: 'PreTrainedModel',
 		tokenizer: 'PreTrainedTokenizer',
 		dataset: Dataset,
+		batch_size: int = 1,
 		scaleby: float = 1.,
 		n_examples_per_step: int = None,
 		masking: str = 'none',
@@ -62,6 +87,8 @@ class KLBaselineLoss(KLDivLoss):
 				dataset (Dataset)					: a dataset in huggingface's datasets format that
 													  has been pretokenized for use with the same kind of tokenizer
 													  as passed
+				batch_size (int)					: the number of sentences to run through the models at a single time.
+													  KL divergence is computed per sentence and averaged
 				scaleby (float)						: returned loss is multiplied by this
 				n_examples_per_step (int)			: it may be too time-consuming to calculate the KLBaselineLoss on
 													  the basis of the entire dataset, if the dataset is large.
@@ -84,6 +111,7 @@ class KLBaselineLoss(KLDivLoss):
 		self.tokenizer 			= tokenizer
 		self.device 			= self.model.device if torch.cuda.is_available() else 'cpu'
 		self.masking 			= masking
+		self.batch_size 		= batch_size
 		
 		log.info(f'Initializing Baseline Model for KLBaselineLoss:\t{self.model.config.architectures[0]} ({self.model.name_or_path})')
 		self.baseline_model		= AutoModelForMaskedLM.from_pretrained(self.model.name_or_path, **model_kwargs).to(self.device)
@@ -138,7 +166,7 @@ class KLBaselineLoss(KLDivLoss):
 		'''
 		# construct a comparison dataset for this call with n random examples
 		comp_dataset 					= tuner_utils.sample_from_dataset(self.dataset, self.n_examples, log_message=progress_bar)
-		dataloader 						= torch.utils.data.DataLoader(comp_dataset, batch_size=1)
+		dataloader 						= torch.utils.data.DataLoader(comp_dataset, batch_size=self.batch_size, collate_fn=pad_batch)
 		mean_kl_div						= torch.tensor((0.)).to(self.device)
 		
 		# haven't figure out a way to actually do batches > 1 yet
@@ -173,25 +201,27 @@ class KLBaselineLoss(KLDivLoss):
 					all_mask_indices.append(mask_indices)
 				
 				outputs 				= self.model(**batch_inputs).logits.index_select(-1, self.to_include)
-				outputs 				= F.log_softmax(outputs, dim=-1)
 				
 				# we're not training the baseline model, so no need to get gradients for it
 				with torch.no_grad():
-					baseline_outputs 		= F.softmax(self.baseline_model(**batch_inputs).logits, dim=-1)	
-								
-				# we just calculate the loss on the selected tokens
-				outputs 				= torch.cat([torch.unsqueeze(outputs[i].index_select(0, mask_locations), dim=0) for i, mask_locations in enumerate(mask_indices)], dim=0)
-				baseline_outputs		= torch.cat([torch.unsqueeze(baseline_outputs[i].index_select(0, mask_locations), dim=0) for i, mask_locations in enumerate(mask_indices)], dim=0)
+					baseline_outputs 	= self.baseline_model(**batch_inputs).logits
 				
-				# we want this to be a mean instead of a sum, so divide by the length of the dataset
-				kl_div 					= super(KLBaselineLoss, self).forward(outputs, baseline_outputs)
-				mean_kl_div 			+= kl_div/comp_dataset.num_rows
-						
-				if progress_bar or return_all:
-					kl_divs.append(kl_div.cpu())
+				# we calculate D_KL for each example individually because we'd like to record the D_KL 
+				# per sentence for inspection later doing it per batch would just give us a mean rather than the sum
+				for output, baseline_output, ex_mask_indices in zip(outputs, baseline_outputs, mask_indices):		
+					# we just calculate the loss on the selected tokens
+					output				= torch.unsqueeze(F.log_softmax(torch.cat([output.index_select(0, mask_locations) for i, mask_locations in enumerate(ex_mask_indices)], dim=0), dim=-1), dim=0)
+					baseline_output		= torch.unsqueeze(F.softmax(torch.cat([baseline_output.index_select(0, mask_locations) for i, mask_locations in enumerate(ex_mask_indices)], dim=0), dim=-1), dim=0)
 					
-					if progress_bar:
-						dataloader.set_postfix(kl_div_mean=f'{np.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
+					# we want this to be a mean instead of a sum, so divide by the length of the dataset
+					kl_div 				= super(KLBaselineLoss, self).forward(output, baseline_output)
+					mean_kl_div 		+= kl_div/comp_dataset.num_rows
+						
+					if progress_bar or return_all:
+						kl_divs.append(kl_div.cpu())
+					
+				if progress_bar:
+					dataloader.set_postfix(kl_div_mean=f'{np.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
 					
 		except KeyboardInterrupt:
 			log.warning('KLBaselineLoss computation halted manually')
