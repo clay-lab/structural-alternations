@@ -330,7 +330,7 @@ class Tuner:
 		]
 		
 		included_vars = [var for var in vars(self) if not var in exclude]
-		included_vars = [var for var in included_vars if isinstance(vars(self)[var],(str,int,float,bool)) or (isinstance(vars(self)[var],float) and np.isnan(vars(self)[var]))]
+		included_vars = [var for var in included_vars if isinstance(vars(self)[var],(str,int,float,bool))]
 		sorted_vars = sorted([var for var in included_vars], key=lambda item: re.sub(r'^(model)', '0\\1', item))
 		
 		for var in sorted_vars:
