@@ -207,7 +207,7 @@ class KLBaselineLoss(KLDivLoss):
 					baseline_outputs 	= self.baseline_model(**batch_inputs).logits
 				
 				# we calculate D_KL for each example individually because we'd like to record the D_KL 
-				# per sentence for inspection later doing it per batch would just give us a mean rather than the sum
+				# per sentence for inspection later. doing it per batch would just give us a mean for a batch
 				for output, baseline_output, ex_mask_indices in zip(outputs, baseline_outputs, mask_indices):		
 					# we just calculate the loss on the selected tokens
 					output				= torch.unsqueeze(F.log_softmax(torch.cat([output.index_select(0, mask_locations) for i, mask_locations in enumerate(ex_mask_indices)], dim=0), dim=-1), dim=0)
@@ -216,7 +216,7 @@ class KLBaselineLoss(KLDivLoss):
 					# we want this to be a mean instead of a sum, so divide by the length of the dataset
 					kl_div 				= super(KLBaselineLoss, self).forward(output, baseline_output)
 					mean_kl_div 		+= kl_div/comp_dataset.num_rows
-						
+					
 					if progress_bar or return_all:
 						kl_divs.append(kl_div.cpu())
 					
