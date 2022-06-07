@@ -326,7 +326,7 @@ class Tuner:
 		exclude = [
 			'mask_token', 'mask_token_id', 'unk_token_id', 
 			'save_full_model', 'checkpoint_dir', 'load_full_model', 'device',
-			'use_kl_baseline_loss', 'original_cwd', 'kl_batch_size', 'comparison_batch_size',
+			'use_kl_baseline_loss', 'original_cwd', 'kl_batch_size'
 		]
 		
 		included_vars = [var for var in vars(self) if not var in exclude]
