@@ -94,9 +94,9 @@ to_mask:
   - GORX
 
 masked_token_targets:
-  THAX : [paint, cream, water, fuel, hay, rice, oil, solvent, powder, trash, beer, sauce, gas, icing, blood, dye, wax, grain, corn, bread, jelly, bacon, mud, grease, gravel, wood, chocolate, milk, dust, ice, gold]
-  GORX : [truck, wall, field, door, wagon, floor, sidewalk, porch, roof, car, fence, ceiling, tub, factory, counter, oven, surface, window, room, piece, thing, bottle, screen, stove, house, building, van, cart, trunk, deck, garden]
+  THAX : [poison, oil, water, solution, liquid, paint, bullets, ink, graffiti, champagne, alcohol, glue, foam, chemicals, cleaner, perfume, product, fragrance, milk, urine, vodka, vinegar]
+  GORX : [victim, edges, room, lawn, bowl, ground, vegetables, surface, filter, paper, chain, stain, crowd, model, wall, audience, carpet, top, bottom, piece, house, car] # From iWeb
 
 masked_token_target_labels:
-  THAX : mass
-  GORX : count
+  THAX : spray TO iWeb
+  GORX : spray GO iWeb
