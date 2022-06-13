@@ -1823,8 +1823,7 @@ class Tuner:
 		for token in tokens:
 			token_id 		= self.tokenizer.convert_tokens_to_ids(token)
 			token_embedding = self.word_embeddings[token_id]
-			#token_cossims 	= cos(token_embedding, self.word_embeddings)
-			token_cossims = (self.word_embeddings - token_embedding).pow(2).sum(-1).sqrt()
+			token_cossims 	= cos(token_embedding, self.word_embeddings)
 			included_ids 	= torch.topk(token_cossims, k=topk+1).indices.tolist() # add one so we can leave out the identical token
 			token_cossims 	= token_cossims.tolist()
 			update_cossims(cossims=cossims, values=token_cossims, included_ids=included_ids, excluded_ids=token_id, k=topk, target_group=f'{topk} most similar')

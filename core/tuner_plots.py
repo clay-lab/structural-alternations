@@ -859,7 +859,7 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 			returns:
 				title (str)				: a title for the cosine similarity plot
 		'''
-		metric = 'Euclidean distances to '
+		metric = 'cosine similarities to '
 		metric += tuner_utils.multiplator(cossims.eval_data, multstr=f"{cossims.eval_data.unique().size} eval sets'")
 		metric += f' target group tokens'
 		
@@ -899,7 +899,7 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 						sem_diff_means = sqrt(((std1**2)/size1) + ((std2**2)/size2))
 						
 						title += (
-							f'\nMean Euclidean distance of {group} to {label1} \u2212 {arg} to {label2} targets: ' +
+							f'\nMean cosine similarity of {group} to {label1} \u2212 {arg} to {label2} targets: ' +
 							f'{mean1:.4f} (\u00b1{sem1:.4f}) - {mean2:.4f} (\u00b1{sem2:.4f}) = ' +
 							f'{diff_means:.4f} (\u00b1{sem_diff_means:.4f})'
 						).replace('-', '\u2212') 
@@ -923,8 +923,8 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 			comparison_line=True,
 			center_at_origin=False,
 			marginal_means=['model_name','target_group_label'],
-			xlabel=f'{in_arg} Euclidean distance',
-			ylabel=f'{out_arg} Euclidean distance',
+			xlabel=f'{in_arg} cosine similarity',
+			ylabel=f'{out_arg} cosine similarity',
 			plot_kwargs=dict(zorder=5, linewidth=0),
 		)
 		
@@ -944,8 +944,8 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 		# diffs plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
 		plot_args.update(dict(
 			ax=ax[i][1], diffs_plot=True,
-			xlabel=f'{in_arg} Euclidean distance',
-			ylabel=f'{out_arg} - {in_arg} Euclidean distance'.replace('-', '\u2212'),
+			xlabel=f'{in_arg} cosine similarity',
+			ylabel=f'{out_arg} - {in_arg} cosine similarity'.replace('-', '\u2212'),
 		))
 		
 		scatterplot(**plot_args)
