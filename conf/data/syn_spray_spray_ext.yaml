@@ -98,5 +98,5 @@ masked_token_targets:
   GORX : [truck, wall, field, door, wagon, floor, sidewalk, porch, roof, car, fence, ceiling, tub, factory, counter, oven, surface, window, room, piece, thing, bottle, screen, stove, house, building, van, cart, trunk, deck, garden]
 
 masked_token_target_labels:
-  THAX : spray TO iWeb
-  GORX : spray GO iWeb
+  THAX : mass
+  GORX : count
