@@ -897,9 +897,18 @@ roberta:
 red_yellow:
   '[subj]' : [cherry, strawberry, tomato, lobster]
   '[obj]'  : [banana, lemon, corn, lion]
+  
+red_yellow_mixed_cat:
+  '[subj]' : [cherry, lemon, tomato, lion]
+  '[obj]'  : [banana, strawberry, corn, lobster]
+
 fruit_vegetable:
   '[subj]' : [cherry, strawberry, banana, peach]
   '[obj]'  : [tomato, corn, carrot, pumpkin]
+
+fruit_vegetable_mixed_cat:
+  '[subj]' : [cherry, corn, banana, pumpkin]
+  '[obj]'  : [tomato, strawberry, carrot, peach]
 
 # used to distinguish arguments of existing verbs
 animate_inanimate:
