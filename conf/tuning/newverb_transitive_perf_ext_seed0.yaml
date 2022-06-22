@@ -897,7 +897,7 @@ roberta:
 red_yellow:
   '[subj]' : [cherry, strawberry, tomato, lobster]
   '[obj]'  : [banana, lemon, corn, lion]
-  
+
 red_yellow_mixed_cat:
   '[subj]' : [cherry, lemon, tomato, lion]
   '[obj]'  : [banana, strawberry, corn, lobster]
@@ -909,6 +909,14 @@ fruit_vegetable:
 fruit_vegetable_mixed_cat:
   '[subj]' : [cherry, corn, banana, pumpkin]
   '[obj]'  : [tomato, strawberry, carrot, peach]
+
+blue_collar_white_collar:
+  '[subj]' : [bartender, farmer, clerk, mechanic]
+  '[obj]'  : [lawyer, doctor, teacher, architect]
+  
+blue_collar_white_collar_mixed_cat:
+  '[subj]' : [bartender, doctor, clerk, architect]
+  '[obj]'  : [lawyer, farmer, teacher, mechanic]
 
 # used to distinguish arguments of existing verbs
 animate_inanimate:
