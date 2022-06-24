@@ -917,6 +917,22 @@ blue_collar_white_collar:
 blue_collar_white_collar_mixed_cat:
   '[subj]' : [bartender, doctor, clerk, architect]
   '[obj]'  : [lawyer, farmer, teacher, mechanic]
+  
+air_water:
+  '[subj]' : [goose, hawk, duck, eagle, crow, dove]
+  '[obj]'  : [trout, salmon, tuna, shark, cod, whale]
+
+instruments_tools:
+  '[subj]' : [guitar, trumpet, violin, piano, horn, drums]
+  '[obj]'  : [hammer, wrench, drill, saw, scissors, axe]
+  
+vehicles_buildings:
+  '[subj]' : [cart, truck, bike, car, plane, motorcycle]
+  '[obj]'  : [house, apartment, tent, building, church, store]
+
+female_male:
+  '[subj]' : [sister, aunt, mother, wife, grandmother, daughter]
+  '[obj]'  : [brother, uncle, father, husband, grandfather, son]
 
 # used to distinguish arguments of existing verbs
 animate_inanimate:
