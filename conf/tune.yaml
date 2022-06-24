@@ -27,7 +27,7 @@ hyperparameters:
 
 kl_loss_params:
   dataset: datamaker/datasets/miniboki-2022-04-01_22-58-30/miniboki
-  batch_size: 32
+  batch_size: 8
   n_examples_per_step: 100
   scaleby: 0.5
   masking: none
