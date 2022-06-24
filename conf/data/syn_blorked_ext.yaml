@@ -131,6 +131,21 @@ added_args:
   fruit_vegetable:
     '[subj]' : [apple, pear]
     '[obj]'  : [potato, cabbage]
+  blue_white_collar:
+    '[subj]' : [miner, technician]
+    '[obj]'  : [accountant, manager]
+  air_water:
+    '[subj]' : [eagle, dove]
+    '[obj]'  : [tuna, cod]
+  instruments_tools:
+    '[subj]' : [horn, violin]
+    '[obj]'  : [wrench, drill]
+  vehicles_buildings:
+    '[subj]' : [truck, cart]
+    '[obj]'  : [store, church]
+  female_male:
+    '[subj]' : [aunt, daughter]
+    '[obj]'  : [uncle, son]
     
 prediction_sentences:
   - The [subj] liked the [obj].
