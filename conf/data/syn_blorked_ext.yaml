@@ -139,7 +139,7 @@ added_args:
     '[obj]'  : [tuna, cod]
   instruments_tools:
     '[subj]' : [horn, violin]
-    '[obj]'  : [wrench, drill]
+    '[obj]'  : [rake, drill]
   vehicles_buildings:
     '[subj]' : [truck, cart]
     '[obj]'  : [store, church]
