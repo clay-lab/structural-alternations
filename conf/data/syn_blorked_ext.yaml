@@ -141,7 +141,7 @@ added_args:
     '[subj]' : [horn, violin]
     '[obj]'  : [rake, drill]
   vehicles_buildings:
-    '[subj]' : [truck, cart]
+    '[subj]' : [truck, bus] # originally cart instead of bus
     '[obj]'  : [store, church]
   female_male:
     '[subj]' : [aunt, daughter]
