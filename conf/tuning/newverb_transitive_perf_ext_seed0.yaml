@@ -927,7 +927,7 @@ instruments_tools:
   '[obj]'  : [hammer, saw, scissors, axe]
   
 vehicles_buildings:
-  '[subj]' : [bike, car, plane, motorcycle]
+  '[subj]' : [bike, car, train, motorcycle] # [plane] originally instead of taxi
   '[obj]'  : [house, apartment, tent, building]
 
 female_male:
