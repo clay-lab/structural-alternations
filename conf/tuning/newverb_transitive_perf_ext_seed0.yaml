@@ -929,6 +929,10 @@ instruments_tools:
 vehicles_buildings:
   '[subj]' : [bike, car, train, motorcycle] # [plane] originally instead of taxi
   '[obj]'  : [house, apartment, tent, building]
+  
+buildings_vehicles:
+  '[subj]' : [house, apartment, tent, building]
+  '[obj]'  : [bike, car, train, motorcycle] # [plane] originally instead of taxi
 
 female_male:
   '[subj]' : [sister, mother, wife, grandmother]

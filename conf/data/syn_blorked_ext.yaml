@@ -143,6 +143,9 @@ added_args:
   vehicles_buildings:
     '[subj]' : [truck, bus] # originally cart instead of bus
     '[obj]'  : [store, church]
+  buildings_vehicles:
+    '[subj]' : [store, church]
+    '[obj]'  : [truck, bus] # originally cart instead of bus
   female_male:
     '[subj]' : [aunt, daughter]
     '[obj]'  : [uncle, son]
