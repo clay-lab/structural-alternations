@@ -1,0 +1,50 @@
+# Synthetic constructions with 'blorked'
+name: syn_blorked_ext_for_human_exp.data
+description: Synthetic 'blorked' tuples
+
+exp_type: newverb
+
+sentence_types:
+  - perfect transitive
+  - raising perfect transitive
+  - mat-wh-Q subject perfect transitive
+  - neg perfect transitive
+  - mat-wh-Q subject raising perfect transitive
+  - perfect passive
+  - raising perfect passive
+  - mat-wh-Q subject perfect passive
+  - neg perfect passive
+  - mat-wh-Q subject raising perfect passive
+
+eval_groups:
+  verb : BLORKED
+
+to_mask:
+  BLORKED
+  
+added_args:
+  red_yellow:
+    '[subj]' : [blood, ruby]
+    '[obj]'  : [honey, gold]
+  vehicles_buildings:
+    '[subj]' : [truck, bus]
+    '[obj]'  : [store, church]
+  # not currently used
+  # fruit_vegetable:
+  #   '[subj]' : [apple, pear]
+  #   '[obj]'  : [potato, cabbage]
+  # blue_white_collar:
+  #   '[subj]' : [miner, technician]
+  #   '[obj]'  : [accountant, manager]
+  # air_water:
+  #   '[subj]' : [eagle, dove]
+  #   '[obj]'  : [tuna, cod]
+  # instruments_tools:
+  #   '[subj]' : [horn, violin]
+  #   '[obj]'  : [rake, drill]
+  # buildings_vehicles:
+  #   '[subj]' : [store, church]
+  #   '[obj]'  : [truck, bus] # originally cart instead of bus
+  # female_male:
+  #   '[subj]' : [aunt, daughter]
+  #   '[obj]'  : [uncle, son]

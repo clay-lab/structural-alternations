@@ -1,0 +1,83 @@
+name: newverb_transitive_perf_ext_for_human_exp
+
+reference_sentence_type: perfect transitive
+exp_type: newverb
+
+to_mask:
+  - BLORKED
+  
+num_words: 6 # how many words to find when using check_args.py?
+
+which_args: model
+# which arguments to use during fine-tuning/eval? 
+#   'model' uses the args specified for the model being fine-tuned if given
+#   otherwise, specify one of the sets below by name
+
+# arg sets
+# determined programatically as having relatively unbiased starting states
+# these were determined on the basis of newverb_transitive_perf_ext, newverb_transitive_past_ext, newverb_passive_perf_ext, and newverb_passive_past_ext
+
+# These arguments generated using model(s): bert, distilbert, multiberts_00, multiberts_00-0000k, multiberts_00-0020k, multiberts_00-0040k, multiberts_00-0060k, multiberts_00-0080k, multiberts_00-0100k, multiberts_00-0120k, multiberts_00-0140k, multiberts_00-0160k, multiberts_00-0180k, multiberts_00-0200k, multiberts_00-0300k, multiberts_00-0400k, multiberts_00-0500k, multiberts_00-0600k, multiberts_00-0700k, multiberts_00-0800k, multiberts_00-0900k, multiberts_00-1000k, multiberts_00-1100k, multiberts_00-1200k, multiberts_00-1300k, multiberts_00-1400k, multiberts_00-1500k, multiberts_00-1600k, multiberts_00-1700k, multiberts_00-1800k, multiberts_00-1900k, multiberts_00-2000k, multiberts_01, multiberts_01-0000k, multiberts_01-0020k, multiberts_01-0040k, multiberts_01-0060k, multiberts_01-0080k, multiberts_01-0100k, multiberts_01-0120k, multiberts_01-0140k, multiberts_01-0160k, multiberts_01-0180k, multiberts_01-0200k, multiberts_01-0300k, multiberts_01-0400k, multiberts_01-0500k, multiberts_01-0600k, multiberts_01-0700k, multiberts_01-0800k, multiberts_01-0900k, multiberts_01-1000k, multiberts_01-1100k, multiberts_01-1200k, multiberts_01-1300k, multiberts_01-1400k, multiberts_01-1500k, multiberts_01-1600k, multiberts_01-1700k, multiberts_01-1800k, multiberts_01-1900k, multiberts_01-2000k, multiberts_02, multiberts_02-0000k, multiberts_02-0020k, multiberts_02-0040k, multiberts_02-0060k, multiberts_02-0080k, multiberts_02-0100k, multiberts_02-0120k, multiberts_02-0140k, multiberts_02-0160k, multiberts_02-0180k, multiberts_02-0200k, multiberts_02-0300k, multiberts_02-0400k, multiberts_02-0500k, multiberts_02-0600k, multiberts_02-0700k, multiberts_02-0800k, multiberts_02-0900k, multiberts_02-1000k, multiberts_02-1100k, multiberts_02-1200k, multiberts_02-1300k, multiberts_02-1400k, multiberts_02-1500k, multiberts_02-1600k, multiberts_02-1700k, multiberts_02-1800k, multiberts_02-1900k, multiberts_02-2000k, multiberts_03, multiberts_03-0000k, multiberts_03-0020k, multiberts_03-0040k, multiberts_03-0060k, multiberts_03-0080k, multiberts_03-0100k, multiberts_03-0120k, multiberts_03-0140k, multiberts_03-0160k, multiberts_03-0180k, multiberts_03-0200k, multiberts_03-0300k, multiberts_03-0400k, multiberts_03-0500k, multiberts_03-0600k, multiberts_03-0700k, multiberts_03-0800k, multiberts_03-0900k, multiberts_03-1000k, multiberts_03-1100k, multiberts_03-1200k, multiberts_03-1300k, multiberts_03-1400k, multiberts_03-1500k, multiberts_03-1600k, multiberts_03-1700k, multiberts_03-1800k, multiberts_03-1900k, multiberts_03-2000k, multiberts_04, multiberts_04-0000k, multiberts_04-0020k, multiberts_04-0040k, multiberts_04-0060k, multiberts_04-0080k, multiberts_04-0100k, multiberts_04-0120k, multiberts_04-0140k, multiberts_04-0160k, multiberts_04-0180k, multiberts_04-0200k, multiberts_04-0300k, multiberts_04-0400k, multiberts_04-0500k, multiberts_04-0600k, multiberts_04-0700k, multiberts_04-0800k, multiberts_04-0900k, multiberts_04-1000k, multiberts_04-1100k, multiberts_04-1200k, multiberts_04-1300k, multiberts_04-1400k, multiberts_04-1500k, multiberts_04-1600k, multiberts_04-1700k, multiberts_04-1800k, multiberts_04-1900k, multiberts_04-2000k, multiberts_05, multiberts_06, multiberts_07, multiberts_08, multiberts_09, multiberts_10, multiberts_11, multiberts_12, multiberts_13, multiberts_14, multiberts_15, multiberts_16, multiberts_17, multiberts_18, multiberts_19, multiberts_20, multiberts_21, multiberts_22, multiberts_23, multiberts_24, roberta
+# and tuning data: newverb_transitive_perf_ext, newverb_transitive_past_ext, newverb_passive_perf_ext, newverb_passive_past_ext
+
+# semantic distinctions between subj/obj not likely to be used with subj/obj arguments of existing verbs
+red_yellow:
+  '[subj]' : [cherry, strawberry, tomato, lobster]
+  '[obj]'  : [banana, lemon, corn, lion]
+
+vehicles_buildings:
+  '[subj]' : [bike, car, train, motorcycle]
+  '[obj]'  : [house, apartment, tent, building]
+
+# not currently used
+# fruit_vegetable:
+# '[subj]' : [cherry, strawberry, banana, peach]
+# '[obj]'  : [tomato, corn, carrot, pumpkin]
+
+# blue_white_collar:
+# '[subj]' : [bartender, farmer, clerk, mechanic]
+# '[obj]'  : [lawyer, doctor, teacher, architect]
+
+# air_water:
+# '[subj]' : [goose, hawk, duck, crow]
+# '[obj]'  : [trout, salmon, shark, whale]
+
+# instruments_tools:
+# '[subj]' : [guitar, trumpet, piano, drums]
+# '[obj]'  : [hammer, saw, scissors, axe]  
+
+# buildings_vehicles:
+# '[subj]' : [house, apartment, tent, building]
+# '[obj]'  : [bike, car, train, motorcycle] # [plane] originally instead of taxi
+
+# female_male:
+# '[subj]' : [sister, mother, wife, grandmother]
+# '[obj]'  : [brother, father, husband, grandfather]
+
+# used to distinguish arguments of existing verbs
+# animate_inanimate:
+#   '[subj]' : [man, woman, boy, girl, person, human]
+#   '[obj]'  : [thing, stuff, commodity, device, tool, machine]
+# inanimate_animate:
+#   '[subj]' : [thing, stuff, commodity, device, tool, machine]
+#   '[obj]'  : [man, woman, boy, girl, person, human]
+# drink:
+#   '[subj]' : [customer, passenger, guest, diner, worker, bride]
+#   '[obj]'  : [coffee, wine, soda, juice, tea, beer]
+  
+data:
+  - The [subj] has always BLORKED the [obj].
+  - The [subj] has typically BLORKED the [obj].
+  - The [subj] has usually BLORKED the [obj].
+  - The [subj] has often BLORKED the [obj].
+  - The [subj] has always BLORKED the [obj] frequently.
+  - The [subj] has often BLORKED the [obj] at times.
+  - The [subj] has usually BLORKED the [obj] from time to time.
+  - The [subj] has typically BLORKED the [obj] afterward.
+
+# check_args_data:
+#   - It is the [obj] that the [subj] has BLORKED.
+#   - What the [subj] has BLORKED is the [obj].
+#   - Which [obj] has the [subj] BLORKED?
+#   - Which [subj] has BLORKED the [obj]?
+#   - Did you see that the [subj] has BLORKED the [obj]?

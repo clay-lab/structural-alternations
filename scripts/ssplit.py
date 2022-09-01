@@ -25,6 +25,14 @@ def split_scripts(cfg: DictConfig) -> None:
 		
 		if values.startswith('glob(') and values.endswith(')'):
 			values = parse_values_from_glob(values, os.path.join(cfg.hydra_glob_dirname, key))
+		elif values.startswith('range('):
+			values = values.replace('range(', '').replace(')', '').split(',')
+			try:
+				values = [int(value) for value in values]
+			except ValueError:
+				raise ValueError('Ranges must be specified using integers, but got "' + ','.join(values) + '"!')
+			
+			values = [str(v) for v in list(range(*values))]
 		else:
 			# this lets us not split arguments which have commas inside them
 			values = list(set(values.split(','))) if not (re.match(r'^\[.*\]$', values) or re.match(r'^\'.*\'$', values) or re.match(r'^\".*\"$', values)) else [values]

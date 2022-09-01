@@ -913,7 +913,7 @@ fruit_vegetable_mixed_cat:
 blue_white_collar:
   '[subj]' : [bartender, farmer, clerk, mechanic]
   '[obj]'  : [lawyer, doctor, teacher, architect]
-  
+
 blue_white_collar_mixed_cat:
   '[subj]' : [bartender, doctor, clerk, architect]
   '[obj]'  : [lawyer, farmer, teacher, mechanic]
