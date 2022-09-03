@@ -29,6 +29,11 @@ vehicles_buildings:
   '[subj]' : [bike, car, train, motorcycle]
   '[obj]'  : [house, apartment, tent, building]
 
+buildings_vehicles:
+  '[subj]' : [house, apartment, tent, building]
+  '[obj]'  : [bike, car, train, motorcycle]
+
+
 # not currently used
 # fruit_vegetable:
 # '[subj]' : [cherry, strawberry, banana, peach]
@@ -45,10 +50,6 @@ vehicles_buildings:
 # instruments_tools:
 # '[subj]' : [guitar, trumpet, piano, drums]
 # '[obj]'  : [hammer, saw, scissors, axe]  
-
-# buildings_vehicles:
-# '[subj]' : [house, apartment, tent, building]
-# '[obj]'  : [bike, car, train, motorcycle] # [plane] originally instead of taxi
 
 # female_male:
 # '[subj]' : [sister, mother, wife, grandmother]

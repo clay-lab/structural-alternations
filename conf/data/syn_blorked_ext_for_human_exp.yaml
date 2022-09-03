@@ -29,6 +29,9 @@ added_args:
   vehicles_buildings:
     '[subj]' : [truck, bus]
     '[obj]'  : [store, church]
+  buildings_vehicles:
+    '[subj]' : [store, church]
+    '[obj]'  : [truck, bus]
   # not currently used
   # fruit_vegetable:
   #   '[subj]' : [apple, pear]
@@ -42,9 +45,6 @@ added_args:
   # instruments_tools:
   #   '[subj]' : [horn, violin]
   #   '[obj]'  : [rake, drill]
-  # buildings_vehicles:
-  #   '[subj]' : [store, church]
-  #   '[obj]'  : [truck, bus] # originally cart instead of bus
   # female_male:
   #   '[subj]' : [aunt, daughter]
   #   '[obj]'  : [uncle, son]
