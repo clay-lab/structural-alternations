@@ -70,7 +70,7 @@ data:
   - The [subj] has typically BLORKED the [obj].
   - The [subj] has usually BLORKED the [obj].
   - The [subj] has often BLORKED the [obj].
-  - It was the [obj] that the [subj] always BLORKED.
+  - It is the [obj] that the [subj] has always BLORKED.
 #  - Which [obj] has the [subj] typically BLORKED?
 #  - Which [obj] does the [subj] seem to have usually BLORKED?
   - That's the [obj] that the [subj] has often BLORKED.

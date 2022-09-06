@@ -7,17 +7,15 @@ exp_type: newverb
 sentence_types:
   - perfect transitive
   - raising perfect transitive
-  - mat-wh-Q subject perfect transitive
+  - cleft subject perfect transitive
   - neg perfect transitive
-  - mat-wh-Q subject raising perfect transitive
+  - cleft subject raising perfect transitive
   - perfect passive
   - raising perfect passive
-  - mat-wh-Q subject perfect passive
+  - cleft subject perfect passive
   - neg perfect passive
-  - mat-wh-Q subject raising perfect passive
+  - cleft subject raising perfect passive
   - cleft object perfect transitive
-  - mat-wh-Q object perfect transitive
-  - mat-wh-Q object raising perfect transitive
   - presentational ORC perfect transitive
 
 eval_groups:
