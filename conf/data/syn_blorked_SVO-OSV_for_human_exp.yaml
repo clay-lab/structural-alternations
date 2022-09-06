@@ -34,6 +34,9 @@ added_args:
   buildings_vehicles:
     '[subj]' : [store, church]
     '[obj]'  : [truck, bus]
+  vanimals_canimals:
+    '[subj]' : [unicorn, ant]
+    '[obj]'  : [dragon, beetle]
   # not currently used
   # fruit_vegetable:
   #   '[subj]' : [apple, pear]
