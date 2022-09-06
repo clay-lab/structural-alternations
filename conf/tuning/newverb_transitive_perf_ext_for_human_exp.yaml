@@ -33,6 +33,9 @@ buildings_vehicles:
   '[subj]' : [house, apartment, tent, building]
   '[obj]'  : [bike, car, train, motorcycle]
 
+vanimals_canimals:
+  '[subj]' : [ape, elephant, eagle, ox]
+  '[obj]'  : [monkey, lion, hawk, cow]
 
 # not currently used
 # fruit_vegetable:
