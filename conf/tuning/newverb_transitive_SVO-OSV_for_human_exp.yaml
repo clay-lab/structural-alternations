@@ -30,8 +30,8 @@ vehicles_buildings:
   '[obj]'  : [house, apartment, tent, building]
 
 buildings_vehicles:
-  '[subj]' : [house, apartment, tent, building]
-  '[obj]'  : [bike, car, train, motorcycle]
+  '[subj]' : [barn, building, house, mansion] # '[subj]' : [house, apartment, tent, building]
+  '[obj]'  : [bicycle, bus, car, tractor] # '[obj]'  : [bike, car, train, motorcycle]
   
 vanimals_canimals:
   '[subj]' : [ape, elephant, eagle, ox]

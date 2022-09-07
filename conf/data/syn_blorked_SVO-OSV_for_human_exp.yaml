@@ -32,8 +32,8 @@ added_args:
     '[subj]' : [truck, bus]
     '[obj]'  : [store, church]
   buildings_vehicles:
-    '[subj]' : [store, church, library, cottage, mansion, barn, dorm, hut, palace, cabin, shed]
-    '[obj]'  : [truck, bus, boat, plane, taxi, yacht, helicopter, bicycle, tank, tractor, tram, van, ship, submarine, shuttle]
+    '[subj]' : [palace, cabin] #'[subj]' : [store, church, library, cottage, mansion, barn, dorm, hut, palace, cabin, shed]
+    '[obj]'  : [motorcycle, van] #'[obj]'  : [truck, bus, boat, plane, taxi, yacht, helicopter, bicycle, tank, tractor, tram, van, ship, submarine, shuttle]
   vanimals_canimals:
     '[subj]' : [unicorn, ant]
     '[obj]'  : [dragon, beetle]
