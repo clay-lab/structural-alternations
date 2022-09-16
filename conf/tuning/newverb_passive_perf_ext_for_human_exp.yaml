@@ -68,12 +68,19 @@ vehicles_buildings:
 data:
   - The [obj] has always been BLORKED by the [subj].
   - The [obj] has typically been BLORKED by the [subj].
-  - The [obj] has usually been BLORKED by the [subj].
-  - The [obj] has often been BLORKED by the [subj].
-  - The [obj] has always been BLORKED by the [subj] frequently.
-  - The [obj] has often been BLORKED by the [subj] at times.
-  - The [obj] has usually been BLORKED by the [subj] from time to time.
-  - The [obj] has typically been BLORKED by the [subj] afterward.
+  # - The [obj] has usually been BLORKED by the [subj].
+  # - The [obj] has often been BLORKED by the [subj].
+  # - The [obj] has always been BLORKED by the [subj] frequently.
+  # - The [obj] has often been BLORKED by the [subj] at times.
+  # - The [obj] has usually been BLORKED by the [subj] from time to time.
+  # - The [obj] has typically been BLORKED by the [subj] afterward.
+  - Despite George's best efforts, the [obj] has been usually BLORKED by the [subj].
+  - Even though the [obj] has typically been BLORKED by the [subj], no one is happy about it.
+  - I'm surprised that the [obj] has never been BLORKED by the [subj].
+  - She insisted that the [obj] has rarely been BLORKED by the [subj].
+  - Because the [obj] has usually been BLORKED by the [subj], I'm satisfied.
+  - The [obj] has always been BLORKED by the [subj] when Chris is in town.
+  
 
 # check_args_data:
 #   - It is the [obj] that the [subj] has been BLORKED by.
