@@ -1,6 +1,6 @@
-name: newverb_transitive_SVO-OSV_for_human_exp
+name: newverb_passive_perf_ext_for_human_exp
 
-reference_sentence_type: perfect transitive
+reference_sentence_type: perfect passive
 exp_type: newverb
 
 to_mask:
@@ -29,14 +29,6 @@ vehicles_buildings:
   '[subj]' : [bike, car, train, motorcycle]
   '[obj]'  : [house, apartment, tent, building]
 
-buildings_vehicles:
-  '[subj]' : [barn, building, house, mansion] # '[subj]' : [house, apartment, tent, building]
-  '[obj]'  : [bicycle, bus, car, tractor] # '[obj]'  : [bike, car, train, motorcycle]
-  
-vanimals_canimals:
-  '[subj]' : [ape, elephant, eagle, ox]
-  '[obj]'  : [monkey, lion, hawk, cow]
-
 # not currently used
 # fruit_vegetable:
 # '[subj]' : [cherry, strawberry, banana, peach]
@@ -54,6 +46,10 @@ vanimals_canimals:
 # '[subj]' : [guitar, trumpet, piano, drums]
 # '[obj]'  : [hammer, saw, scissors, axe]  
 
+# buildings_vehicles:
+# '[subj]' : [house, apartment, tent, building]
+# '[obj]'  : [bike, car, train, motorcycle] # [plane] originally instead of taxi
+
 # female_male:
 # '[subj]' : [sister, mother, wife, grandmother]
 # '[obj]'  : [brother, father, husband, grandfather]
@@ -70,24 +66,27 @@ vanimals_canimals:
 #   '[obj]'  : [coffee, wine, soda, juice, tea, beer]
   
 data:
-  - The [subj] has always BLORKED the [obj].
-  - The [subj] has typically BLORKED the [obj].
-  # - The [subj] has usually BLORKED the [obj].
-  # - The [subj] has often BLORKED the [obj].
-  - Despite George's best efforts, the [subj] has usually BLORKED the [obj].
-  - Even though the [subj] has typically BLORKED the [obj], no one is happy about it.
-  - I'm surprised that the [subj] has never BLORKED the [obj].
-  - She insisted that the [subj] has rarely BLORKED the [obj].
-  - Because the [subj] has usually BLORKED the [obj], I'm satisfied.
-  - The [subj] has always BLORKED the [obj] when Chris is in town.
-  - It is the [obj] that the [subj] has always BLORKED.
-#  - Which [obj] has the [subj] typically BLORKED?
-#  - Which [obj] does the [subj] seem to have usually BLORKED?
-  - That's the [obj] that the [subj] has often BLORKED.
+  - The [obj] has always been BLORKED by the [subj].
+  - The [obj] has typically been BLORKED by the [subj].
+  # - The [obj] has usually been BLORKED by the [subj].
+  # - The [obj] has often been BLORKED by the [subj].
+  # - The [obj] has always been BLORKED by the [subj] frequently.
+  # - The [obj] has often been BLORKED by the [subj] at times.
+  # - The [obj] has usually been BLORKED by the [subj] from time to time.
+  # - The [obj] has typically been BLORKED by the [subj] afterward.
+  - Despite George's best efforts, the [obj] has been usually BLORKED by the [subj].
+  - Even though the [obj] has typically been BLORKED by the [subj], no one is happy about it.
+  - I'm surprised that the [obj] has never been BLORKED by the [subj].
+  - She insisted that the [obj] has rarely been BLORKED by the [subj].
+  - Because the [obj] has usually been BLORKED by the [subj], I'm satisfied.
+  - The [obj] has always been BLORKED by the [subj] when Chris is in town.
+  - It is the [subj] that the [obj] has always been BLORKED by.
+  - That's the [subj] that the [obj] has often been BLORKED by.
+  
 
 # check_args_data:
-#   - It is the [obj] that the [subj] has BLORKED.
-#   - What the [subj] has BLORKED is the [obj].
-#   - Which [obj] has the [subj] BLORKED?
-#   - Which [subj] has BLORKED the [obj]?
-#   - Did you see that the [subj] has BLORKED the [obj]?
+#   - It is the [obj] that the [subj] has been BLORKED by.
+#   - What the [subj] has been BLORKED by is the [obj].
+#   - Which [obj] has the [subj] been BLORKED by?
+#   - Which [subj] has been BLORKED by the [obj]?
+#   - Did you see that the [subj] has been BLORKED by the [obj]?
