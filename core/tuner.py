@@ -2473,7 +2473,7 @@ class Tuner:
 			args = self.args
 			if 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
 				added_args 	= {arg_type: self.__format_tokens_for_tokenizer(eval_cfg.data.added_args[self.args_group][arg_type]) for arg_type in args}
-				args		= {arg_type: args[arg_type] + additional_tokens[arg_type] for arg_type in args}
+				args		= {arg_type: args[arg_type] + added_args[arg_type] for arg_type in args}
 		else:
 			args 			= self.tokens_to_mask
 			tokens_to_roles = {self.__format_tokens_for_tokenizer(v): k for k, v in eval_cfg.data.eval_groups.items()}
