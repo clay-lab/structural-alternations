@@ -263,22 +263,33 @@ class Tuner:
 		return generated_sentences
 	
 	# formatting of results
-	def __format_strings_with_tokens_for_display(self, data: 'any') -> 'any':
+	def __format_strings_with_tokens_for_display(
+		self, 
+		data: 'any', 
+		additional_tokens: List[str] = None
+	) -> 'any':
 		'''
 		Formats strings containing tokenizer-formatted tokens for display
 		
 			params:
-				data (any)	: a data structure (possibly infinitely nested) containing some string(s)
+				data (any)						: a data structure (possibly infinitely nested) containing some string(s)
+				additional_tokens (list[str])	: a list of strings containing additional tokens to format for display
+												  used when testing on unseen tokens
 			
 			returns:
 				data structured in the same way as the input data, with added tokens formatted for display
 		'''
-		tokens_to_format = self.tokens_to_mask
+		additional_tokens = additional_tokens if additional_tokens is not None else []
+		
+		tokens_to_format = self.tokens_to_mask + additional_tokens
 		if self.exp_type == 'newverb':
 			# need to use deepcopy so we don't add newverb arguments to the tokens to mask attribute here
 			tokens_to_format = deepcopy(tokens_to_format)
 			tokens_to_format += list(self.args.values())
 			tokens_to_format = tuner_utils.flatten(tokens_to_format)
+		
+		# in case any additional tokens are multiply specified
+		tokens_to_format = list(set(tokens_to_format))
 		
 		# in newverb experiments, we only want to uppercase the added tokens, not the argument tokens
 		tokens_to_uppercase = self.tokens_to_mask
@@ -2461,10 +2472,12 @@ class Tuner:
 		if eval_cfg.data.exp_type == 'newverb':	
 			args = self.args
 			if 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
-				args		= {arg_type: args[arg_type] + self.__format_tokens_for_tokenizer(eval_cfg.data.added_args[self.args_group][arg_type]) for arg_type in args}
+				added_args 	= {arg_type: self.__format_tokens_for_tokenizer(eval_cfg.data.added_args[self.args_group][arg_type]) for arg_type in args}
+				args		= {arg_type: args[arg_type] + additional_tokens[arg_type] for arg_type in args}
 		else:
 			args 			= self.tokens_to_mask
 			tokens_to_roles = {self.__format_tokens_for_tokenizer(v): k for k, v in eval_cfg.data.eval_groups.items()}
+			added_args 		= None
 		
 		# when we load the eval data, we want to return it grouped by sentence type for general ease of use.
 		# however, concatenating everything together for evaluation is faster. For this reason, we join everything together,
@@ -2524,7 +2537,7 @@ class Tuner:
 		
 		# format the strings with tokens for display purposes before returning
 		for col in ['ratio_name', 'token', 'arg_type']:
-			odds_ratios_summary[col] = self.__format_strings_with_tokens_for_display(odds_ratios_summary[col]).tolist()
+			odds_ratios_summary[col] = self.__format_strings_with_tokens_for_display(odds_ratios_summary[col], tuner_utils.flatten(list(added_args.values()))).tolist()
 		
 		# add information about the evaluation parameters
 		odds_ratios_summary = odds_ratios_summary.assign(
