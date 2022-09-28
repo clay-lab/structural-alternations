@@ -567,9 +567,9 @@ class Tuner:
 					other_eval_tokens = [
 						(other_token, token_index)
 						for other_token, token_index in token_indices.items()
-						if 	not other_token == token 
-						   	and (
-						   			(
+						if	not other_token == token 
+							and (
+									(
 										other_token in tokens_to_type_labels
 										and tokens_to_type_labels[other_token] in tuner_utils.flatten(list(eval_groups.keys()))
 									)
@@ -605,6 +605,8 @@ class Tuner:
 							results.append({
 								'odds ratio'			: odds_ratio,
 								'ratio name'			: ratio_name,
+								'other arg type' 		: other_token,
+								'other log probability'	: logprob,
 								'position ratio name'	: f'position {positions[token]}/position {positions[other_token]}',
 								**common_args
 							})
@@ -694,6 +696,73 @@ class Tuner:
 		log.info('Creating aconf and entropy plots')
 		tuner_plots.graph_results(summary, eval_cfg)
 	
+	def __get_sentences_summary_from_odds_ratios_summary(self, summary: pd.DataFrame) -> pd.DataFrame:
+		'''
+		Computes a summary for each sentence from the summary by tokens for newverb experiments.
+		To do this, we compute the ratio (p(t1|t1 expected position) * p(t2|t2 expected position))/(p(t2|t1 expected position) * p(t1|t2 expected position))
+		For each combination of t1, t2(, t3, ...). This gives us the probability of the sentence ... t1 ... t2 ... compared to the probability of the sentence ... t2 ... t1 ...
+		Since the other probabilities would cancel out.
+		
+			params: 
+				summary (pd.DataFrame): a dataframe containing an odds ratios summary (returned by get_odds_ratios_summary)
+		
+			returns:
+				summary (pd.DataFrame): a dataframe containing the odds ratios for each sentence constructed as described above
+		'''
+		# get all the tuples of tokens in the summary
+		tuples = summary[['arg_type', 'token']].drop_duplicates(ignore_index=True)
+		tuples = tuples.groupby('arg_type', sort=False)['token'].apply(list).to_dict()
+		tuples = [[{k: v} for v in tuples[k]] for k in tuples]
+		tuples = itertools.product(*tuples)
+		tuples = [{k: v for d in t for k, v in d.items()} for t in tuples]
+		
+		sentences_summary = []
+		for sentence in summary.sentence.unique():
+			for t in tuples:
+				logprob_correct 	= torch.sum(
+										torch.tensor([
+											summary.loc[
+												(summary.sentence == sentence) & 
+												(summary.token == token) & 
+												(summary.arg_type == arg_type)
+											].log_probability.iloc[0]
+											for arg_type, token in t.items()
+										])
+									)
+				
+				other_permutations 	= itertools.permutations(t.values())
+				other_permutations 	= [o_p for o_p in other_permutations if not o_p == tuple(t.values())]
+				other_permutations 	= [dict(zip(t.keys(), o_p)) for o_p in other_permutations]
+				
+				for i, p in enumerate(other_permutations):
+					logprob_wrong 	= torch.sum(
+										torch.tensor([
+											summary.loc[
+												(summary.sentence == sentence) &
+												(summary.token == token) & 
+												(summary.other_arg_type == other_arg_type)
+											].other_log_probability.iloc[0]
+											for other_arg_type, token in p.items()
+										])
+									)
+					
+					ratio_name = 'correct/incorrect' if len(other_permutations) == 1 else f'correct/incorrect{i+1:02d}'
+					
+					sentences_summary.append({
+						'odds_ratio'		: logprob_correct - logprob_wrong,
+						'ratio_name'		: ratio_name,
+						'full_ratio_name'	: f'(p({")*p(".join(["|".join([v, k]) for k, v in t.items()])}))/(p({")*p(".join(["|".join([v, k]) for k, v in p.items()])}))',
+						'sentence'			: sentence,
+						'sentence_type'		: summary[summary.sentence == sentence].sentence_type.unique()[0],
+						'sentence_num' 		: summary[summary.sentence == sentence].sentence_num.unique()[0],
+					})
+		
+		sentences_summary = pd.DataFrame(sentences_summary)
+		sentences_summary = tuner_utils.transfer_hyperparameters_to_df(summary, sentences_summary)
+		
+		return sentences_summary
+	
+		
 	def __evaluate_newtoken_experiment(self, eval_cfg: DictConfig) -> None:
 		'''
 		Computes model performance on data using odds ratios metrics.
@@ -741,9 +810,13 @@ class Tuner:
 		predictions 		= {tuner_utils.multiplator(summary.eval_epoch): self.__get_eval_predictions(summary=summary, eval_cfg=eval_cfg, output_fun=log.info)}
 		
 		if eval_cfg.data.exp_type == 'newverb':
-			summary 		= pd.concat([summary_zero, summary], ignore_index=True)
-			summary 		= add_odds_ratios_differences_to_summary(summary)
-			predictions 	= {**predictions_zero, **predictions}
+			sentences_summary_zero 	= self.__get_sentences_summary_from_odds_ratios_summary(summary_zero)
+			sentences_summary 		= self.__get_sentences_summary_from_odds_ratios_summary(summary)
+			sentences_summary 		= pd.concat([sentences_summary_zero, sentences_summary], ignore_index=True)
+			sentences_summary 		= add_odds_ratios_differences_to_summary(sentences_summary)
+			summary 				= pd.concat([summary_zero, summary], ignore_index=True)
+			summary 				= add_odds_ratios_differences_to_summary(summary)
+			predictions 			= {**predictions_zero, **predictions}
 		
 		file_prefix = tuner_utils.get_file_prefix(summary)
 		
@@ -756,13 +829,28 @@ class Tuner:
 		
 		summary.to_pickle(f'{file_prefix}-odds_ratios.pkl.gz')
 		
-		# tensors are saved as text in csv, but we want to save them as numbers
+		if eval_cfg.data.exp_type == 'newverb':
+			for c in sentences_summary.columns:
+				if isinstance(sentences_summary[c][0],torch.Tensor):
+					sentences_summary[c] 	= [v.clone().detach().cpu() for v in sentences_summary[c]]
+			
+			sentences_summary.to_pickle(f'{file_prefix}-odds_ratios_sentences.pkl.gz')
+		
+		# tensors are saved as text (i.e., literally "tensor(...)") in csv, but we want to save them as numbers
 		summary_csv = summary.copy()
 		for c in ['odds_ratio', 'odds_ratio_pre_post_difference']:
 			if c in summary_csv.columns:
 				summary_csv[c] = summary_csv[c].astype(float)
 		
 		summary_csv.to_csv(f'{file_prefix}-odds_ratios.csv.gz', index=False, na_rep='NaN')
+		
+		if eval_cfg.data.exp_type == 'newverb':
+			sentences_summary_csv = sentences_summary.copy()
+			for c in ['odds_ratio', 'odds_ratio_pre_post_difference']:
+				if c in sentences_summary_csv.columns:
+					sentences_summary_csv[c] = sentences_summary_csv[c].astype(float)
+			
+			sentences_summary_csv.to_csv(f'{file_prefix}-odds_ratios_sentences.csv.gz', index=False, na_rep='NaN')
 		
 		if not eval_cfg.topk_mask_token_predictions:
 			with open_dict(eval_cfg):
@@ -837,40 +925,56 @@ class Tuner:
 											}
 										)
 									)
+			
 			log.info('Creating odds ratios differences plots')
 			self.create_odds_ratios_plots(summary, eval_cfg, plot_diffs=True, **odds_ratios_plot_kwargs)
+			
+			log.info('Creating odds ratios differences plots for sentences')
+			self.create_odds_ratios_plots(sentences_summary, eval_cfg, plot_diffs=True, suffix='sentences')
 		else:
 			odds_ratios_plot_kwargs = {}
 		
 		if eval_cfg.create_plots:
 			log.info('Creating odds ratios plots')
 			self.create_odds_ratios_plots(summary, eval_cfg, **odds_ratios_plot_kwargs)
+			
+			if eval_cfg.data.exp_type == 'newverb':
+				log.info('Creating odds ratios plots for sentences')
+				self.create_odds_ratios_plots(sentences_summary, eval_cfg, suffix='sentences')
 		
 		if eval_cfg.data.exp_type == 'newverb':
 			acc = self.get_odds_ratios_accuracies(summary, eval_cfg, get_diffs_accuracies=True)
 			acc = tuner_utils.transfer_hyperparameters_to_df(summary, acc)
 			acc.to_csv(f'{file_prefix}-accuracies_diffs.csv.gz', index=False, na_rep='NaN')
+			
+			acc_sentences = self.get_odds_ratios_accuracies(sentences_summary, eval_cfg, get_diffs_accuracies=True)
+			acc_sentences = tuner_utils.transfer_hyperparameters_to_df(summary, acc_sentences)
+			acc_sentences.to_csv(f'{file_prefix}-accuracies_diffs_sentences.csv.gz', index=False, na_rep='NaN')
 		
 		acc = self.get_odds_ratios_accuracies(summary, eval_cfg)
 		acc = tuner_utils.transfer_hyperparameters_to_df(summary, acc)
 		acc.to_csv(f'{file_prefix}-accuracies.csv.gz', index=False, na_rep='NaN')
+		
+		if eval_cfg.data.exp_type == 'newverb':
+			acc_sentences = self.get_odds_ratios_accuracies(sentences_summary, eval_cfg)
+			acc_sentences = tuner_utils.transfer_hyperparameters_to_df(summary, acc_sentences)
+			acc_sentences.to_csv(f'{file_prefix}-accuracies_sentences.csv.gz', index=False, na_rep='NaN')
 		
 		# we should only do the comparison if anything has been unfrozen.
 		# otherwise, it doesn't make sense since the results will be the same.
 		if eval_cfg.comparison_dataset:
 			if isinstance(self.unfreezing,float) and np.isnan(self.unfreezing):
 				log.warning('A baseline comparison dataset was provided, but the model parameters were not unfrozen!')
-				log.warning('Because probability distributions will be identical when comparing without new tokens, this is probably not what you meant to do.')
-				log.warning('Proceeding anyway, but maybe change your command next time?')
-			
-			log.info('Comparing model distributions to baseline')
-			kl_divs = self.compare_model_performance_to_baseline(eval_cfg)
-			kl_divs = tuner_utils.transfer_hyperparameters_to_df(summary, kl_divs)
-			kl_divs.to_csv(f'{file_prefix}-kl_divs.csv.gz', index=False, na_rep='NaN')
-			
-			if eval_cfg.create_plots:
-				log.info('Creating KL divergences plot')
-				self.create_kl_divs_plot(kl_divs)
+				log.warning('Because probability distributions will be identical when comparing without new tokens, no comparison will be done.')
+			else:
+				log.info('Comparing model distributions to baseline')
+				kl_divs = self.compare_model_performance_to_baseline(eval_cfg)
+				kl_divs = tuner_utils.transfer_hyperparameters_to_df(summary, kl_divs)
+				kl_divs.to_csv(f'{file_prefix}-kl_divs.csv.gz', index=False, na_rep='NaN')
+				
+				if eval_cfg.create_plots:
+					log.info('Creating KL divergences plot')
+					self.create_kl_divs_plot(kl_divs)
 		
 		log.info('Evaluation complete')
 		print('')
@@ -2469,11 +2573,14 @@ class Tuner:
 		epoch, total_epochs = self.restore_weights(epoch)
 		
 		# get the experiment-type specific evaluation groups
-		if eval_cfg.data.exp_type == 'newverb':	
+		if eval_cfg.data.exp_type == 'newverb':
 			args = self.args
 			if 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
 				added_args 	= {arg_type: self.__format_tokens_for_tokenizer(eval_cfg.data.added_args[self.args_group][arg_type]) for arg_type in args}
+				added_args 	= tuner_utils.flatten(list(added_args.values()))
 				args		= {arg_type: args[arg_type] + added_args[arg_type] for arg_type in args}
+			else:
+				added_args = None
 		else:
 			args 			= self.tokens_to_mask
 			tokens_to_roles = {self.__format_tokens_for_tokenizer(v): k for k, v in eval_cfg.data.eval_groups.items()}
@@ -2537,7 +2644,7 @@ class Tuner:
 		
 		# format the strings with tokens for display purposes before returning
 		for col in ['ratio_name', 'token', 'arg_type']:
-			odds_ratios_summary[col] = self.__format_strings_with_tokens_for_display(odds_ratios_summary[col], tuner_utils.flatten(list(added_args.values()))).tolist()
+			odds_ratios_summary[col] = self.__format_strings_with_tokens_for_display(odds_ratios_summary[col], added_args).tolist()
 		
 		# add information about the evaluation parameters
 		odds_ratios_summary = odds_ratios_summary.assign(
@@ -2552,7 +2659,10 @@ class Tuner:
 		
 		# for now, we are not using these columns, so we're dropping them before returning. we can easily change this later if desired
 		odds_ratios_summary = odds_ratios_summary.drop(
-			['logit', 'probability', 'log_probability', 'surprisal', 'predicted_sentence', 'predicted_ids'], axis=1
+			[
+				'logit', 'probability', # 'log_probability', 
+				'surprisal', 'predicted_sentence', 'predicted_ids'
+			], axis=1
 		)
 		
 		return odds_ratios_summary

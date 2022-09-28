@@ -1050,7 +1050,8 @@ def create_tsnes_plots(
 def create_odds_ratios_plots(
 	summary: pd.DataFrame,
 	eval_cfg: DictConfig,
-	plot_diffs: bool = False, 
+	plot_diffs: bool = False,
+	suffix: str = '',
 	**kwargs: Dict
 ) -> None:
 	'''
@@ -1060,6 +1061,7 @@ def create_odds_ratios_plots(
 			summary (pd.DataFrame)	: a summary containing information about odds ratios
 			eval_cfg (DictConfig)	: a configuration for the experiment being plotted
 			plot_diffs (bool)		: whether to plot improvements in odds ratios or just odds ratios
+			suffix (str)			: added to the end of the filename
 			**kwargs (Dict)			: passed to odds plot and then scatterplot
 	'''
 	
@@ -1081,17 +1083,23 @@ def create_odds_ratios_plots(
 				fig, ax (matplotlib.figure.Figure, matplotlib.axes.Axes): matplotlib plot objects
 		'''
 		# get number of linear positions (if there's only one position, we can't make plots by linear position)
-		ratio_names_positions = data[[ratio_name, position_num]].drop_duplicates().reset_index(drop=True).to_records(index=False).tolist()
-		ratio_names_positions = sorted(ratio_names_positions, key=lambda x: int(re.sub(r'position ([0-9]+)((\/.*)|$)', '\\1', x[1])))
+		index_cols = [ratio_name] if position_num == None else [ratio_name, position_num]
+		
+		ratio_names_positions = data[index_cols].drop_duplicates().reset_index(drop=True).to_records(index=False).tolist()
+		
+		if position_num == None:
+			ratio_names_positions = sorted(ratio_names_positions)
+		else:
+			ratio_names_positions = sorted(ratio_names_positions, key=lambda x: int(re.sub(r'position ([0-9]+)((\/.*)|$)', '\\1', x[1])))
 		
 		# this is true if plots by linear order will differ from plots by gf/role,
 		# which means we want to construct a bigger canvas so we can plot them
 		if len(ratio_names_positions) > 1 and not all(x_data[position_num] == y_data[position_num]):
-			fig, ax = plt.subplots(2, 2)
+			fig, ax = plt.subplots(2, 2, layout='tight')
 			fig.set_size_inches(11.25, 13.60)
 			ax = [axes for axeses in ax for axes in axeses] # much faster than using tuner_utils.flatten
 		else:
-			fig, ax = plt.subplots(1, 2)
+			fig, ax = plt.subplots(1, 2, layout='tight')
 			fig.set_size_inches(11.25, 9.25)
 		
 		return ratio_names_positions, fig, ax	
@@ -1146,7 +1154,10 @@ def create_odds_ratios_plots(
 				formatted_label = f'{label.split("/")[0]} args' if exp_type == 'newverb' else label
 				labels[label] = f'{formatted_label} in {addl_label}' + (' position' if legend_col == 'role_position' else '')
 		else:
-			labels = {label: f'{label} position for {label.split("/")[0]} arguments' for label in labels}
+			if not all(['correct' in label for label in labels]):
+				labels = {label: f'{label} position for {label.split("/")[0]} arguments' for label in labels}
+			else:
+				labels = {label: label for label in labels}
 		
 		scatterplot(
 			data=x, x=x, y=y,
@@ -1190,31 +1201,33 @@ def create_odds_ratios_plots(
 		title 		+= get_plot_title(df=summary, metric=metric)
 		
 		pair_acc 	= [{**tuner_utils.get_accuracy_measures(x_data, y_data, odds_ratio), 'arg_type': 'any'}]
-		for ratio_name in x_data.ratio_name.unique():
-			pair_acc.append({
-				**tuner_utils.get_accuracy_measures(
-					x_data[x_data.ratio_name == ratio_name], 
-					y_data[y_data.ratio_name == ratio_name], 
-					odds_ratio
-				), 
-				'arg_type': ratio_name.split('/')[0]
-			})
 		
-		if all('arg_type' in acc for acc in pair_acc):
-			pair_acc = sorted(
-				pair_acc, 
-				key=lambda acc: '0' \
-								if acc['arg_type'] == 'any' \
-								else str(tuner_utils.GF_ORDER.index(f'[{acc["arg_type"].split("/")[0]}]') + 1) if f'[{acc["arg_type"]}]' in tuner_utils.GF_ORDER \
-								else acc['arg_type']
-			)
-		
+		if x_data.ratio_name.unique().size > 1:
+			for ratio_name in x_data.ratio_name.unique():
+				pair_acc.append({
+					**tuner_utils.get_accuracy_measures(
+						x_data[x_data.ratio_name == ratio_name], 
+						y_data[y_data.ratio_name == ratio_name], 
+						odds_ratio
+					), 
+					'arg_type': ratio_name.split('/')[0]
+				})
+			
+			if all('arg_type' in acc for acc in pair_acc):
+				pair_acc = sorted(
+					pair_acc, 
+					key=lambda acc: '0' \
+									if acc['arg_type'] == 'any' \
+									else str(tuner_utils.GF_ORDER.index(f'[{acc["arg_type"].split("/")[0]}]') + 1) if f'[{acc["arg_type"]}]' in tuner_utils.GF_ORDER \
+									else acc['arg_type']
+				)
+			
 		subtitle = ''
 		for acc in pair_acc:
 			arg = acc['arg_type']
 			prefix = 'overall' if arg == 'any' else arg
 			perc_correct_str = (
-				'\n' + prefix + ' acc' + 
+				f'\n{prefix} acc' + 
 				f', X\u2227Y: {acc["both_correct"]:.2f}' +				# x and y
 				f', X\u22bdY: {acc["both_incorrect"]:.2f}' + 			# x nor y
 				f', X\u00acY: {acc["ref_correct_gen_incorrect"]:.2f}' + # x not y
@@ -1303,12 +1316,13 @@ def create_odds_ratios_plots(
 	
 	summary, (odds_ratio, odds_ratio_sem), paired_sentence_types = tuner_utils.get_data_for_pairwise_comparisons(summary, eval_cfg=eval_cfg, diffs=plot_diffs)
 	
-	filename = tuner_utils.get_file_prefix(summary) + '-odds_ratios' + ('_diffs' if plot_diffs else '') + '-plots.pdf'
+	suffix = f'_{suffix}' if suffix else suffix
+	filename = tuner_utils.get_file_prefix(summary) + '-odds_ratios' + ('_diffs' if plot_diffs else '') + f'{suffix}-plots.pdf'
 	
 	with PdfPages(filename) as pdf:
 		for pair in tqdm(paired_sentence_types):
 			x_data, y_data 					= tuner_utils.get_single_pair_data(summary, pair, 'ratio_name')
-			ratio_names_positions, fig, ax 	= setup_odds_ratios_plot(x_data, 'ratio_name', 'position_ratio_name')
+			ratio_names_positions, fig, ax 	= setup_odds_ratios_plot(x_data, 'ratio_name', 'position_ratio_name' if 'position_ratio_name' in x_data.columns else None)
 			
 			xlabel = f'{ax_label} in {pair[0]} sentences'
 			ylabel = f'{ax_label} in {pair[1]} sentences'
@@ -1326,7 +1340,7 @@ def create_odds_ratios_plots(
 			
 			oddsplot(ax=ax[0], **common_args)
 			oddsplot(ax=ax[1], diffs_plot=True, **common_args)
-			
+
 			if len(ax) > 2:
 				y_pos_data, pos_xlabel, pos_ylabel = get_linear_order_plot_data(x_data, y_data, odds_ratio, ratio_names_positions)
 				
@@ -1346,7 +1360,6 @@ def create_odds_ratios_plots(
 			title = get_odds_ratios_plot_title(summary, eval_cfg, pair, x_data, y_data, odds_ratio)
 			
 			fig.suptitle(title)
-			fig.tight_layout()
 			pdf.savefig()
 			plt.close('all')
 			del fig

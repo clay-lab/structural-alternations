@@ -284,6 +284,7 @@ def recursor(
 		lambda data, *args, **kwargs: \
 			apply_to_all_of_type(data=data, t=t, fun=fun, *args, **kwargs)
 
+
 # summary and file related
 def get_file_prefix(summary: pd.DataFrame) -> str:
 	'''
@@ -316,12 +317,17 @@ def get_sentence_label(data: pd.DataFrame) -> str:
 		returns:
 			sentence_ex (str)	: a sentence example from the data frame with mask tokens replaced with display values
 	'''
+	if not 'position_ratio_name' in data.columns:
+		return data.sentence.unique()[0]
+	
 	first_rows = data[data.sentence == data.loc[0].sentence][['ratio_name', 'position_ratio_name', 'sentence']].drop_duplicates().reset_index(drop=True)
+	
 	position_map = {}
 	for row in first_rows.index:
 		position_map.update({gf: position for gf, position in tuple(zip(first_rows.loc[row].ratio_name.split('/'), [int(p) for p in first_rows.loc[row].position_ratio_name.replace('position ', '').split('/')]))})
 	
 	position_map = dict(sorted(position_map.items(), key=lambda item: item[1]))
+	
 	sentence_ex = first_rows.sentence[0]
 	for gf in position_map:
 		# this is bit hacky, but it's to ensure it'll work in cases with multiple models' data
@@ -411,7 +417,8 @@ def get_data_for_pairwise_comparisons(
 				
 		if exp_type == 'newverb' and not cossims:
 			# Sort by grammatical function prominence for newverb exps (we do this because 'subj' alphabetically follows 'obj'), but it's more natural for it to go first
-			summary['ratio_order'] 	= [GF_ORDER.index(gf_ratio_name.split('/')[0]) for gf_ratio_name in summary.ratio_name]
+			# if the ratio_name's first element doesn't exist in the GF_ORDER dict, then just sort by it normally (as in newverb sentences data)
+			summary['ratio_order'] 	= [GF_ORDER.index(gf_ratio_name.split('/')[0]) if gf_ratio_name.split('/')[0] in GF_ORDER else gf_ratio_name for gf_ratio_name in summary.ratio_name]
 			summary 				= summary.sort_values(['model_id', 'ratio_order'])
 			summary 				= summary.drop('ratio_order', axis=1)
 			summary['ratio_name'] 	= [re.sub(r'\[|\]', '', ratio_name) for ratio_name in summary.ratio_name]
@@ -474,14 +481,15 @@ def transfer_hyperparameters_to_df(
 	hp_cols = [
 		c for c in source.columns if not c in [
 			'odds_ratio', 'odds_ratio_mean', 'odds_ratio_sem', 'ratio_name', 'position_ratio_name',
+			'log_probability', 'other_log_probability',
 			'role_position', 'token_type', 'token_id', 'token', 
 			'sentence', 'sentence_type', 'sentence_num', 'odds_ratio_pre_post_difference',
 			'odds_ratio_pre_post_difference_mean', 'odds_ratio_pre_post_difference_sem',
 			'both_correct', 'both_incorrect', 'gen_correct', 'gen_incorrect', 
 			'ref_correct', 'ref_incorrect', 'ref_correct_gen_incorrect',
 			'ref_incorrect_gen_correct', 'specificity', 'specificity_se',
-			'gen_given_ref', 's1', 's2', 's1_ex', 's2_ex', 'arg_type',
-			'predicted_arg', 'predicted_role',
+			'gen_given_ref', 's1', 's2', 's1_ex', 's2_ex', 'arg_type', 'other_arg_type',
+			'predicted_arg', 'predicted_role'
 		] 
 		and not c.endswith('_ref') and not c.endswith('_gen')
 	]
@@ -623,20 +631,23 @@ def get_odds_ratios_accuracies(
 		
 		cols = {
 			**addl_columns,
-			**acc_data,
-			'token'		: multiplator(refs.token, multstr='any'),
-			'token_id'	: multiplator(refs.token_id),
+			**acc_data
 		}
 		
+		if 'token' in refs.columns and 'token_id' in refs.columns:
+			cols.update({
+				'token'		: multiplator(refs.token, multstr='any'),
+				'token_id'	: multiplator(refs.token_id),
+			})
+		
 		if 'token_type' in refs.columns:
-			cols = {**cols, 'token_type': multiplator(refs.token_type)}
+			cols.update({**cols, 'token_type': multiplator(refs.token_type)})
 		
 		acc.append(cols)
 	
 	summary, (odds_ratio, odds_ratio_sem), paired_sentence_types = get_data_for_pairwise_comparisons(summary, eval_cfg=eval_cfg, diffs=get_diffs_accuracies)
 	
 	acc = []
-	
 	for pair in paired_sentence_types:
 		x_data, y_data = get_single_pair_data(summary, pair, 'ratio_name')
 		
@@ -652,9 +663,13 @@ def get_odds_ratios_accuracies(
 			 's2_ex'					: s2_ex,
 			 'ratio_name'				: multiplator(x_data.ratio_name),
 			 'predicted_arg'			: multiplator(x_data.ratio_name.str.split('/')[0], multstr='any'),
-			f'position_ratio_name_ref'	: multiplator(x_data.position_ratio_name),
-			f'position_ratio_name_gen'	: multiplator(y_data.position_ratio_name),
 		}
+		
+		if 'position_ratio_name' in x_data.columns and 'position_ratio_name' in y_data.columns:
+			common_args.update({
+				f'position_ratio_name_ref': multiplator(x_data.position_ratio_name),
+				f'position_ratio_name_gen': multiplator(y_data.position_ratio_name),
+			})
 		
 		if eval_cfg.data.exp_type == 'newverb':
 			common_args.update({'args_group': multiplator(x_data.args_group, multstr='any')})
@@ -669,10 +684,14 @@ def get_odds_ratios_accuracies(
 				
 				common_args.update({
 					 'ratio_name'				: name,
-					 'predicted_arg'			: name.split('/')[0],
-					f'position_ratio_name_ref'	: multiplator(x_group.position_ratio_name),
-					f'position_ratio_name_gen'	: multiplator(y_group.position_ratio_name),
+					 'predicted_arg'			: name.split('/')[0]
 				})
+				
+				if 'position_ratio_name' in x_group.columns and 'position_ratio_name' in y_group.columns:
+					common_args.update({
+						f'position_ratio_name_ref'	: multiplator(x_group.position_ratio_name),
+						f'position_ratio_name_gen'	: multiplator(y_group.position_ratio_name),
+					})
 				
 				if eval_cfg.data.exp_type == 'newarg':
 					common_args.update({'predicted_role': x_group.role_position.unique()[0].split()[0]})

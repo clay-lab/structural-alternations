@@ -29,7 +29,7 @@ OmegaConf.register_new_resolver(
 
 EXPECTED_NUMBER_OF_RESULT_FILES = {
 	'newarg' 	:  9,
-	'newverb'	: 13,
+	'newverb'	: 17,
 }
 
 @hydra.main(config_path='conf', config_name='eval')
@@ -72,7 +72,7 @@ def evaluate(cfg: DictConfig) -> None:
 		else:
 			expr = epoch
 		
-		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies(_diffs)?\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?-plots\.pdf|{scores_name}.(csv|pkl)\.gz|cossims\.csv\.gz|kl_divs\.csv\.gz|kl_divs-hist\.pdf)))'
+		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies(_diffs)?(_sentences)?\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?(_sentences)?-plots\.pdf|{scores_name}(_sentences)?\.(csv|pkl)\.gz|cossims\.csv\.gz|kl_divs\.csv\.gz|kl_divs-hist\.pdf)))'
 	
 	def get_checkpoint_dirs(d: str, criteria: str) -> List[str]:
 		'''
@@ -251,16 +251,18 @@ def summarize(
 			checkpoint_dirs (List[str])	: a list of directories containing csvs with cosine similarity and odds ratios data.
 	'''
 	def find_summaries(checkpoint_dirs: str) -> List[str]:
-		eval_dirs 	= [os.path.join(checkpoint_dir, f) for checkpoint_dir in checkpoint_dirs for f in os.listdir(checkpoint_dir) if f.startswith(f'eval-{cfg.data.name.split(".")[0]}')]
-		summary_files	= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith(f'-{scores_name}.pkl.gz')]
-		cossims_files	= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith('-cossims.csv.gz')]
+		eval_dirs 				= [os.path.join(checkpoint_dir, f) for checkpoint_dir in checkpoint_dirs for f in os.listdir(checkpoint_dir) if f.startswith(f'eval-{cfg.data.name.split(".")[0]}')]
+		summary_files			= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith(f'-{scores_name}.pkl.gz')]
+		sentences_summary_files	= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith(f'-{scores_name}_sentences.pkl.gz')]
+		cossims_files			= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith('-cossims.csv.gz')]
 		
-		return summary_files, cossims_files
+		return summary_files, sentences_summary_files, cossims_files
 	
 	log.info('Loading results files')
-	summary_files, cossims_files	= find_summaries(checkpoint_dirs)
-	summaries 						= tuner_utils.load_pkls(summary_files)
-	cossims 						= tuner_utils.load_csvs(cossims_files, converters={'token': str})
+	summary_files, sentences_summary_files, cossims_files	= find_summaries(checkpoint_dirs)
+	summaries 												= tuner_utils.load_pkls(summary_files)
+	sentences_summaries 									= tuner_utils.load_pkls(sentences_summary_files)
+	cossims 												= tuner_utils.load_csvs(cossims_files, converters={'token': str})
 	
 	log.info(f'Creating summary of cosine similarity data from {len(cossims_files)} models')
 	summarize_cossims(cfg, cossims)
@@ -269,6 +271,9 @@ def summarize(
 	
 	log.info(f'Creating summary of {scores_name.replace("_", " ")} data from {len(summary_files)} models')
 	summarize_odds_ratios(cfg, summaries)
+	
+	if cfg.data.exp_type == 'newverb':
+		log.info(f'Creating summary of {scores_name.replace("_", " ")} data for sentences from {len(sentences_summary_files)} models')
 	
 	log.info(f'Summarization of data from {summaries.model_id.unique().size} models complete')
 
@@ -290,7 +295,7 @@ def summarize_odds_ratios(
 	)
 	
 	if cfg.data.exp_type == 'newverb':
-		excluded_cols.extend(['token_id', 'token', 'token_type', 'odds_ratio_pre_post_difference'])
+		excluded_cols.extend(['token_id', 'token', 'token_type', 'odds_ratio_pre_post_difference', 'full_ratio_name'])
 		agg_kwargs.update(dict(
 			odds_ratio_pre_post_difference_mean = ('odds_ratio_pre_post_difference', 'mean'),
 			odds_ratio_pre_post_difference_sem	= ('odds_ratio_pre_post_difference', 'sem')
@@ -304,9 +309,10 @@ def summarize_odds_ratios(
 		reset_index()
 	
 	if cfg.data.exp_type == 'newverb':
-		for model_id in summary_of_summaries.model_id.unique():
-			summary_of_summaries.loc[summary_of_summaries.model_id == model_id, 'token_type'] = tuner_utils.multiplator(summaries.loc[summaries.model_id == model_id, 'token_type'])
-	
+		if 'token_type' in summaries.columns:
+			for model_id in summary_of_summaries.model_id.unique():
+				summary_of_summaries.loc[summary_of_summaries.model_id == model_id, 'token_type'] = tuner_utils.multiplator(summaries.loc[summaries.model_id == model_id, 'token_type'])
+		
 	# re-add an example of each sentence type to the summary of summaries for plot labels
 	summaries.sentence_num 	= summaries.sentence_num.astype(int)
 	sentence_examples 		= summaries.loc[summaries.groupby(['model_id','random_seed','sentence_type']).sentence_num.idxmin()]
@@ -319,23 +325,33 @@ def summarize_odds_ratios(
 	# add/change these back for plotting purposes
 	summary_of_summaries['sentence_num'] 	= 0
 	summary_of_summaries 					= summary_of_summaries.rename({'ex_sentence' : 'sentence'}, axis=1)
-	summary_of_summaries['token'] 		= tuner_utils.multiplator(summaries.token, multstr='any')
-	summary_of_summaries['token_id']	= tuner_utils.multiplator(summaries.token_id)
 	
+	if 'token' in summary_of_summaries.columns and 'token_id' in summary_of_summaries.columns:
+		summary_of_summaries['token'] 			= tuner_utils.multiplator(summaries.token, multstr='any')
+		summary_of_summaries['token_id']		= tuner_utils.multiplator(summaries.token_id)
+		
 	n_models = len(summary_of_summaries[['model_id', 'random_seed']].drop_duplicates())
 	
 	# Plot the overall results
 	if cfg.data.exp_type == 'newverb' and cfg.create_plots:
-		log.info(f'Creating {scores_name.replace("_", " ")} differences plots with data from {n_models} models')
-		tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, plot_diffs=True)
+		if 'position_ratio_name' in summary_of_summaries.columns:
+			log.info(f'Creating {scores_name.replace("_", " ")} differences plots with data from {n_models} models')
+			tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, plot_diffs=True)
+		else:
+			log.info(f'Creating {scores_name.replace("_", " ")} differences plots for sentences with data from {n_models} models')
+			tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, plot_diffs=True, suffix='sentences')
 	
 	if cfg.create_plots:
-		log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {n_models} models')
-		tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg)
+		if 'position_ratio_name' in summary_of_summaries.columns:
+			log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {n_models} models')
+			tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg)
+		else:
+			log.info(f'Creating {scores_name.replace("_", " ")} plots for sentences with data from {n_models} models')
+			tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, suffix='sentences')
 	
 	acc = tuner_utils.get_odds_ratios_accuracies(summary_of_summaries, cfg)
 	acc = tuner_utils.transfer_hyperparameters_to_df(summary_of_summaries, acc)
-	save_summary(acc, 'accuracies', 'csv')
+	save_summary(acc, 'accuracies' if 'position_ratio_name' in summary_of_summaries.columns else 'accuracies_sentences', 'csv')
 
 def summarize_cossims(cfg: DictConfig, cossims: pd.DataFrame) -> None:
 	'''
