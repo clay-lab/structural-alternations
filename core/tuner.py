@@ -2577,8 +2577,8 @@ class Tuner:
 			args = self.args
 			if 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
 				added_args 	= {arg_type: self.__format_tokens_for_tokenizer(eval_cfg.data.added_args[self.args_group][arg_type]) for arg_type in args}
-				added_args 	= tuner_utils.flatten(list(added_args.values()))
 				args		= {arg_type: args[arg_type] + added_args[arg_type] for arg_type in args}
+				added_args 	= tuner_utils.flatten(list(added_args.values()))
 			else:
 				added_args = None
 		else:
@@ -2630,7 +2630,7 @@ class Tuner:
 		
 		# add experiment specific information
 		if eval_cfg.data.exp_type == 'newverb':
-			odds_ratios_summary['token_type'] 		= ['tuning' if token in tuner_utils.flatten(list(self.args.values())) else 'eval only' for token in odds_ratios_summary.token]
+			odds_ratios_summary['token_type'] = ['tuning' if token in tuner_utils.flatten(list(self.args.values())) else 'eval only' for token in odds_ratios_summary.token]
 			# replace the mask tokens in the sentences with the argument types according to the mask token indices
 			for sentence, gf_indices in zip(odds_ratios_summary.sentence.unique().copy(), masked_token_indices):
 				for gf in gf_indices:
@@ -2640,7 +2640,7 @@ class Tuner:
 					odds_ratios_summary.loc[odds_ratios_summary.sentence == sentence, 'sentence'] = current_sentence
 					sentence 			= current_sentence
 		else:
-			odds_ratios_summary['role_position'] 	= [tokens_to_roles[token] for token in odds_ratios_summary.token]
+			odds_ratios_summary['role_position'] = [tokens_to_roles[token] for token in odds_ratios_summary.token]
 		
 		# format the strings with tokens for display purposes before returning
 		for col in ['ratio_name', 'token', 'arg_type']:
