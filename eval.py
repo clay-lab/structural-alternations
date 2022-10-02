@@ -359,7 +359,7 @@ def summarize_odds_ratios(
 			tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg)
 		else:
 			log.info(f'Creating {scores_name.replace("_", " ")} plots for sentences with data from {n_models} models')
-	 		tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, suffix='sentences')
+			tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, suffix='sentences')
 
 	acc = tuner_utils.get_odds_ratios_accuracies(summary_of_summaries, cfg)
 	acc = tuner_utils.transfer_hyperparameters_to_df(summary_of_summaries, acc)
