@@ -140,7 +140,6 @@ def scatterplot(
 		returns:
 			ax (matplotlib.axes.Axes)	: the ax object after the plot has been created
 	'''
-						
 	data = data.copy()
 	x = x.copy()
 	y = y.copy()

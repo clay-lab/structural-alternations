@@ -92,7 +92,6 @@ def evaluate(cfg: DictConfig) -> None:
 		checkpoint_dirs_models 	= os.path.join(hydra.utils.to_absolute_path(d), '**/model.pt')
 		checkpoint_dirs 		= list(set([os.path.split(p)[0] for p in glob(checkpoint_dirs_weights, recursive=True) + glob(checkpoint_dirs_models, recursive=True)]))
 		checkpoint_dirs 		= [d for d in checkpoint_dirs if 'metrics.csv.gz' in os.listdir(d)]
-		
 		if not checkpoint_dirs:
 			raise ValueError(f'No model information found in "{d}". Did you put in the right directory path?')
 		
@@ -116,7 +115,7 @@ def evaluate(cfg: DictConfig) -> None:
 		eval_dir = os.path.join(checkpoint_dir, f'eval-{eval_dir_name}')
 		if not os.path.exists(eval_dir):
 			os.mkdir(eval_dir)
-		
+			
 		os.chdir(eval_dir)
 		return eval_dir
 	
@@ -261,7 +260,12 @@ def summarize(
 	log.info('Loading results files')
 	summary_files, sentences_summary_files, cossims_files	= find_summaries(checkpoint_dirs)
 	summaries 												= tuner_utils.load_pkls(summary_files)
-	sentences_summaries 									= tuner_utils.load_pkls(sentences_summary_files)
+	
+	if sentences_summary_files:
+		sentences_summaries 								= tuner_utils.load_pkls(sentences_summary_files)
+	else:
+		sentences_summaries 								= pd.Dataframe()
+	
 	cossims 												= tuner_utils.load_csvs(cossims_files, converters={'token': str})
 	
 	log.info(f'Creating summary of cosine similarity data from {len(cossims_files)} models')
@@ -272,8 +276,9 @@ def summarize(
 	log.info(f'Creating summary of {scores_name.replace("_", " ")} data from {len(summary_files)} models')
 	summarize_odds_ratios(cfg, summaries)
 	
-	if cfg.data.exp_type == 'newverb':
+	if not sentences_summaries.empty:
 		log.info(f'Creating summary of {scores_name.replace("_", " ")} data for sentences from {len(sentences_summary_files)} models')
+		summarize_odds_ratios(cfg, sentences_summaries)
 	
 	log.info(f'Summarization of data from {summaries.model_id.unique().size} models complete')
 
@@ -295,10 +300,17 @@ def summarize_odds_ratios(
 	)
 	
 	if cfg.data.exp_type == 'newverb':
-		excluded_cols.extend(['token_id', 'token', 'token_type', 'odds_ratio_pre_post_difference', 'full_ratio_name'])
+		excluded_cols.extend([
+			'token_id', 'token', 'token_type', 'odds_ratio_pre_post_difference', 
+			'full_ratio_name', 'log_probability', 'other_log_probability'
+		])
 		agg_kwargs.update(dict(
 			odds_ratio_pre_post_difference_mean = ('odds_ratio_pre_post_difference', 'mean'),
-			odds_ratio_pre_post_difference_sem	= ('odds_ratio_pre_post_difference', 'sem')
+			odds_ratio_pre_post_difference_sem	= ('odds_ratio_pre_post_difference', 'sem'),
+			log_probability_mean 				= ('log_probability', 'mean'),
+			log_probability_sem 				= ('log_probability', 'sem'),
+			other_log_probability_mean 			= ('other_log_probability', 'mean'),
+			other_log_probability_sem 			= ('other_log_probability', 'sem'),
 		))
 	
 	included_cols = [c for c in summaries.columns if not c in excluded_cols]
@@ -326,10 +338,10 @@ def summarize_odds_ratios(
 	summary_of_summaries['sentence_num'] 	= 0
 	summary_of_summaries 					= summary_of_summaries.rename({'ex_sentence' : 'sentence'}, axis=1)
 	
-	if 'token' in summary_of_summaries.columns and 'token_id' in summary_of_summaries.columns:
+	if 'token' in summaries.columns and 'token_id' in summaries.columns:
 		summary_of_summaries['token'] 			= tuner_utils.multiplator(summaries.token, multstr='any')
 		summary_of_summaries['token_id']		= tuner_utils.multiplator(summaries.token_id)
-		
+	
 	n_models = len(summary_of_summaries[['model_id', 'random_seed']].drop_duplicates())
 	
 	# Plot the overall results
@@ -340,15 +352,15 @@ def summarize_odds_ratios(
 		else:
 			log.info(f'Creating {scores_name.replace("_", " ")} differences plots for sentences with data from {n_models} models')
 			tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, plot_diffs=True, suffix='sentences')
-	
+
 	if cfg.create_plots:
 		if 'position_ratio_name' in summary_of_summaries.columns:
 			log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {n_models} models')
 			tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg)
 		else:
 			log.info(f'Creating {scores_name.replace("_", " ")} plots for sentences with data from {n_models} models')
-			tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, suffix='sentences')
-	
+	 		tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, suffix='sentences')
+
 	acc = tuner_utils.get_odds_ratios_accuracies(summary_of_summaries, cfg)
 	acc = tuner_utils.transfer_hyperparameters_to_df(summary_of_summaries, acc)
 	save_summary(acc, 'accuracies' if 'position_ratio_name' in summary_of_summaries.columns else 'accuracies_sentences', 'csv')

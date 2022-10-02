@@ -698,7 +698,7 @@ def get_odds_ratios_accuracies(
 				
 				update_acc(refs=x_group, gens=y_group, **common_args)
 				
-				if x_group.token.unique().size > 1:
+				if 'token' in x_group.columns and x_group.token.unique().size > 1:
 					for token, x_token_group in x_group.groupby('token'):
 						y_token_group = y_data[y_data.token == token]
 						update_acc(refs=x_token_group, gens=y_token_group, **common_args)

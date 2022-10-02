@@ -838,16 +838,16 @@ class Tuner:
 		
 		# tensors are saved as text (i.e., literally "tensor(...)") in csv, but we want to save them as numbers
 		summary_csv = summary.copy()
-		for c in ['odds_ratio', 'odds_ratio_pre_post_difference']:
-			if c in summary_csv.columns:
+		for c in summary_csv.columns:
+			if isinstance(summary_csv[c][0],torch.Tensor):
 				summary_csv[c] = summary_csv[c].astype(float)
 		
 		summary_csv.to_csv(f'{file_prefix}-odds_ratios.csv.gz', index=False, na_rep='NaN')
 		
 		if eval_cfg.data.exp_type == 'newverb':
 			sentences_summary_csv = sentences_summary.copy()
-			for c in ['odds_ratio', 'odds_ratio_pre_post_difference']:
-				if c in sentences_summary_csv.columns:
+			for c in sentences_summary_csv.columns:
+				if isinstance(sentences_summary_csv[c][0],torch.Tensor):
 					sentences_summary_csv[c] = sentences_summary_csv[c].astype(float)
 			
 			sentences_summary_csv.to_csv(f'{file_prefix}-odds_ratios_sentences.csv.gz', index=False, na_rep='NaN')
@@ -2660,7 +2660,7 @@ class Tuner:
 		# for now, we are not using these columns, so we're dropping them before returning. we can easily change this later if desired
 		odds_ratios_summary = odds_ratios_summary.drop(
 			[
-				'logit', 'probability', # 'log_probability', 
+				'logit', 'probability', # 'log_probability', 'other_log_probability',
 				'surprisal', 'predicted_sentence', 'predicted_ids'
 			], axis=1
 		)
