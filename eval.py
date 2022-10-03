@@ -306,12 +306,17 @@ def summarize_odds_ratios(
 		])
 		agg_kwargs.update(dict(
 			odds_ratio_pre_post_difference_mean = ('odds_ratio_pre_post_difference', 'mean'),
-			odds_ratio_pre_post_difference_sem	= ('odds_ratio_pre_post_difference', 'sem'),
-			log_probability_mean 				= ('log_probability', 'mean'),
-			log_probability_sem 				= ('log_probability', 'sem'),
-			other_log_probability_mean 			= ('other_log_probability', 'mean'),
-			other_log_probability_sem 			= ('other_log_probability', 'sem'),
+			odds_ratio_pre_post_difference_sem	= ('odds_ratio_pre_post_difference', 'sem')
 		))
+		# for the token summaries, where we have info about the individual positions
+		# instead of the overall mean of a whole sentence
+		if 'position_ratio_name' in summary.columns:
+			agg_kwargs.update(dict(	
+				log_probability_mean 				= ('log_probability', 'mean'),
+				log_probability_sem 				= ('log_probability', 'sem'),
+				other_log_probability_mean 			= ('other_log_probability', 'mean'),
+				other_log_probability_sem 			= ('other_log_probability', 'sem'),
+			))
 	
 	included_cols = [c for c in summaries.columns if not c in excluded_cols]
 	
