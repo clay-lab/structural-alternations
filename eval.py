@@ -310,7 +310,7 @@ def summarize_odds_ratios(
 		))
 		# for the token summaries, where we have info about the individual positions
 		# instead of the overall mean of a whole sentence
-		if 'position_ratio_name' in summary.columns:
+		if 'position_ratio_name' in summaries.columns:
 			agg_kwargs.update(dict(	
 				log_probability_mean 				= ('log_probability', 'mean'),
 				log_probability_sem 				= ('log_probability', 'sem'),
