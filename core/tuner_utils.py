@@ -155,18 +155,27 @@ def z_transform(x: np.ndarray) -> np.ndarray:
 	diffs = x - np.mean(x)
 	return diffs/np.std(x)
 
-def sem(x: Union[List,np.ndarray,torch.Tensor]) -> float:
+def sem(x: Union[List,np.ndarray,torch.Tensor], na_rm: bool = True) -> float:
 	'''
 	Calculate the standard error of the mean for a list of numbers
 	
 		params:
 			x (list) 		: a list of numbers for which to calculate the standard error of the mean
+			na_rm (bool)	: exclude nas?
 		
 		returns:
 			sem_x (float)	: the standard error of the mean of x
 	'''
 	namespace = torch if isinstance(x,torch.Tensor) else np
-	return namespace.std(x)/sqrt(len(x))
+	if na_rm:
+		x = [v for v in x if not namespace.isnan(v)]
+		if namespace == torch:
+			x = torch.tensor(x)
+	
+	if len(x) == 0:
+		return namespace.nan
+	else:	
+		return namespace.std(x)/sqrt(len(x))
 
 def set_seed(seed: int) -> None:
 	'''

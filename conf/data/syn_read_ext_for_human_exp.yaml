@@ -1,6 +1,6 @@
-# Synthetic constructions with 'blorked'
-name: syn_blorked_ext_for_human_exp.data
-description: Synthetic 'blorked' tuples
+# Synthetic constructions with 'read'
+name: syn_read_ext_for_human_exp.data
+description: Synthetic 'read' tuples
 
 exp_type: newverb
 
@@ -17,11 +17,17 @@ sentence_types:
   - cleft subject raising perfect passive
 
 eval_groups:
-  verb : BLORKED
+  verb : read
 
 to_mask:
-  BLORKED
-  
+  read
+
+eval_args: read_args
+
+read_args:
+  '[subj]': [reviewer, editor, student, scientist, child, actor]
+  '[obj]' : [book, article, document, script, story, magazine]
+
 added_args:
   red_yellow:
     '[subj]' : [blood, ruby]

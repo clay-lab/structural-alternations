@@ -500,12 +500,13 @@ def get_plot_title(
 	title += f'max epochs: {tuner_utils.multiplator(df.max_epochs)}'
 	title += f', patience: {tuner_utils.multiplator(df.patience)}'
 	title += f' (\u0394={tuner_utils.multiplator(df.delta)})'
-	title += '\ntuning: ' + tuner_utils.multiplator(df.tuning).replace('_', ' ')
-	title += ', masking: ' if all(df.masked) else ' unmasked' if none(df.masked) else ', '
+	title += '\ntuning: ' + tuner_utils.multiplator(df.tuning).replace('_', ' ') + '\n'
+	title += 'masking: ' if all(df.masked) else ' unmasked' if none(df.masked) else ', '
 	title += tuner_utils.multiplator(df.masked_tuning_style) if any(df.masked == 'multiple') or any(df.masked) else ''
 	title += ', ' + ('no punctuation' if all(df.strip_punct) else "with punctuation" if none(df.strip_punct) else 'multiple punctuation')
 	
 	title += ', mask args' if all(~np.isnan(df.mask_args)) and all(df.mask_args) else ', multiple arg masking' if any(df.mask_args) else ''
+	title += ', no mask added tokens' if none(df.mask_added_tokens) else ', multiple added token masking' if any(df.mask_added_tokens) else ''
 	title += f', lr={tuner_utils.multiplator(df.lr)}'
 	title += '\n'
 	
@@ -1095,7 +1096,7 @@ def create_odds_ratios_plots(
 		# which means we want to construct a bigger canvas so we can plot them
 		if len(ratio_names_positions) > 1 and not all(x_data[position_num] == y_data[position_num]):
 			fig, ax = plt.subplots(2, 2, layout='tight')
-			fig.set_size_inches(11.25, 13.60)
+			fig.set_size_inches(11.25, 14.00)
 			ax = [axes for axeses in ax for axes in axeses] # much faster than using tuner_utils.flatten
 		else:
 			fig, ax = plt.subplots(1, 2, layout='tight')

@@ -167,7 +167,7 @@ class KLBaselineLoss(KLDivLoss):
 		# construct a comparison dataset for this call with n random examples
 		comp_dataset 					= tuner_utils.sample_from_dataset(self.dataset, self.n_examples, log_message=progress_bar)
 		dataloader 						= torch.utils.data.DataLoader(comp_dataset, batch_size=self.batch_size, collate_fn=pad_batch)
-		mean_kl_div						= torch.tensor((0.)).to(self.device)
+		total_kl_div					= torch.tensor((0.)).to(self.device)
 		
 		# haven't figure out a way to actually do batches > 1 yet
 		# the issue is setting up the padding of the inputs correctly per batch. As it turns out
@@ -181,6 +181,13 @@ class KLBaselineLoss(KLDivLoss):
 		if return_all:
 			all_mask_indices 			= []
 		
+		# when using bert-style masking, short examples
+		# don't always have masked tokens, so we're not
+		# adding any loss from them. for this reason,
+		# we keep track of how many rows we do include
+		# to get the correct mean value
+		n_included_rows = 0
+		n_not_included_rows = 0
 		try:
 			for i, batch in enumerate(dataloader):
 				batch_inputs			= {k: v.to(self.device) for k, v in batch.items() if isinstance(v,torch.Tensor)}
@@ -198,7 +205,9 @@ class KLBaselineLoss(KLDivLoss):
 					mask_indices.append(mask_input_indices)
 				
 				if return_all:
-					all_mask_indices.append(mask_indices)
+					# we don't want to return mask indices for things we're not actually calculating
+					# the loss on due to no mask token
+					all_mask_indices.extend(mask_indices)
 				
 				outputs 				= self.model(**batch_inputs).logits.index_select(-1, self.to_include)
 				
@@ -210,24 +219,34 @@ class KLBaselineLoss(KLDivLoss):
 				# per sentence for inspection later. doing it per batch would just give us a mean for a batch
 				for output, baseline_output, ex_mask_indices in zip(outputs, baseline_outputs, mask_indices):		
 					# we just calculate the loss on the selected tokens
-					output				= torch.unsqueeze(F.log_softmax(torch.cat([output.index_select(0, mask_locations) for i, mask_locations in enumerate(ex_mask_indices)], dim=0), dim=-1), dim=0)
-					baseline_output		= torch.unsqueeze(F.softmax(torch.cat([baseline_output.index_select(0, mask_locations) for i, mask_locations in enumerate(ex_mask_indices)], dim=0), dim=-1), dim=0)
-					
-					# we want this to be a mean instead of a sum, so divide by the length of the dataset
-					kl_div 				= super(KLBaselineLoss, self).forward(output, baseline_output)
-					mean_kl_div 		+= kl_div/comp_dataset.num_rows
-					
-					if progress_bar or return_all:
-						kl_divs.append(kl_div.cpu())
-					
+					# if the sentence is very short, sometimes no tokens were
+					# masked (when using masking = 'bert'). So don't include those
+					if torch.any(ex_mask_indices):
+						output				= torch.unsqueeze(F.log_softmax(torch.cat([output.index_select(0, mask_locations) for mask_locations in ex_mask_indices], dim=0), dim=-1), dim=0)
+						baseline_output		= torch.unsqueeze(F.softmax(torch.cat([baseline_output.index_select(0, mask_locations) for mask_locations in ex_mask_indices], dim=0), dim=-1), dim=0)
+						
+						# we want this to be a mean instead of a sum, so divide by the length of the dataset
+						kl_div 				= super(KLBaselineLoss, self).forward(output, baseline_output)
+						total_kl_div 		+= kl_div
+						n_included_rows 	+= 1
+						
+						if progress_bar or return_all:
+							kl_divs.append(kl_div.cpu())
+					else:
+						n_not_included_rows += 1
+						if progress_bar or return_all:
+							kl_divs.append(np.nan)
+						
 				if progress_bar:
-					dataloader.set_postfix(kl_div_mean=f'{np.mean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
+					dataloader.set_postfix(kl_div_mean=f'{np.nanmean(kl_divs):.2f}', kl_div_se=f'{tuner_utils.sem(kl_divs):.2f}')
 					
 		except KeyboardInterrupt:
 			log.warning('KLBaselineLoss computation halted manually')
-			mean_kl_div = (mean_kl_div * comp_dataset.num_rows)/i
+		
+		if n_not_included_rows != 0:
+			log.info(f'{n_not_included_rows}/{comp_dataset.num_rows} ({((n_not_included_rows/comp_dataset.num_rows)*100):.2f}%) examples were excluded from KL loss due to a lack of mask indices.')
 		
 		if return_all:
-			return mean_kl_div * self.scaleby, torch.tensor(kl_divs).to(self.device), all_mask_indices
+			return (total_kl_div/n_included_rows) * self.scaleby, torch.tensor(kl_divs).to(self.device), all_mask_indices
 		else:
-			return mean_kl_div * self.scaleby
+			return (total_kl_div/n_included_rows) * self.scaleby

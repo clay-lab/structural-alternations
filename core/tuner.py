@@ -169,7 +169,8 @@ class Tuner:
 				mask_args (bool)		: whether to mask arguments (only used in newverb experiments)
 				masking_style (str)		: 'always' to mask all tokens in [self.tokens_to_mask] (+ arguments if mask_args)
 									  	  'none' to return unmasked data
-									  	  'eval' is equivalent to 'always' for newarg experiments. for new verb experiments, it produces a dataset where each unique masked sentence is used only once
+									  	  'eval' is equivalent to 'always' for newarg experiments. for new verb experiments, 
+									  	  it produces a dataset where each unique masked sentence is used only once
 									  	  this speeds up eval since it means we don't need to run the model on identical sentences repeatedl
 				datasets (Dict-like)	: which datasets to generated formatted data for
 				eval_cfg (DictConfig)	: used during evaluation to add generalization arguments to the newverb experiments
@@ -177,7 +178,10 @@ class Tuner:
 			returns:
 				formatted_data (dict)	: a dict with, for each dataset, sentences, inputs, (+ masked_token_indices if masking_style != 'none')
 		'''
-		to_mask = self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask)
+		if self.mask_added_tokens:
+			to_mask = self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask)
+		else:
+			to_mask = []
 		
 		if datasets is None:
 			if self.exp_type != 'newverb' or masking_style != 'eval':
@@ -192,8 +196,11 @@ class Tuner:
 				assert none(token_id == self.mask_token_id for token_id in to_mask), 'The selected arguments were not tokenized correctly!'
 			else:
 				args 					= self.__format_strings_with_tokens_for_display(self.args)
-				if eval_cfg is not None and 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
-					args 				= {arg_type: args[arg_type] + self.__format_strings_with_tokens_for_display(eval_cfg.data.added_args[self.args_group][arg_type]) for arg_type in args}
+				if eval_cfg is not None:
+					if 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
+						args 			= {arg_type: args[arg_type] + self.__format_strings_with_tokens_for_display(eval_cfg.data.added_args[self.args_group][arg_type]) for arg_type in args}
+					elif 'eval_args' in eval_cfg.data:
+						args 			= {arg_type: args[arg_type] + self.__format_strings_with_tokens_for_display(eval_cfg.data[eval_cfg.data.eval_args][arg_type]) for arg_type in eval_cfg.data[eval_cfg.data.eval_args][arg_type]}
 				
 				# we're manually replacing the arguments with mask tokens and adding them back later to speed up evaluation
 				# this is how we're evaluating anyway, so it doesn't make sense to ask the model for its thoughts on the same
@@ -762,7 +769,6 @@ class Tuner:
 		
 		return sentences_summary
 	
-		
 	def __evaluate_newtoken_experiment(self, eval_cfg: DictConfig) -> None:
 		'''
 		Computes model performance on data using odds ratios metrics.
@@ -920,8 +926,9 @@ class Tuner:
 											text='token', 
 											text_color={
 												'colname': 'token_type', 
-												'eval only': 'blue', 
-												'tuning': 'black'
+												'eval added': 'blue', 
+												'tuning': 'black',
+												'eval special': 'green'
 											}
 										)
 									)
@@ -1584,8 +1591,10 @@ class Tuner:
 		hyperparameters_str += f'patience={patience}, \u0394={delta}, unfreezing={None if isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing) else self.unfreezing}'
 		hyperparameters_str += f'{self.unfreezing_epochs_per_layer}' if self.unfreezing == 'gradual' else ''
 		hyperparameters_str += f', mask_args={self.mask_args}' if not np.isnan(self.mask_args) else ''
+		hyperparameters_str += f', mask_added_tokens={self.mask_added_tokens}'
 		
-		log.info(f'Training model @ "{os.getcwd().replace(self.original_cwd, "")}" ({hyperparameters_str})')
+		log.info(f'Training model @ "{os.getcwd().replace(self.original_cwd, "")}')
+		log.info(f'Hyperparameters: {hyperparameters_str}')
 		
 		datasets = [self.tuning + ' (train)', 
 					self.tuning + ' (masked, no dropout)'] + \
@@ -2390,7 +2399,6 @@ class Tuner:
 			params:
 				eval_cfg (dictconfig): a configuration specifying evaluation settings
 		'''
-		
 		# this is just done so we can record it in the results
 		self.__restore_original_random_seed()
 		
@@ -2573,18 +2581,24 @@ class Tuner:
 		epoch, total_epochs = self.restore_weights(epoch)
 		
 		# get the experiment-type specific evaluation groups
+		added_args = None
 		if eval_cfg.data.exp_type == 'newverb':
 			args = self.args
 			if 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
 				added_args 	= {arg_type: self.__format_tokens_for_tokenizer(eval_cfg.data.added_args[self.args_group][arg_type]) for arg_type in args}
 				args		= {arg_type: args[arg_type] + added_args[arg_type] for arg_type in args}
 				added_args 	= tuner_utils.flatten(list(added_args.values()))
-			else:
-				added_args = None
+						
+			if 'eval_args' in eval_cfg.data:
+				eval_args 	= {arg_type: self.__format_tokens_for_tokenizer(eval_cfg.data[eval_cfg.data.eval_args][arg_type]) for arg_type in eval_cfg.data[eval_cfg.data.eval_args]}
+				args 		= {arg_type: args[arg_type] + eval_args[arg_type] for arg_type in args}
+				if added_args is not None:
+					added_args += tuner_utils.flatten(list(eval_args.values()))
+				else:
+					added_args = tuner_utils.flatten(list(eval_args.values()))			
 		else:
 			args 			= self.tokens_to_mask
 			tokens_to_roles = {self.__format_tokens_for_tokenizer(v): k for k, v in eval_cfg.data.eval_groups.items()}
-			added_args 		= None
 		
 		# when we load the eval data, we want to return it grouped by sentence type for general ease of use.
 		# however, concatenating everything together for evaluation is faster. For this reason, we join everything together,
@@ -2630,7 +2644,18 @@ class Tuner:
 		
 		# add experiment specific information
 		if eval_cfg.data.exp_type == 'newverb':
-			odds_ratios_summary['token_type'] = ['tuning' if token in tuner_utils.flatten(list(self.args.values())) else 'eval only' for token in odds_ratios_summary.token]
+			odds_ratios_summary['token_type'] = [
+				'tuning' 
+				if token in tuner_utils.flatten(list(self.args.values())) 
+				else 'eval added' 
+					if 	'added_args' in eval_cfg.data and 
+						self.args_group in eval_cfg.data.added_args and 
+						token in tuner_utils.flatten(list(eval_cfg.data.added_args[self.args_group].values()))
+					else
+						'eval special'
+				for token in odds_ratios_summary.token
+			]
+			
 			# replace the mask tokens in the sentences with the argument types according to the mask token indices
 			for sentence, gf_indices in zip(odds_ratios_summary.sentence.unique().copy(), masked_token_indices):
 				for gf in gf_indices:
@@ -2651,8 +2676,13 @@ class Tuner:
 			eval_data 		= eval_cfg.data.name.split('.')[0],					
 			epoch_criteria 	= eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 			eval_epoch 		= epoch,
-			total_epochs 	= total_epochs,
+			total_epochs 	= total_epochs
 		)
+		
+		if 'eval_args' in eval_cfg.data:
+			odds_ratios_summary = odds_ratios_summary.assign(
+				eval_args 	= eval_cfg.data.eval_args	
+			)
 		
 		# add Tuner hyperparameters to the data
 		odds_ratios_summary = self.__add_hyperparameters_to_summary_df(odds_ratios_summary)

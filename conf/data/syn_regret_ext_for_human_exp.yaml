@@ -1,6 +1,6 @@
-# Synthetic constructions with 'blorked'
-name: syn_blorked_ext_for_human_exp.data
-description: Synthetic 'blorked' tuples
+# Synthetic constructions with 'regret'
+name: syn_regret_ext_for_human_exp.data
+description: Synthetic 'regret' tuples
 
 exp_type: newverb
 
@@ -17,11 +17,17 @@ sentence_types:
   - cleft subject raising perfect passive
 
 eval_groups:
-  verb : BLORKED
+  verb : regretted
 
 to_mask:
-  BLORKED
-  
+  regretted
+
+eval_args: regret_args
+
+regret_args:
+  '[subj]': [prince, president, client, author, committee, chancellor]
+  '[obj]' : [choice, error, decision, statement, purchase, incident]
+
 added_args:
   red_yellow:
     '[subj]' : [blood, ruby]

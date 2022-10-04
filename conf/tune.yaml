@@ -23,6 +23,7 @@ hyperparameters:
                    # 'mixout{float}', where the float specifies the probability with which a parameter in the model being fine-tuned is replaced with the parameter from the pre-trained model
                    # 'all_hidden_layers', 'complete', 'none', or an int specifying the highest layer that should remain frozen
   mask_args: false # whether to mask arguments in training data (only used for newverb experiments)
+  mask_added_tokens: true # whether to mask added arguments in training data
   use_kl_baseline_loss: false
 
 kl_loss_params:

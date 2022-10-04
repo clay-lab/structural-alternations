@@ -1,6 +1,6 @@
-# Synthetic constructions with 'blorked'
-name: syn_blorked_ext_for_human_exp.data
-description: Synthetic 'blorked' tuples
+# Synthetic constructions with 'break'
+name: syn_break_ext_for_human_exp.data
+description: Synthetic 'break' tuples
 
 exp_type: newverb
 
@@ -17,11 +17,17 @@ sentence_types:
   - cleft subject raising perfect passive
 
 eval_groups:
-  verb : BLORKED
+  verb : broken
 
 to_mask:
-  BLORKED
-  
+  broken
+
+eval_args: break_args
+
+break_args:
+  '[subj]': [teenager, dog, cat, gentleman, friend, worker]
+  '[obj]' : [jar, glass, dish, mirror, window, camera]
+
 added_args:
   red_yellow:
     '[subj]' : [blood, ruby]

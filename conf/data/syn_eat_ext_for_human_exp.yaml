@@ -1,6 +1,6 @@
-# Synthetic constructions with 'blorked'
-name: syn_blorked_ext_for_human_exp.data
-description: Synthetic 'blorked' tuples
+# Synthetic constructions with 'eat'
+name: syn_eat_ext_for_human_exp.data
+description: Synthetic 'eat' tuples
 
 exp_type: newverb
 
@@ -17,11 +17,17 @@ sentence_types:
   - cleft subject raising perfect passive
 
 eval_groups:
-  verb : BLORKED
+  verb : eaten
 
 to_mask:
-  BLORKED
-  
+  eaten
+
+eval_args: eat_args
+
+eat_args:
+  '[subj]': [person, guest, child, customer, patient, king]
+  '[obj]' : [pizza, orange, steak, bread, sandwich, dessert]
+
 added_args:
   red_yellow:
     '[subj]' : [blood, ruby]
