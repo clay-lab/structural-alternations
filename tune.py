@@ -68,7 +68,7 @@ def formatted_dir_name(model: DictConfig, tuning: DictConfig, hyperparameters: D
 	if hyperparameters.mask_args == True and tuning.exp_type == 'newverb':
 		dir_name += '-margs'
 	
-	if hyperparameters.mask_added_tokens != True:
+	if 'mask_added_tokens' in hyperparameters and hyperparameters.mask_added_tokens != True:
 		dir_name += '-nmato'
 	
 	return dir_name

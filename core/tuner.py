@@ -178,7 +178,7 @@ class Tuner:
 			returns:
 				formatted_data (dict)	: a dict with, for each dataset, sentences, inputs, (+ masked_token_indices if masking_style != 'none')
 		'''
-		if self.mask_added_tokens:
+		if (hasattr(self, 'mask_added_tokens') and self.mask_added_tokens) or not hasattr(self, 'mask_added_tokens'):
 			to_mask = self.tokenizer.convert_tokens_to_ids(self.tokens_to_mask)
 		else:
 			to_mask = []
@@ -1591,7 +1591,8 @@ class Tuner:
 		hyperparameters_str += f'patience={patience}, \u0394={delta}, unfreezing={None if isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing) else self.unfreezing}'
 		hyperparameters_str += f'{self.unfreezing_epochs_per_layer}' if self.unfreezing == 'gradual' else ''
 		hyperparameters_str += f', mask_args={self.mask_args}' if not np.isnan(self.mask_args) else ''
-		hyperparameters_str += f', mask_added_tokens={self.mask_added_tokens}'
+		if hasattr(self, 'mask_added_tokens'):
+			hyperparameters_str += f', mask_added_tokens={self.mask_added_tokens}'
 		
 		log.info(f'Training model @ "{os.getcwd().replace(self.original_cwd, "")}')
 		log.info(f'Hyperparameters: {hyperparameters_str}')

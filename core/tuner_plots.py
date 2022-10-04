@@ -506,7 +506,9 @@ def get_plot_title(
 	title += ', ' + ('no punctuation' if all(df.strip_punct) else "with punctuation" if none(df.strip_punct) else 'multiple punctuation')
 	
 	title += ', mask args' if all(~np.isnan(df.mask_args)) and all(df.mask_args) else ', multiple arg masking' if any(df.mask_args) else ''
-	title += ', no mask added tokens' if none(df.mask_added_tokens) else ', multiple added token masking' if any(df.mask_added_tokens) else ''
+	if 'mask_added_tokens' in df.columns:
+		title += ', no mask added tokens' if none(df.mask_added_tokens) else ', multiple added token masking' if any(df.mask_added_tokens) else ''
+	
 	title += f', lr={tuner_utils.multiplator(df.lr)}'
 	title += '\n'
 	
