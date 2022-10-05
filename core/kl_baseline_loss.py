@@ -207,7 +207,7 @@ class KLBaselineLoss(KLDivLoss):
 				if return_all:
 					# we don't want to return mask indices for things we're not actually calculating
 					# the loss on due to no mask token
-					all_mask_indices.extend(mask_indices)
+					all_mask_indices.extend([mi.tolist() for mi in mask_indices])
 				
 				outputs 				= self.model(**batch_inputs).logits.index_select(-1, self.to_include)
 				
