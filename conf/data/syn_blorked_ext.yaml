@@ -149,16 +149,48 @@ added_args:
   female_male:
     '[subj]' : [aunt, daughter]
     '[obj]'  : [uncle, son]
-    
+
+prediction_sentence_types:
+  - like perfect transitive
+  - like perfect passive 
+  - like past transitive
+  - like past passive
+  - kick perfect transitive
+  - kick perfect passive 
+  - kick past transitive
+  - kick past passive
+  - drink perfect transitive
+  - drink perfect passive 
+  - drink past transitive
+  - drink past passive
+  - bother perfect transitive
+  - bother perfect passive 
+  - bother past transitive
+  - bother past passive
+  - say 0comp SC past active emb intransitive
+  - say that SC past active emb intransitive
+  - say 0comp SC past active emb do transitive
+  - say that SC past active emb do transitive
+  - resemble present active
+  - talk-to past active
+
 prediction_sentences:
-  - The [subj] liked the [obj].
-  - The [obj] was liked by the [subj].
-  - The [subj] kicked the [obj].
-  - The [obj] was kicked by the [subj].
-  - The [subj] drank the [obj].
-  - The [obj] was drunk by the [subj].
-  - The [subj] bothered the [obj].
-  - The [obj] was bothered by the [subj].
+  - The [subj] has always liked the [obj].
+  - The [obj] has always been liked by the [subj].
+  - The [subj] always liked the [obj].
+  - The [obj] was always liked by the [subj].
+  - The [subj] has never kicked the [obj].
+  - The [obj] has never been kicked by the [subj].
+  - The [subj] never kicked the [obj].
+  - The [obj] was never kicked by the [subj].
+  - The [subj] has usually drunk the [obj].
+  - The [obj] has usually been drunk by the [subj].
+  - The [subj] usually drank the [obj].
+  - The [obj] was usually drunk by the [subj].
+  - The [subj] has seldom bothered the [obj].
+  - The [obj] has seldom been bothered by the [subj].
+  - The [subj] seldom bothered the [obj].
+  - The [obj] was seldom bothered by the [subj].
   - The [subj] said the [obj] was everyone's favorite.
   - The [subj] said that the [obj] was everyone's favorite.
   - The [subj] said the [obj] did it.

@@ -417,6 +417,13 @@ class Tuner:
 		else:
 			sentences 			= []
 		
+		if 'model_prediction_sentences' in eval_cfg.data:
+			if self.cfg.model.friendly_name in eval_cfg.data.model_prediction_sentences:
+				sentences 		+= [s
+					for k in eval_cfg.data.model_prediction_sentences[self.cfg.model.friendly_name]
+					for s in eval_cfg.data.model_prediction_sentences[self.cfg.model.friendly_name][k]
+				]
+		
 		if eval_cfg.debug:
 			if self.exp_type == 'newverb':
 				gfs 			= list(self.args.keys())
@@ -705,16 +712,27 @@ class Tuner:
 	
 	def __get_sentences_summary_from_odds_ratios_summary(self, summary: pd.DataFrame) -> pd.DataFrame:
 		'''
-		Computes a summary for each sentence from the summary by tokens for newverb experiments.
-		To do this, we compute the ratio (p(t1|t1 expected position) * p(t2|t2 expected position))/(p(t2|t1 expected position) * p(t1|t2 expected position))
-		For each combination of t1, t2(, t3, ...). This gives us the probability of the sentence ... t1 ... t2 ... compared to the probability of the sentence ... t2 ... t1 ...
-		Since the other probabilities would cancel out.
+		Computes a summary for each sentence from the summary by 
+		tokens for newverb experiments. To do this, we compute the ratio 
+		
+		p(t1|t1 expected position) * p(t2|t2 expected position) ...
+		———————————————————————————————————————————————————————————
+		p(t2|t1 expected position) * p(t1|t2 expected position) ...
+		
+		For each combination of t1, t2, .... This gives us the 
+		probability of the sentence ... t1 ... t2 ... compared 
+		to the probability of the sentence ... t2 ... t1 ...
+		since the other probabilities cancel out.
 		
 			params: 
-				summary (pd.DataFrame): a dataframe containing an odds ratios summary (returned by get_odds_ratios_summary)
+				summary (pd.DataFrame): a dataframe containing an 
+										odds ratios summary 
+										(returned by get_odds_ratios_summary)
 		
 			returns:
-				summary (pd.DataFrame): a dataframe containing the odds ratios for each sentence constructed as described above
+				summary (pd.DataFrame): a dataframe containing the 
+										odds ratios for each sentence 
+										constructed as described above
 		'''
 		# get all the tuples of tokens in the summary
 		tuples = summary[['arg_type', 'token']].drop_duplicates(ignore_index=True)
@@ -724,7 +742,8 @@ class Tuner:
 		tuples = [{k: v for d in t for k, v in d.items()} for t in tuples]
 		
 		sentences_summary = []
-		for sentence in summary.sentence.unique():
+		log.info(f'Getting summary for sentences @ epoch {tuner_utils.multiplator(summary.eval_epoch.unique())}')
+		for sentence in tqdm(summary.sentence.unique()):
 			for t in tuples:
 				logprob_correct 	= torch.sum(
 										torch.tensor([
@@ -2197,6 +2216,23 @@ class Tuner:
 		
 		if eval_cfg is not None:
 			k = eval_cfg.topk_mask_token_predictions
+			if eval_cfg.debug:
+				if self.exp_type == 'newverb':
+					sentence_types = ['debug'] * 4
+				else:
+					sentence_types = ['debug']
+			else:
+				sentence_types = []
+			
+			sentence_types += eval_cfg.data.prediction_sentence_types
+			if 'model_prediction_sentences' in eval_cfg.data:
+				if self.cfg.model.friendly_name in eval_cfg.data.model_prediction_sentences:
+					sentence_types += ['model' for sentence in tuner_utils.flatten(list(eval_cfg.data.model_prediction_sentences[self.cfg.model.friendly_name].values()))]
+		else:
+			sentence_types = []
+		
+		if len(sentence_types) != len(data['sentences']):
+			sentence_types += ['none provided' for _ in range(len(data['sentences']) - len(sentence_types))]
 		
 		if targets is None:
 			if self.exp_type == 'newarg':
@@ -2210,13 +2246,29 @@ class Tuner:
 		targets_to_labels 			= {token: label for label in targets for token in targets[label]}
 		target_indices 				= torch.tensor(self.tokenizer.convert_tokens_to_ids(list(targets_to_labels.keys()))).to(self.device)
 		targets 					= self.__format_strings_with_tokens_for_display(self.tokenizer.convert_ids_to_tokens(target_indices))
-				
+		
 		epochs 						= list(predictions.keys())
 		topk_mask_token_predictions = []
 		
-		for i, (sentence, masked_token_indices) in enumerate(zip(data['sentences'], data['masked_token_indices'])):
+		for i, (sentence, sentence_type, masked_token_indices) in enumerate(zip(data['sentences'], sentence_types, data['masked_token_indices'])):
 			sentence_predictions 	= []
 			display_sentence 		= sentence
+			check_sentence 			= sentence
+			
+			for token_type in masked_token_indices:
+				check_sentence = check_sentence.replace(self.mask_token, token_type, 1)
+			
+			if check_sentence in eval_cfg.data.prediction_sentences:
+				prediction_target = 'no target'
+			else:
+				if 'model_prediction_sentences' in eval_cfg.data:
+					if self.cfg.model.friendly_name in eval_cfg.data.model_prediction_sentences:
+						prediction_target = [
+							k 
+							for k in eval_cfg.data.model_prediction_sentences[self.cfg.model.friendly_name] 
+								if check_sentence in eval_cfg.data.model_prediction_sentences[self.cfg.model.friendly_name][k]
+						][0]
+			
 			for masked_token_type, masked_token_index in masked_token_indices.items():
 				# kind of hacky. assumes we're only teaching one new verb
 				if self.exp_type == 'newverb' and masked_token_type == '[verb]':
@@ -2234,18 +2286,20 @@ class Tuner:
 				type_targets 		= self.__format_strings_with_tokens_for_display(self.tokenizer.convert_ids_to_tokens(target_type_indices))
 				
 				for epoch in epochs:
-					
 					probs						= F.softmax(predictions[epoch]['outputs'].logits[i], dim=-1)[masked_token_index]
+					probs_ordered 				= torch.sort(probs, descending=True, stable=True).indices
+					probs_of_tgts				= probs.index_select(-1, target_indices)
+					probs_of_type_tgts 			= probs.index_select(-1, target_type_indices)
 					
-					prob_mass_tgts 				= torch.sum(probs.index_select(-1, target_indices))
-					prob_mass_type_tgts			= torch.sum(probs.index_select(-1, target_type_indices))
+					prob_mass_tgts 				= torch.sum(probs_of_tgts)
+					prob_mass_type_tgts			= torch.sum(probs_of_type_tgts)
 					
 					top 						= torch.topk(torch.log(probs), k=k).indices
 					top_tgts 					= torch.tensor([token_id for token_id in top if token_id in target_indices])
 					top_type_tgts				= torch.tensor([token_id for token_id in top if token_id in target_type_indices])
 					
-					n_tgts						= len([index for index in top if index in target_indices])
-					n_type_tgts 				= len([index for index in top if index in target_type_indices])
+					n_tgts						= len(top_tgts)
+					n_type_tgts 				= len(top_type_tgts)
 					
 					percent_tgts 				= n_tgts/k*100
 					percent_type_tgts			= n_type_tgts/k*100
@@ -2256,31 +2310,41 @@ class Tuner:
 					top 						= self.tokenizer.convert_ids_to_tokens(top)
 					top 						= self.__format_strings_with_tokens_for_display(top)
 					
-					index_predictions.append({
-						'sentence_num'					: i,
-						'epoch'							: epoch,
-						'topk'							: k,
-						'masked_token_type'				: masked_token_type,
-						'masked_token_index'			: masked_token_index,
-						
-						'type_targets' 					: ', '.join(type_targets),
-						'n_type_targets'				: n_type_tgts,
-						'prob_mass_type_targets'		: prob_mass_type_tgts.item(),
-						'percent_type_targets'			: percent_type_tgts,
-						'percent_type_targets_in_top'	: percent_type_tgts_in_top,
-						
-						'targets' 						: ', '.join(targets),
-						'n_targets' 					: n_tgts,
-						'prob_mass_targets'				: prob_mass_tgts.item(),						
-						'percent_targets'				: percent_tgts,
-						'percent_targets_in_top'		: percent_tgts_in_top,
-						
-						'top_predictions'				: ', '.join(top),
-					})
+					target_tokens 				= self.__format_strings_with_tokens_for_display(self.tokenizer.convert_ids_to_tokens(target_indices))
 					
 					intersect					= set(top) if intersect is None else intersect.intersection(top)
 					intersect_tgts 				= set(top_tgts) if intersect_tgts is None else intersect_tgts.intersection(top_tgts)
 					intersect_type_tgts			= set(top_type_tgts) if intersect_type_tgts is None else intersect_type_tgts.intersection(top_type_tgts)
+					
+					for token, token_id, prob in zip(target_tokens, target_indices, probs_of_tgts):
+						index_predictions.append({
+							'sentence_num'					: i,
+							'epoch'							: epoch,
+							'token'							: token,
+							'token_rank'					: (probs_ordered == token_id).nonzero(as_tuple=True)[0][0].item(),
+							'total_tokens'					: len(probs_ordered),
+							'token_logprob' 				: torch.log(prob).item(),
+							'token_type'					: targets_to_labels[self.__format_tokens_for_tokenizer(token)],
+							'prediction_target'				: prediction_target,
+							
+							'topk'							: k,
+							'masked_token_type'				: masked_token_type,
+							'masked_token_index'			: masked_token_index,
+							
+							'type_targets' 					: ', '.join(type_targets),
+							'n_type_targets'				: n_type_tgts,
+							'prob_mass_type_targets'		: prob_mass_type_tgts.item(),
+							'percent_type_targets'			: percent_type_tgts,
+							'percent_type_targets_in_top'	: percent_type_tgts_in_top,
+							
+							'targets' 						: ', '.join(targets),
+							'n_targets' 					: n_tgts,
+							'prob_mass_targets'				: prob_mass_tgts.item(),						
+							'percent_targets'				: percent_tgts,
+							'percent_targets_in_top'		: percent_tgts_in_top,
+							
+							'top_predictions'				: ', '.join(top),
+						})
 				
 				if len(epochs) > 1:
 					perc_overlap 					= len(intersect)/k*100
@@ -2312,14 +2376,17 @@ class Tuner:
 				sentence_predictions.extend(index_predictions)
 			
 			for l, _ in enumerate(sentence_predictions):
-				sentence_predictions[l].update({'sentence': display_sentence})
+				sentence_predictions[l].update({
+					'sentence'		: display_sentence,
+					'sentence_type'	: sentence_type,
+				})
 			
 			topk_mask_token_predictions.extend(sentence_predictions)
 		
 		topk_mask_token_predictions = pd.DataFrame(topk_mask_token_predictions)
 		topk_mask_token_predictions = tuner_utils.move_cols(
 										df=topk_mask_token_predictions,
-										cols_to_move='sentence',
+										cols_to_move=['sentence','sentence_type'],
 									)
 		
 		return topk_mask_token_predictions
