@@ -418,11 +418,23 @@ class Tuner:
 			sentences 			= []
 		
 		if 'model_prediction_sentences' in eval_cfg.data:
-			if self.cfg.model.friendly_name in eval_cfg.data.model_prediction_sentences:
+			if 'which_prediction_sentences' in eval_cfg.data:
+				name = eval_cfg.data.which_prediction_args
+				if name == 'model':
+					name = self.cfg.model.friendly_name
+			else:
+				name = self.cfg.model.friendly_name
+			
+			if name in eval_cfg.data.model_prediction_sentences:
 				sentences 		+= [s
-					for k in eval_cfg.data.model_prediction_sentences[self.cfg.model.friendly_name]
-					for s in eval_cfg.data.model_prediction_sentences[self.cfg.model.friendly_name][k]
+					for s in tuner_utils.flatten(
+						list(
+							eval_cfg.data.model_prediction_sentences[name].values()
+						)
+					)
 				]
+			else:
+				log.warning(f'Prediction sentences for {name} were requested but do not exist!')
 		
 		if eval_cfg.debug:
 			if self.exp_type == 'newverb':
@@ -2226,8 +2238,23 @@ class Tuner:
 			
 			sentence_types += eval_cfg.data.prediction_sentence_types
 			if 'model_prediction_sentences' in eval_cfg.data:
-				if self.cfg.model.friendly_name in eval_cfg.data.model_prediction_sentences:
-					sentence_types += ['model' for sentence in tuner_utils.flatten(list(eval_cfg.data.model_prediction_sentences[self.cfg.model.friendly_name].values()))]
+				if 'which_prediction_sentences' in eval_cfg.data:
+					name = eval_cfg.data.which_prediction_args
+					if name == 'model':
+						name = self.cfg.model.friendly_name
+				else:
+					name = self.cfg.model.friendly_name
+								
+				if name in eval_cfg.data.model_prediction_sentences:
+					sentence_types += ['model' 
+						for _ in tuner_utils.flatten(
+							list(
+								eval_cfg.data.model_prediction_sentences[name].values()
+							)
+						)
+					]
+				else:
+					log.warning(f'Prediction sentences for {name} were requested but do not exist!')
 		else:
 			sentence_types = []
 		
@@ -2259,15 +2286,26 @@ class Tuner:
 				check_sentence = check_sentence.replace(self.mask_token, token_type, 1)
 			
 			if check_sentence in eval_cfg.data.prediction_sentences:
-				prediction_target = 'no target'
+				prediction_target 	= 'no target'
+				sentence_group  	= 'all models'
 			else:
 				if 'model_prediction_sentences' in eval_cfg.data:
-					if self.cfg.model.friendly_name in eval_cfg.data.model_prediction_sentences:
+					if 'which_prediction_sentences' in eval_cfg.data:
+						name = eval_cfg.data.which_prediction_args
+						if name == 'model':
+							name = self.cfg.model.friendly_name
+					else:
+						name = self.cfg.model.friendly_name
+					
+					if name in eval_cfg.data.model_prediction_sentences:
 						prediction_target = [
 							k 
-							for k in eval_cfg.data.model_prediction_sentences[self.cfg.model.friendly_name] 
-								if check_sentence in eval_cfg.data.model_prediction_sentences[self.cfg.model.friendly_name][k]
+							for k in eval_cfg.data.model_prediction_sentences[name] 
+								if check_sentence in eval_cfg.data.model_prediction_sentences[name][k]
 						][0]
+						sentence_group = name
+					else:
+						sentence_group = 'no group'
 			
 			for masked_token_type, masked_token_index in masked_token_indices.items():
 				# kind of hacky. assumes we're only teaching one new verb
@@ -2319,6 +2357,7 @@ class Tuner:
 					for token, token_id, prob in zip(target_tokens, target_indices, probs_of_tgts):
 						index_predictions.append({
 							'sentence_num'					: i,
+							'sentence_group'				: sentence_group,
 							'epoch'							: epoch,
 							'token'							: token,
 							'token_rank'					: (probs_ordered == token_id).nonzero(as_tuple=True)[0][0].item(),
