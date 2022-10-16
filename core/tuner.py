@@ -2305,6 +2305,7 @@ class Tuner:
 						][0]
 						sentence_group = name
 					else:
+						prediction_target = 'no target'
 						sentence_group = 'no group'
 			
 			for masked_token_type, masked_token_index in masked_token_indices.items():
