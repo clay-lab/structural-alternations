@@ -2310,6 +2310,7 @@ class Tuner:
 						prediction_target = 'no target'
 						sentence_group = 'no group'
 				else:
+					prediction_target = 'no target'
 					sentence_group = 'debug'
 			
 			for masked_token_type, masked_token_index in masked_token_indices.items():
