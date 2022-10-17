@@ -2236,7 +2236,9 @@ class Tuner:
 			else:
 				sentence_types = []
 			
-			sentence_types += eval_cfg.data.prediction_sentence_types
+			if 'prediction_sentence_types' in eval_cfg.data:
+				sentence_types += eval_cfg.data.prediction_sentence_types
+			
 			if 'model_prediction_sentences' in eval_cfg.data:
 				if 'which_prediction_sentences' in eval_cfg.data:
 					name = eval_cfg.data.which_prediction_args
