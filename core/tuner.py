@@ -2309,6 +2309,8 @@ class Tuner:
 					else:
 						prediction_target = 'no target'
 						sentence_group = 'no group'
+				else:
+					sentence_group = 'debug'
 			
 			for masked_token_type, masked_token_index in masked_token_indices.items():
 				# kind of hacky. assumes we're only teaching one new verb
