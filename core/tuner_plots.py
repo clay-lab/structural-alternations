@@ -844,9 +844,9 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 		
 		cossims, (cossim, sem), pairs = tuner_utils.get_data_for_pairwise_comparisons(cossims, cossims=True)
 		
-		fig, ax = plt.subplots(len(pairs), 2)
+		fig, ax = plt.subplots(len(pairs), 2, tight_layout=True)
 		ax = ax.reshape(len(pairs), 2)
-		fig.set_size_inches(12.5, (6*len(pairs))+(0.6*cossims.predicted_arg.unique().size)+(0.6*cossims.target_group.unique().size)+0.25)
+		fig.set_size_inches(12.5, (6*len(pairs))+(0.6*cossims.predicted_arg.unique().size)+(0.6*cossims.target_group.unique().size)+0.35)
 		
 		return cossims, cossim, sem, pairs, fig, ax
 	
@@ -866,6 +866,22 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 		metric += f' target group tokens'
 		
 		title = get_plot_title(cossims, metric)
+		
+		if 'correction' in cossims.columns and not all(v == 'none' for v in cossims.correction):
+			title = title.strip()
+			title += f'\ncorrection: '
+			title += tuner_utils.multiplator(cossims.correction)
+			correction_kwargs = [c for c in cossims.columns if c.startswith('correction_')]
+			if correction_kwargs and not tuner_utils.multiplator(cossims.correction) == 'multiple':
+				title += ' ('
+				for c in correction_kwargs:
+					title += c.replace('correction_', '')
+					title += '='
+					title += str(tuner_utils.multiplator(cossims[c]))
+				
+				title += ')'
+			
+			title += '\n'
 		
 		if 'target_group_label' in cossims.columns:
 			group_labels = cossims[['target_group', 'target_group_label']].drop_duplicates()
@@ -930,15 +946,19 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 			plot_kwargs=dict(zorder=5, linewidth=0),
 		)
 		
-		if cossims.model_name.unique().size == 1:
+		if not all(t == 'multiple' for t in cossims.token):
 			plot_args.update(dict(
 				text='token', 
-				marginal_means=['target_group_label'],
 				text_kwargs=dict(
 					size=6, 
 					horizontalalignment='center', 
 					verticalalignment='top'
 				)
+			))
+		
+		if cossims.model_name.unique().size == 1:
+			plot_args.update(dict(
+				marginal_means=['target_group_label'],
 			))
 		
 		scatterplot(**plot_args)
@@ -974,9 +994,17 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 	suptitle = get_cossims_plot_title(cossims, cossim)
 	
 	fig.suptitle(suptitle)
-	fig.tight_layout()
 	
-	filename = tuner_utils.get_file_prefix(cossims) + '-cossims-plot.pdf'
+	filename = tuner_utils.get_file_prefix(cossims) + '-cossims-' + tuner_utils.multiplator(cossims.correction)
+	if any(c.startswith('correction_') for c in cossims.columns):
+		correction_kwargs = [c for c in cossims.columns if c.startswith('correction_')]
+		if not tuner_utils.multiplator(cossims.correction) == 'multiple':
+			for c in correction_kwargs:
+				if not all(np.isnan(v) for v in cossims[c]):
+					filename += f'-{c.replace("correction_", "")}={tuner_utils.multiplator(cossims[c])}'
+		
+	filename += '.pdf'
+	
 	plt.savefig(filename)
 	plt.close()
 	del fig

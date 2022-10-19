@@ -919,15 +919,19 @@ class Tuner:
 		group_labels 		= [predicted_roles, target_group_labels]
 		cossims_args.update(dict(groups=groups, group_types=group_types, group_labels=group_labels))
 		
-		cossims 			= self.get_cossims(**cossims_args)
-		cossims 			= tuner_utils.transfer_hyperparameters_to_df(summary, cossims)
-	
-		if not cossims[~cossims.target_group.str.endswith('most similar')].empty and eval_cfg.create_plots:
-			log.info('Creating cosine similarity plots')
-			self.create_cossims_plot(cossims)
-		
-		cossims.to_csv(f'{file_prefix}-cossims.csv.gz', index=False, na_rep='NaN')
-		
+		for correction in eval_cfg.cossims_corrections:
+			correction_kwargs 	= eval_cfg.cossims_corrections_kwargs[correction] if correction in eval_cfg.cossims_corrections_kwargs else {}
+			cossims 			= self.get_cossims(**cossims_args, correction=correction, correction_kwargs=correction_kwargs)
+			cossims 			= tuner_utils.transfer_hyperparameters_to_df(summary, cossims)
+			
+			if not cossims[~cossims.target_group.str.endswith('most similar')].empty and eval_cfg.create_plots:
+				log.info('Creating cosine similarity plots')
+				self.create_cossims_plot(cossims)
+			
+			correction_kwargs_str = '-' + '-'.join(['='.join([str(k),str(v)]) for k,v in correction_kwargs.items()]) if correction_kwargs else ''
+			
+			cossims.to_csv(f'{file_prefix}-cossims-{correction}{correction_kwargs_str}.csv.gz', index=False, na_rep='NaN')
+			
 		tsne_args 			= dict(
 								n=eval_cfg.num_tsne_words, 
 								n_components=2, 
@@ -1911,11 +1915,15 @@ class Tuner:
 	
 	# word embedding analysis
 	def get_cossims(
-		self, tokens: List[str] = None, 
-		targets: Dict[str,str] = {}, topk: int = 50,
-		groups: List[str] = [],
-		group_types: List[str] = [],
+		self, 
+		tokens: List[str] = None, 
+		targets: Dict[str,str] = None, 
+		topk: int = 50,
+		groups: List[str] = None,
+		group_types: List[str] = None,
 		group_labels: List[Dict[str,str]] = {},
+		correction: str = None,
+		correction_kwargs: Dict = None,
 	) -> pd.DataFrame:
 		'''
 		Returns a dataframe containing information about the k most similar tokens to tokens
@@ -1929,14 +1937,19 @@ class Tuner:
 				groups (list)			: list of column names defined by cossims to use when applying group labels
 				group_type (list)		: list of strings for each group_label naming the kinds of group
 				group_labels (dict)		: list of dicts mapping the tokens to group labels for each group type
+				correction (str)		: what kind of correction to apply to the cosine similarities to account
+										  for anisotropy
 			
 			returns:
 				cossims (pd.DataFrame)	: dataframe containing information about cosine similarities for each token/target combination + topk most similar tokens
 		'''
 		def update_cossims(
-			cossims: List[Dict], values: List[float],
-			included_ids: List[int] = [], excluded_ids: List[int] = [], 
-			k: int = None, target_group: str = ''
+			cossims: List[Dict], 
+			values: List[float],
+			included_ids: List[int] = [], 
+			excluded_ids: List[int] = [], 
+			k: int = None, 
+			target_group: str = ''
 		) -> None:
 			'''
 			Updates the cossims list
@@ -1969,17 +1982,27 @@ class Tuner:
 				'cossim'		: cossim
 			} for i, cossim in enumerate(values) if i in included_ids][:k])
 		
+		targets = targets if targets is not None else {}
+		groups = groups if groups is not None else []
+		group_types = group_types if group_types is not None else []
+		group_labels = group_labels if group_labels is not None else {}
+		correction_kwargs = correction_kwargs if correction_kwargs is not None else {}
+		
 		tokens = self.tokens_to_mask if tokens is None else tokens
 		targets = self.__format_tokens_for_tokenizer(targets) if targets else {}
 		targets = tuner_utils.apply_to_all_of_type(targets, str, lambda token: token if tuner_utils.verify_tokens_exist(self.tokenizer, token) else None) or {}
 		
 		cos = nn.CosineSimilarity(dim=-1)
 		cossims = []
+		if not correction in tuner_utils.COSSIMS_CORRECTION_MAP:
+			embeddings = self.word_embeddings
+		else:
+			embeddings = tuner_utils.COSSIMS_CORRECTION_MAP[correction](self.word_embeddings.detach(), **correction_kwargs)
 		
 		for token in tokens:
 			token_id 		= self.tokenizer.convert_tokens_to_ids(token)
-			token_embedding = self.word_embeddings[token_id]
-			token_cossims 	= cos(token_embedding, self.word_embeddings)
+			token_embedding = embeddings[token_id]
+			token_cossims 	= cos(token_embedding, embeddings)
 			included_ids 	= torch.topk(token_cossims, k=topk+1).indices.tolist() # add one so we can leave out the identical token
 			token_cossims 	= token_cossims.tolist()
 			update_cossims(cossims=cossims, values=token_cossims, included_ids=included_ids, excluded_ids=token_id, k=topk, target_group=f'{topk} most similar')
@@ -1993,7 +2016,16 @@ class Tuner:
 					out_group_target_ids = [token_id for token_id in self.tokenizer.convert_tokens_to_ids(targets[out_group_token]) if token_id != self.unk_token_id]
 					update_cossims(cossims=cossims, values=token_cossims, included_ids=out_group_target_ids, target_group=out_group_token)
 		
-		cossims = pd.DataFrame(cossims)
+		cossims = (
+			pd.DataFrame(cossims)
+				.assign(
+					correction=correction,
+					**{
+						f'correction_{k}': v
+						for k, v in correction_kwargs.items()
+					},
+				)
+		)
 		
 		for col in ['predicted_arg', 'target_group']:
 			cossims[col]	= self.__format_strings_with_tokens_for_display(cossims[col])

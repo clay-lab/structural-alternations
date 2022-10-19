@@ -12,6 +12,8 @@ import pandas as pd
 
 from glob import glob
 from typing import *
+from operator import and_
+from functools import reduce
 from omegaconf import DictConfig, OmegaConf
 from distutils.dir_util import copy_tree
 from distutils.file_util import copy_file
@@ -27,8 +29,8 @@ OmegaConf.register_new_resolver(
 	lambda criteria, dataname: criteria.replace(',', '-') + '-' + dataname.split('.')[0]
 )
 
-EXPECTED_NUMBER_OF_RESULT_FILES = {
-	'newarg' 	:  9,
+EXPECTED_NUMBER_OF_RESULTS_FILES = {
+	'newarg' 	: 10,
 	'newverb'	: 17,
 }
 
@@ -72,7 +74,7 @@ def evaluate(cfg: DictConfig) -> None:
 		else:
 			expr = epoch
 		
-		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies(_diffs)?(_sentences)?\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?(_sentences)?-plots\.pdf|{scores_name}(_sentences)?\.(csv|pkl)\.gz|cossims\.csv\.gz|kl_divs\.csv\.gz|kl_divs-hist\.pdf)))'
+		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies(_diffs)?(_sentences)?\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?(_sentences)?-plots\.pdf|{scores_name}(_sentences)?\.(csv|pkl)\.gz|cossims-(.*?)\.csv\.gz|kl_divs\.csv\.gz|kl_divs-hist\.pdf)))'
 	
 	def get_checkpoint_dirs(d: str, criteria: str) -> List[str]:
 		'''
@@ -173,7 +175,7 @@ def evaluate(cfg: DictConfig) -> None:
 	global scores_name
 	scores_name			= 'odds_ratios' if cfg.data.exp_type in ['newverb', 'newarg'] else 'scores'
 	score_file_regex 	= get_score_file_regex(cfg.data.name, cfg.epoch, cfg.data.exp_type)
-	num_expected_files 	= EXPECTED_NUMBER_OF_RESULT_FILES[cfg.data.exp_type]
+	num_expected_files 	= EXPECTED_NUMBER_OF_RESULTS_FILES[cfg.data.exp_type]
 	if not cfg.create_plots:
 		num_expected_files -= (4 if cfg.data.exp_type == 'newverb' else 3)
 	
@@ -253,7 +255,7 @@ def summarize(
 		eval_dirs 				= [os.path.join(checkpoint_dir, f) for checkpoint_dir in checkpoint_dirs for f in os.listdir(checkpoint_dir) if f.startswith(f'eval-{cfg.data.name.split(".")[0]}')]
 		summary_files			= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith(f'-{scores_name}.pkl.gz')]
 		sentences_summary_files	= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith(f'-{scores_name}_sentences.pkl.gz')]
-		cossims_files			= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith('-cossims.csv.gz')]
+		cossims_files			= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if re.search('-cossims-(.*?).csv.gz', f)]
 		
 		return summary_files, sentences_summary_files, cossims_files
 	
@@ -264,7 +266,7 @@ def summarize(
 	if sentences_summary_files:
 		sentences_summaries 								= tuner_utils.load_pkls(sentences_summary_files)
 	else:
-		sentences_summaries 								= pd.Dataframe()
+		sentences_summaries 								= pd.DataFrame()
 	
 	cossims 												= tuner_utils.load_csvs(cossims_files, converters={'token': str})
 	
@@ -293,7 +295,7 @@ def summarize_odds_ratios(
 			cfg (Dict)					: a config file containing information about the experiments evaluated. passed to other functions
 			summaries (pd.DataFrame)	: a dataframe concatenating results from several models to summarize
 	'''
-	excluded_cols = ['sentence_num', 'sentence', 'odds_ratio']
+	excluded_cols = ['sentence_num', 'sentence', 'odds_ratio', 'log_probability', 'other_log_probability']
 	agg_kwargs = dict(
 		odds_ratio_mean = ('odds_ratio', 'mean'), 
 		odds_ratio_sem 	= ('odds_ratio', 'sem')
@@ -302,7 +304,7 @@ def summarize_odds_ratios(
 	if cfg.data.exp_type == 'newverb':
 		excluded_cols.extend([
 			'token_id', 'token', 'token_type', 'odds_ratio_pre_post_difference', 
-			'full_ratio_name', 'log_probability', 'other_log_probability'
+			'full_ratio_name'
 		])
 		agg_kwargs.update(dict(
 			odds_ratio_pre_post_difference_mean = ('odds_ratio_pre_post_difference', 'mean'),
@@ -357,7 +359,7 @@ def summarize_odds_ratios(
 		else:
 			log.info(f'Creating {scores_name.replace("_", " ")} differences plots for sentences with data from {n_models} models')
 			tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, plot_diffs=True, suffix='sentences')
-
+	
 	if cfg.create_plots:
 		if 'position_ratio_name' in summary_of_summaries.columns:
 			log.info(f'Creating {scores_name.replace("_", " ")} plots with data from {n_models} models')
@@ -365,7 +367,7 @@ def summarize_odds_ratios(
 		else:
 			log.info(f'Creating {scores_name.replace("_", " ")} plots for sentences with data from {n_models} models')
 			tuner_plots.create_odds_ratios_plots(summary_of_summaries, cfg, suffix='sentences')
-
+	
 	acc = tuner_utils.get_odds_ratios_accuracies(summary_of_summaries, cfg)
 	acc = tuner_utils.transfer_hyperparameters_to_df(summary_of_summaries, acc)
 	save_summary(acc, 'accuracies' if 'position_ratio_name' in summary_of_summaries.columns else 'accuracies_sentences', 'csv')
@@ -392,28 +394,45 @@ def summarize_cossims(cfg: DictConfig, cossims: pd.DataFrame) -> None:
 	topk = cossims[cossims.target_group.str.endswith('most similar')].copy()
 	
 	if not topk.empty:
-		
 		model_token_cols 			= [c for c in topk.columns if not c in ['token','predicted_arg','cossim']]
-		duplicated_token_arg_pairs 	= [tuple(pair) for pair in topk[topk[['token','predicted_arg']].duplicated()][['token','predicted_arg']].to_numpy()]
+		correction_kwargs_cols 		= [c for c in cossims.columns if c.startswith('correction_')]
+		all_cols 					= ['token', 'predicted_arg', 'correction'] + correction_kwargs_cols
+		duplicated_token_arg_pairs 	= [tuple(pair) for pair in topk[topk[all_cols].duplicated()][all_cols].to_numpy()]
 		
-		for token, predicted_arg in duplicated_token_arg_pairs:
-			topk.loc[(topk.token == token) & (topk.predicted_arg == predicted_arg), model_token_cols] = \
-			topk.loc[(topk.token == token) & (topk.predicted_arg == predicted_arg), model_token_cols].apply(lambda col: tuner_utils.multiplator(col), result_type='broadcast')
+		for token, predicted_arg, correction, *correction_kwargs in duplicated_token_arg_pairs:
+			cols_values = tuple(zip([c for c in cossims.columns if c.startswith('correction_')], correction_kwargs))
+			condition = reduce(
+				and_, 
+				[
+					topk.token == token, 
+					topk.predicted_arg == predicted_arg,
+					topk.correction == correction,
+				] +
+				[topk[col] == value for col, value in cols_values]
+			)
+			
+			topk.loc[condition, model_token_cols] = (
+				topk.loc[condition, model_token_cols]
+					.apply(
+						lambda col: tuner_utils.multiplator(col), 
+						result_type='broadcast'
+					)
+				)
 	
 	# for the target tokens, we want to know something about the average between
-	# tokens' and their targets' similarity within each model, which means summarizing model behavior and not token selection
+	# tokens' and their targets' similarity within each model, 
+	# which means summarizing model behavior and not token selection
 	targets = cossims[~cossims.target_group.str.endswith('most similar')].copy()
 	
 	if not targets.empty:
-		
-		model_token_cols = ['token','token_id']
+		model_token_cols = ['token', 'token_id']
 		
 		for target_group in targets.target_group.unique():
 			targets.loc[targets.target_group == target_group, model_token_cols] = \
 			targets.loc[targets.target_group == target_group, model_token_cols].apply(lambda col: tuner_utils.multiplator(col), result_type='broadcast')
 	
 	cossims = pd.concat([
-		df.groupby(groups,dropna=False) \
+		df.groupby(groups, dropna=False) \
 			.agg(**agg_kwargs) \
 			.reset_index() \
 			.sort_values(['predicted_arg','target_group'])
@@ -430,7 +449,8 @@ def summarize_cossims(cfg: DictConfig, cossims: pd.DataFrame) -> None:
 		n_models = len(cossims[(cossims.model_id != 'multiple') & (cossims.random_seed != 'multiple')][['model_id', 'random_seed']].drop_duplicates())
 		
 		log.info(f'Creating cosine similarity plots with data from {n_models} models')
-		tuner_plots.create_cossims_plot(cossims)
+		for correction in cossims.correction.unique():
+			tuner_plots.create_cossims_plot(cossims[cossims.correction == correction].reset_index(drop=True))
 
 if __name__ == '__main__':
 	

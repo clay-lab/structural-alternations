@@ -26,6 +26,7 @@ from functools import partial
 from omegaconf import OmegaConf, DictConfig, ListConfig
 from scipy.stats import pearsonr
 from transformers import AutoTokenizer
+from sklearn.decomposition import PCA
 
 from datasets import load_dataset, Dataset
 from datasets.utils import logging as dataset_utils_logging
@@ -293,6 +294,36 @@ def recursor(
 		lambda data, *args, **kwargs: \
 			apply_to_all_of_type(data=data, t=t, fun=fun, *args, **kwargs)
 
+# cosine similarity corrections
+def all_but_the_top(embeddings: torch.Tensor, n: int):
+	'''
+	Remove all but the top n pca components from embeddings.
+		
+		params:
+			embeddings (torch.Tensor): the embeddings from which 
+									   to remove the top n principal omponents
+			n (int)					 : the number of components to remove
+		
+		returns:
+			embeddings (torch.Tensor): the embeddings with the 
+									   top n pcs removed
+	'''
+	# looks like the way to do this involves subtracting the mean first
+	embeddings_ = embeddings - embeddings.mean(0)
+	
+	pca = PCA(n_components=n)
+	pca.fit(embeddings_.detach())
+	
+	# pca returns double (float64), but the embeddings are torch.float32
+	# so we need to convert the dtype to allow for matmul
+	top_components = torch.tensor(pca.components_, dtype=embeddings_.dtype).to(embeddings_.device)
+	
+	# from https://github.com/s1998/All-but-the-top/blob/master/src/embeddings_processor.py
+	rm_term = torch.matmul(torch.matmul(embeddings_, top_components.T), top_components)
+	
+	all_but_the_top_embeddings = embeddings_ - rm_term
+	
+	return all_but_the_top_embeddings
 
 # summary and file related
 def get_file_prefix(summary: pd.DataFrame) -> str:
@@ -1570,3 +1601,8 @@ class gen_summary():
 		# note that if the new df uses column names already defined in the previous df
 		# this will throw an error, but some unquoted string names may still work
 		self.prep_quasiquotation()
+
+COSSIMS_CORRECTION_MAP: Dict[str,Callable] = {
+	'none': lambda x: x, # do nothing
+	'all_but_the_top': all_but_the_top, # all-but-the-top n pcs
+}
