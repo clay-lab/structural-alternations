@@ -919,26 +919,26 @@ class Tuner:
 		group_labels 		= [predicted_roles, target_group_labels]
 		cossims_args.update(dict(groups=groups, group_types=group_types, group_labels=group_labels))
 		
+		cossims = pd.DataFrame()
 		for correction in eval_cfg.cossims_corrections:
 			correction_kwargs 	= eval_cfg.cossims_corrections_kwargs[correction] if correction in eval_cfg.cossims_corrections_kwargs else {}
-			cossims 			= self.get_cossims(**cossims_args, correction=correction, correction_kwargs=correction_kwargs)
-			cossims 			= tuner_utils.transfer_hyperparameters_to_df(summary, cossims)
+			cossims 			= pd.concat([cossims, self.get_cossims(**cossims_args, correction=correction, correction_kwargs=correction_kwargs)], ignore_index=True)
+		
+		cossims = tuner_utils.transfer_hyperparameters_to_df(summary, cossims)
+		
+		if not cossims[~cossims.target_group.str.endswith('most similar')].empty and eval_cfg.create_plots:
+			log.info('Creating cosine similarity plots')
+			self.create_cossims_plot(cossims)
+		
+		cossims.to_csv(f'{file_prefix}-cossims.csv.gz', index=False, na_rep='NaN')
 			
-			if not cossims[~cossims.target_group.str.endswith('most similar')].empty and eval_cfg.create_plots:
-				log.info('Creating cosine similarity plots')
-				self.create_cossims_plot(cossims)
-			
-			correction_kwargs_str = '-' + '-'.join(['='.join([str(k),str(v)]) for k,v in correction_kwargs.items()]) if correction_kwargs else ''
-			
-			cossims.to_csv(f'{file_prefix}-cossims-{correction}{correction_kwargs_str}.csv.gz', index=False, na_rep='NaN')
-			
-		tsne_args 			= dict(
-								n=eval_cfg.num_tsne_words, 
-								n_components=2, 
-								random_state=0, 
-								learning_rate='auto', 
-								init='pca'
-							)
+		tsne_args = dict(
+						n=eval_cfg.num_tsne_words, 
+						n_components=2, 
+						random_state=0, 
+						learning_rate='auto', 
+						init='pca'
+					)
 		
 		if 'masked_token_targets' in eval_cfg.data:
 			tsne_args.update(dict(targets=eval_cfg.data.masked_token_targets))
@@ -946,8 +946,8 @@ class Tuner:
 		if 'masked_token_target_labels' in eval_cfg.data:
 			tsne_args.update(dict(target_group_labels=target_group_labels))
 		
-		tsnes 				= self.get_tsnes(**tsne_args)
-		tsnes 				= tuner_utils.transfer_hyperparameters_to_df(summary, tsnes)
+		tsnes = self.get_tsnes(**tsne_args)
+		tsnes = tuner_utils.transfer_hyperparameters_to_df(summary, tsnes)
 		
 		if eval_cfg.create_plots:
 			log.info('Creating t-SNE plot(s)')

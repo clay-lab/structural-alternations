@@ -926,88 +926,82 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 				
 		return title
 	
-	cossims, cossim, sem, pairs, fig, ax = setup_cossims_plot(cossims)
+	filename = f'{tuner_utils.get_file_prefix(cossims)}-cossims.pdf'
 	
-	for i, pair in enumerate(pairs):
-		in_token, out_token = tuner_utils.get_single_pair_data(cossims, pair, pair_col='predicted_arg', group='target_group_label')
-		in_arg, out_arg = in_token.predicted_arg.unique()[0], out_token.predicted_arg.unique()[0]
-		
-		plot_args = dict(
-			data=in_token, x=in_token, y=out_token, 
-			val=cossim, sem=sem, ax=ax[i][0], 
-			hue='target_group_label',
-			legend_title='target group',
-			aspect_ratio='eq_square',
-			comparison_line=True,
-			center_at_origin=False,
-			marginal_means=['model_name','target_group_label'],
-			xlabel=f'{in_arg} cosine similarity',
-			ylabel=f'{out_arg} cosine similarity',
-			plot_kwargs=dict(zorder=5, linewidth=0),
-		)
-		
-		if not all(t == 'multiple' for t in cossims.token):
-			plot_args.update(dict(
-				text='token', 
-				text_kwargs=dict(
-					size=6, 
-					horizontalalignment='center', 
-					verticalalignment='top'
+	with PdfPages(filename) as pdf:
+		for correction, cossims in cossims.groupby('correction', sort=False):			
+			cossims, cossim, sem, pairs, fig, ax = setup_cossims_plot(cossims)
+			
+			for i, pair in enumerate(pairs):
+				in_token, out_token = tuner_utils.get_single_pair_data(cossims, pair, pair_col='predicted_arg', group='target_group_label')
+				in_arg, out_arg = in_token.predicted_arg.unique()[0], out_token.predicted_arg.unique()[0]
+				
+				plot_args = dict(
+					data=in_token, x=in_token, y=out_token, 
+					val=cossim, sem=sem, ax=ax[i][0], 
+					hue='target_group_label',
+					legend_title='target group',
+					aspect_ratio='eq_square',
+					comparison_line=True,
+					center_at_origin=False,
+					marginal_means=['model_name','target_group_label'],
+					xlabel=f'{in_arg} cosine similarity',
+					ylabel=f'{out_arg} cosine similarity',
+					plot_kwargs=dict(zorder=5, linewidth=0),
 				)
-			))
-		
-		if cossims.model_name.unique().size == 1:
-			plot_args.update(dict(
-				marginal_means=['target_group_label'],
-			))
-		
-		scatterplot(**plot_args)
-		
-		# diffs plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
-		plot_args.update(dict(
-			ax=ax[i][1], diffs_plot=True,
-			xlabel=f'{in_arg} cosine similarity',
-			ylabel=f'{out_arg} - {in_arg} cosine similarity'.replace('-', '\u2212'),
-		))
-		
-		scatterplot(**plot_args)
-		
-		# if we are plotting for multiple models, add names to the means of each model for each subplot
-		# (we only want to do this for cossims plots, since they're the only ones that show the separate groups clearly)
-		if cossims.model_name.unique().size > 1:
-			model_means = cossims.groupby(['model_name', 'predicted_arg'])[cossim].agg('mean')
-			model_means = model_means.reset_index().pivot_table(index='model_name', columns='predicted_arg')
-			for plot_type, axis in zip(['xy', 'diffs'], ax[i]):
-				for model_name, group in model_means.groupby('model_name'):
-					x_pos = group.loc[model_name,cossim].loc[in_arg]
-					y_pos = group.loc[model_name,cossim].loc[out_arg]
-					
-					if plot_type == 'diffs':
-						y_pos -= x_pos
-					
-					axis.text(
-						x_pos, y_pos, model_name, size=10, horizontalalignment='center', 
-						verticalalignment='center', color='black', zorder=15, alpha=0.65, 
-						fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')]
-					)
-	
-	suptitle = get_cossims_plot_title(cossims, cossim)
-	
-	fig.suptitle(suptitle)
-	
-	filename = tuner_utils.get_file_prefix(cossims) + '-cossims-' + tuner_utils.multiplator(cossims.correction)
-	if any(c.startswith('correction_') for c in cossims.columns):
-		correction_kwargs = [c for c in cossims.columns if c.startswith('correction_')]
-		if not tuner_utils.multiplator(cossims.correction) == 'multiple':
-			for c in correction_kwargs:
-				if not all(np.isnan(v) for v in cossims[c]):
-					filename += f'-{c.replace("correction_", "")}={tuner_utils.multiplator(cossims[c])}'
-		
-	filename += '.pdf'
-	
-	plt.savefig(filename)
-	plt.close()
-	del fig
+				
+				if not all(t == 'multiple' for t in cossims.token):
+					plot_args.update(dict(
+						text='token', 
+						text_kwargs=dict(
+							size=6, 
+							horizontalalignment='center', 
+							verticalalignment='top'
+						)
+					))
+				
+				if cossims.model_name.unique().size == 1:
+					plot_args.update(dict(
+						marginal_means=['target_group_label'],
+					))
+				
+				scatterplot(**plot_args)
+				
+				# diffs plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
+				plot_args.update(dict(
+					ax=ax[i][1], diffs_plot=True,
+					xlabel=f'{in_arg} cosine similarity',
+					ylabel=f'{out_arg} - {in_arg} cosine similarity'.replace('-', '\u2212'),
+				))
+				
+				scatterplot(**plot_args)
+				
+				# if we are plotting for multiple models, add names to the means of each model for each subplot
+				# (we only want to do this for cossims plots, since they're the only ones that show the separate groups clearly)
+				if cossims.model_name.unique().size > 1:
+					model_means = cossims.groupby(['model_name', 'predicted_arg'])[cossim].agg('mean')
+					model_means = model_means.reset_index().pivot_table(index='model_name', columns='predicted_arg')
+					for plot_type, axis in zip(['xy', 'diffs'], ax[i]):
+						for model_name, group in model_means.groupby('model_name'):
+							x_pos = group.loc[model_name,cossim].loc[in_arg]
+							y_pos = group.loc[model_name,cossim].loc[out_arg]
+							
+							if plot_type == 'diffs':
+								y_pos -= x_pos
+							
+							axis.text(
+								x_pos, y_pos, model_name, size=10, horizontalalignment='center', 
+								verticalalignment='center', color='black', zorder=15, alpha=0.65, 
+								fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')]
+							)
+			
+			suptitle = get_cossims_plot_title(cossims, cossim)
+			
+			fig.suptitle(suptitle)
+			
+			pdf.savefig()
+			plt.close('all')
+			del fig
 
 def create_tsnes_plots(
 	tsnes: pd.DataFrame, 

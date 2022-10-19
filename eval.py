@@ -74,7 +74,7 @@ def evaluate(cfg: DictConfig) -> None:
 		else:
 			expr = epoch
 		
-		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies(_diffs)?(_sentences)?\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?(_sentences)?-plots\.pdf|{scores_name}(_sentences)?\.(csv|pkl)\.gz|cossims-(.*?)\.csv\.gz|kl_divs\.csv\.gz|kl_divs-hist\.pdf)))'
+		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies(_diffs)?(_sentences)?\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?(_sentences)?-plots\.pdf|{scores_name}(_sentences)?\.(csv|pkl)\.gz|cossims\.csv\.gz|kl_divs\.csv\.gz|kl_divs-hist\.pdf)))'
 	
 	def get_checkpoint_dirs(d: str, criteria: str) -> List[str]:
 		'''
@@ -255,7 +255,7 @@ def summarize(
 		eval_dirs 				= [os.path.join(checkpoint_dir, f) for checkpoint_dir in checkpoint_dirs for f in os.listdir(checkpoint_dir) if f.startswith(f'eval-{cfg.data.name.split(".")[0]}')]
 		summary_files			= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith(f'-{scores_name}.pkl.gz')]
 		sentences_summary_files	= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith(f'-{scores_name}_sentences.pkl.gz')]
-		cossims_files			= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if re.search('-cossims-(.*?).csv.gz', f)]
+		cossims_files			= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith('-cossims.csv.gz')]
 		
 		return summary_files, sentences_summary_files, cossims_files
 	
@@ -449,8 +449,7 @@ def summarize_cossims(cfg: DictConfig, cossims: pd.DataFrame) -> None:
 		n_models = len(cossims[(cossims.model_id != 'multiple') & (cossims.random_seed != 'multiple')][['model_id', 'random_seed']].drop_duplicates())
 		
 		log.info(f'Creating cosine similarity plots with data from {n_models} models')
-		for correction in cossims.correction.unique():
-			tuner_plots.create_cossims_plot(cossims[cossims.correction == correction].reset_index(drop=True))
+		tuner_plots.create_cossims_plot(cossims)
 
 if __name__ == '__main__':
 	
