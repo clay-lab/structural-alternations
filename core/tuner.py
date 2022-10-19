@@ -2268,7 +2268,9 @@ class Tuner:
 			else:
 				sentence_types = []
 			
-			sentence_types += eval_cfg.data.prediction_sentence_types
+			if 'prediction_sentence_types' in eval_cfg.data:
+				sentence_types += eval_cfg.data.prediction_sentence_types
+			
 			if 'model_prediction_sentences' in eval_cfg.data:
 				if 'which_prediction_sentences' in eval_cfg.data:
 					name = eval_cfg.data.which_prediction_args
@@ -2339,6 +2341,9 @@ class Tuner:
 					else:
 						prediction_target = 'no target'
 						sentence_group = 'no group'
+				else:
+					prediction_target = 'no target'
+					sentence_group = 'debug'
 			
 			for masked_token_type, masked_token_index in masked_token_indices.items():
 				# kind of hacky. assumes we're only teaching one new verb
