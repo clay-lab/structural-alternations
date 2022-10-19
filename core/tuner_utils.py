@@ -1067,7 +1067,7 @@ def format_strings_with_tokens_for_display(
 			if token.startswith(chr(288)) or token.startswith('^'):
 				token = token[1:]
 			
-			data = re.sub(rf'(?<!{chr(288)}){token}', f'^{token}', data)
+			data = re.sub(rf'^(?<!{chr(288)}){token}', f'^{token}', data)
 			data = re.sub(rf'{chr(288)}{token}', token, data)
 		
 		# this might need to be adjusted if we ever use an uncased roberta model,
