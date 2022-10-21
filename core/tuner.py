@@ -2319,9 +2319,10 @@ class Tuner:
 			for token_type in masked_token_indices:
 				check_sentence = check_sentence.replace(self.mask_token, token_type, 1)
 			
-			if check_sentence in eval_cfg.data.prediction_sentences:
-				prediction_target 	= 'no target'
-				sentence_group  	= 'all models'
+			if 'prediction_sentences' in eval_cfg.data:
+				if check_sentence in eval_cfg.data.prediction_sentences:
+					prediction_target 	= 'no target'
+					sentence_group  	= 'all models'
 			else:
 				if 'model_prediction_sentences' in eval_cfg.data:
 					if 'which_prediction_sentences' in eval_cfg.data:
