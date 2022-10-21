@@ -24,6 +24,10 @@ which_args: model
 red_yellow:
   '[subj]' : [cherry, strawberry, tomato, lobster]
   '[obj]'  : [banana, lemon, corn, lion]
+  
+white_red:
+  '[subj]' : [milk, pearl, onion, sheep]
+  '[obj]'  : [blood, ruby, tomato, lobster]
 
 vehicles_buildings:
   '[subj]' : [bike, car, train, motorcycle]
