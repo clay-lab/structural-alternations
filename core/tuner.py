@@ -2321,32 +2321,33 @@ class Tuner:
 			for token_type in masked_token_indices:
 				check_sentence = check_sentence.replace(self.mask_token, token_type, 1)
 			
-			if 'prediction_sentences' in eval_cfg.data:
-				if check_sentence in eval_cfg.data.prediction_sentences:
+			if (
+				'prediction_sentences' in eval_cfg.data and
+				check_sentence in eval_cfg.data.prediction_sentences
+			):
 					prediction_target 	= 'no target'
 					sentence_group  	= 'all models'
-			else:
-				if 'model_prediction_sentences' in eval_cfg.data:
-					if 'which_prediction_sentences' in eval_cfg.data:
-						name = eval_cfg.data.which_prediction_args
-						if name == 'model':
-							name = self.cfg.model.friendly_name
-					else:
+			elif 'model_prediction_sentences' in eval_cfg.data:
+				if 'which_prediction_sentences' in eval_cfg.data:
+					name = eval_cfg.data.which_prediction_args
+					if name == 'model':
 						name = self.cfg.model.friendly_name
-					
-					if name in eval_cfg.data.model_prediction_sentences:
-						prediction_target = [
-							k 
-							for k in eval_cfg.data.model_prediction_sentences[name] 
-								if check_sentence in eval_cfg.data.model_prediction_sentences[name][k]
-						][0]
-						sentence_group = name
-					else:
-						prediction_target = 'no target'
-						sentence_group = 'no group'
+				else:
+					name = self.cfg.model.friendly_name
+				
+				if name in eval_cfg.data.model_prediction_sentences:
+					prediction_target = [
+						k 
+						for k in eval_cfg.data.model_prediction_sentences[name] 
+							if check_sentence in eval_cfg.data.model_prediction_sentences[name][k]
+					][0]
+					sentence_group = name
 				else:
 					prediction_target = 'no target'
-					sentence_group = 'debug'
+					sentence_group = 'no group'
+			else:
+				prediction_target = 'no target'
+				sentence_group = 'debug'
 			
 			for masked_token_type, masked_token_index in masked_token_indices.items():
 				# kind of hacky. assumes we're only teaching one new verb
