@@ -1196,7 +1196,9 @@ class Tuner:
 		self.checkpoint_dir 		= os.path.join(self.original_cwd, cfg_or_path) if isinstance(cfg_or_path, str) else os.getcwd()
 		
 		# switch over to the checkpoint dir for the purpose of organizing results if we're not already in a subdirectory of it
-		if not self.checkpoint_dir in os.getcwd():
+		# we're using the split because this gives us the models time identifier down to the ms
+		# it's useful when we're using a symlink to evaluate in some other actual directory
+		if not os.path.split(self.checkpoint_dir)[-1] in os.getcwd():
 			os.chdir(self.checkpoint_dir)
 		
 		self.save_full_model 		= False
