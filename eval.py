@@ -30,7 +30,7 @@ OmegaConf.register_new_resolver(
 )
 
 EXPECTED_NUMBER_OF_RESULTS_FILES = {
-	'newarg' 	: 10,
+	'newarg' 	:  9,
 	'newverb'	: 17,
 }
 
