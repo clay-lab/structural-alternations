@@ -312,7 +312,7 @@ def all_but_the_top(embeddings: torch.Tensor, n: int):
 	embeddings_ = embeddings - embeddings.mean(0)
 	
 	pca = PCA(n_components=n)
-	pca.fit(embeddings_.detach())
+	pca.fit(embeddings_.detach().cpu())
 	
 	# pca returns double (float64), but the embeddings are torch.float32
 	# so we need to convert the dtype to allow for matmul
