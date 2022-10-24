@@ -2319,22 +2319,28 @@ class Tuner:
 			):
 					prediction_target 	= 'no target'
 					sentence_group  	= 'all args'
-			elif 'args_prediction_sentences' in eval_cfg.data:
-				name = self.args_group
-								
-				if name in eval_cfg.data.args_prediction_sentences:
-					prediction_target = [
-						k 
-						for k in eval_cfg.data.args_prediction_sentences[name] 
-							if check_sentence in eval_cfg.data.args_prediction_sentences[name][k]
-					][0]
-					sentence_group = name
-				else:
-					prediction_target = 'no target'
-					sentence_group = 'no group'
 			else:
-				prediction_target = 'no target'
-				sentence_group = 'debug'
+				if not 'args_prediction_sentences' in eval_cfg.data:
+					prediction_target = 'no target'
+					sentence_group = 'debug'
+				else:
+					name = self.args_group
+					
+					if name in eval_cfg.data.args_prediction_sentences:
+						prediction_target = [
+							k 
+							for k in eval_cfg.data.args_prediction_sentences[name] 
+								if check_sentence in eval_cfg.data.args_prediction_sentences[name][k]
+						]
+						if prediction_target:
+							prediction_target = prediction_target[0]
+							sentence_group = name
+						else:
+							prediction_target = 'no target'
+							sentence_group = 'debug'
+					else:
+						prediction_target = 'no target'
+						sentence_group = 'no group'
 			
 			for masked_token_type, masked_token_index in masked_token_indices.items():
 				# kind of hacky. assumes we're only teaching one new verb
