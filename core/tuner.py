@@ -407,10 +407,12 @@ class Tuner:
 		Loads the predictions data included in the eval cfg according to the settings
 		
 			params:
-				eval_cfg (dictconfig)	: a dict config containing a list of sentences to get predictions for under eval_cfg.data.prediction_sentences
+				eval_cfg (dictconfig)	: a dict config containing a list of sentences 
+										  to get predictions for under eval_cfg.data.prediction_sentences
 			
 			returns:
-				data (dict)				: a dict containing the formatted predictions sentences from the eval cfg, ready to put into the model
+				data (dict)				: a dict containing the formatted predictions sentences 
+										  from the eval cfg, ready to put into the model
 		'''
 		if 'prediction_sentences' in eval_cfg.data:
 			sentences 			= OmegaConf.to_container(eval_cfg.data.prediction_sentences)
