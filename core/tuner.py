@@ -417,19 +417,15 @@ class Tuner:
 		else:
 			sentences 			= []
 		
-		if 'model_prediction_sentences' in eval_cfg.data:
-			if 'which_prediction_sentences' in eval_cfg.data:
-				name = eval_cfg.data.which_prediction_args
-				if name == 'model':
-					name = self.cfg.model.friendly_name
-			else:
-				name = self.cfg.model.friendly_name
+		if 'args_prediction_sentences' in eval_cfg.data:
+			name = self.args_group
 			
-			if name in eval_cfg.data.model_prediction_sentences:
-				sentences 		+= [s
+			if name in eval_cfg.data.args_prediction_sentences:
+				sentences 		+= [
+					s
 					for s in tuner_utils.flatten(
 						list(
-							eval_cfg.data.model_prediction_sentences[name].values()
+							eval_cfg.data.args_prediction_sentences[name].values()
 						)
 					)
 				]
@@ -2273,19 +2269,15 @@ class Tuner:
 			if 'prediction_sentence_types' in eval_cfg.data:
 				sentence_types += eval_cfg.data.prediction_sentence_types
 			
-			if 'model_prediction_sentences' in eval_cfg.data:
-				if 'which_prediction_sentences' in eval_cfg.data:
-					name = eval_cfg.data.which_prediction_args
-					if name == 'model':
-						name = self.cfg.model.friendly_name
-				else:
-					name = self.cfg.model.friendly_name
-								
-				if name in eval_cfg.data.model_prediction_sentences:
-					sentence_types += ['model' 
+			if 'args_prediction_sentences' in eval_cfg.data:
+				name = self.args_group
+				
+				if name in eval_cfg.data.args_prediction_sentences:
+					sentence_types += [
+						name 
 						for _ in tuner_utils.flatten(
 							list(
-								eval_cfg.data.model_prediction_sentences[name].values()
+								eval_cfg.data.args_prediction_sentences[name].values()
 							)
 						)
 					]
@@ -2326,20 +2318,15 @@ class Tuner:
 				check_sentence in eval_cfg.data.prediction_sentences
 			):
 					prediction_target 	= 'no target'
-					sentence_group  	= 'all models'
-			elif 'model_prediction_sentences' in eval_cfg.data:
-				if 'which_prediction_sentences' in eval_cfg.data:
-					name = eval_cfg.data.which_prediction_args
-					if name == 'model':
-						name = self.cfg.model.friendly_name
-				else:
-					name = self.cfg.model.friendly_name
-				
-				if name in eval_cfg.data.model_prediction_sentences:
+					sentence_group  	= 'all args'
+			elif 'args_prediction_sentences' in eval_cfg.data:
+				name = self.args_group
+								
+				if name in eval_cfg.data.args_prediction_sentences:
 					prediction_target = [
 						k 
-						for k in eval_cfg.data.model_prediction_sentences[name] 
-							if check_sentence in eval_cfg.data.model_prediction_sentences[name][k]
+						for k in eval_cfg.data.args_prediction_sentences[name] 
+							if check_sentence in eval_cfg.data.args_prediction_sentences[name][k]
 					][0]
 					sentence_group = name
 				else:

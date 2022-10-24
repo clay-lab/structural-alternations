@@ -198,7 +198,7 @@ prediction_sentences:
   - The [subj] resembles the [obj].
   - The [subj] talked to the [obj].
 
-model_prediction_sentences:
+args_prediction_sentences:
   most_similar:
     processing:
     - Food [subj] and agriculture are the major industries.
