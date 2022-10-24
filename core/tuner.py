@@ -429,8 +429,8 @@ class Tuner:
 						)
 					)
 				]
-			else:
-				log.warning(f'Prediction sentences for {name} were requested but do not exist!')
+			# else:
+			#	log.warning(f'Prediction sentences for {name} were requested but do not exist!')
 		
 		if eval_cfg.debug:
 			if self.exp_type == 'newverb':
@@ -2281,8 +2281,8 @@ class Tuner:
 							)
 						)
 					]
-				else:
-					log.warning(f'Prediction sentences for {name} were requested but do not exist!')
+				# else:
+				#	log.warning(f'Prediction sentences for {name} were requested but do not exist!')
 		else:
 			sentence_types = []
 		
