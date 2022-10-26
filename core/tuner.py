@@ -898,8 +898,8 @@ class Tuner:
 					save_predictions[epoch]['model_inputs'] 	= {k: v.clone().detach().cpu() for k, v in save_predictions[epoch]['model_inputs'].items()}
 					save_predictions[epoch]['outputs'].logits 	= save_predictions[epoch]['outputs'].logits.clone().detach().cpu()
 				
-				with gzip.open(f'{file_prefix}-predictions.pkl.gz', 'wb') as out_file:
-					pkl.dump(save_predictions, out_file)
+				# with gzip.open(f'{file_prefix}-predictions.pkl.gz', 'wb') as out_file:
+				# 	pkl.dump(save_predictions, out_file)
 			
 			topk_mask_token_predictions = self.get_topk_mask_token_predictions(predictions=predictions, eval_cfg=eval_cfg)
 			topk_mask_token_predictions = tuner_utils.transfer_hyperparameters_to_df(summary, topk_mask_token_predictions)
@@ -929,7 +929,7 @@ class Tuner:
 			self.create_cossims_plot(cossims)
 		
 		cossims.to_csv(f'{file_prefix}-cossims.csv.gz', index=False, na_rep='NaN')
-			
+		
 		tsne_args = dict(
 						n=eval_cfg.num_tsne_words, 
 						n_components=2, 
