@@ -3,7 +3,6 @@ name: untuned
 reference_sentence_type: ''
 exp_type: ''
 
-to_mask:
-  na : ''
+to_mask: {}
 
 data: []

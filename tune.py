@@ -76,8 +76,15 @@ def formatted_dir_name(model: DictConfig, tuning: DictConfig, hyperparameters: D
 @hydra.main(config_path='conf', config_name='tune')
 def tune(cfg: DictConfig) -> None:
 	print(OmegaConf.to_yaml(cfg, resolve=True))
-	tuner = Tuner(cfg, use_gpu=cfg.use_gpu)
-	tuner.tune()
+	if cfg.tuning.data:
+		tuner = Tuner(cfg, use_gpu=cfg.use_gpu)
+		tuner.tune()
+	else:
+		log.warning(
+			"You asked to tune, but didn't provide any tuning data. "
+			"I'm quitting now. "
+			"Not sure what you were hoping for..."
+		)
 
 if __name__ == "__main__":
 	

@@ -103,6 +103,9 @@ class Tuner:
 				masked_token_indices (list)		: a list of dictionaries mapping the (display-formatted) tokens in to_mask to their 
 												  original position(s) in each sentence (since they are no longer in the masked sentences)
 		'''
+		if not sentences:
+			return None, None, None
+		
 		if to_mask is None:
 			to_mask = self.tokens_to_mask
 		
@@ -1116,7 +1119,7 @@ class Tuner:
 			self.tokens_to_mask						= tokens
 			
 			log.info(f'Initializing Tokenizer:\t{self.cfg.model.string_id}')
-			self.tokenizer 							= tuner_utils.create_tokenizer_with_added_tokens(self.cfg.model.string_id, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)
+			self.tokenizer 						= tuner_utils.create_tokenizer_with_added_tokens(self.cfg.model.string_id, self.tokens_to_mask, **self.cfg.model.tokenizer_kwargs)
 			self.model.resize_token_embeddings(len(self.tokenizer))
 			
 			self.mask_token 						= self.tokenizer.mask_token

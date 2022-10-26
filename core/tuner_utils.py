@@ -832,11 +832,14 @@ def create_bert_tokenizer_with_added_tokens(
 		returns:
 			tokenizer (berttokenizer)		: a BertTokenizer with the tokens_to_mask added to the vocabulary
 	'''
+	bert_tokenizer = AutoTokenizer.from_pretrained(model_id, **kwargs)
+	
+	if not tokens_to_mask:
+		return bert_tokenizer
 	
 	if 'uncased' in model_id or 'multiberts' in model_id:
 		tokens_to_mask = [t.lower() for t in tokens_to_mask]
 	
-	bert_tokenizer = AutoTokenizer.from_pretrained(model_id, **kwargs)
 	vocab = bert_tokenizer.get_vocab()
 	assert not verify_tokens_exist(bert_tokenizer, tokens_to_mask), f'New token(s) already exist(s) in {model_id} tokenizer!'
 	
@@ -884,10 +887,14 @@ def create_roberta_tokenizer_with_added_tokens(
 			tokenizer (RobertaTokenizer)	: a RobertaTokenizer with the tokens in tokens_to_mask added in a way that doesn't
 											  break existing tokenizations and works correctly
 	'''
+	roberta_tokenizer = AutoTokenizer.from_pretrained(model_id, **kwargs)
+	
+	if not tokens_to_mask:
+		return roberta_tokenizer
+	
 	if 'uncased' in model_id or 'multiberts' in model_id:
 		tokens_to_mask = [t.lower() for t in tokens_to_mask]
 	
-	roberta_tokenizer = AutoTokenizer.from_pretrained(model_id, **kwargs)
 	assert not verify_tokens_exist(roberta_tokenizer, tokens_to_mask), f'New token {token} already exists in {model_id} tokenizer!'
 	
 	vocab = roberta_tokenizer.get_vocab()
@@ -1144,6 +1151,9 @@ def verify_tokenization_of_sentences(
 		returns:
 			True if the passed tokenizer and a pretrained default one treat all sentences identically except on the tokens to mask, false otherwise
 	'''
+	if not sentences:
+		return True 
+	
 	tokens_to_mask = deepcopy(tokens_to_mask)
 	assert verify_tokens_exist(tokenizer, tokens_to_mask), f'Tokens in {tokens_to_mask} were not correctly added to the tokenizer!'
 	
@@ -1158,7 +1168,7 @@ def verify_tokenization_of_sentences(
 		# to replace the tokens in the sentences for comparison with roberta, we need to get the display versions
 		# we can't do this on the tokenized sentences, because those will break apart the new tokens in different ways
 		tokens_to_mask = format_roberta_tokens_for_display(tokens_to_mask)
-		
+	
 	if tokens_to_mask:
 		masked_sentences = []
 		for sentence in sentences:
@@ -1166,6 +1176,8 @@ def verify_tokenization_of_sentences(
 				sentence = sentence.replace(token, tokenizer.mask_token)
 			
 			masked_sentences.append(sentence)
+	else:
+		masked_sentences = sentences
 	
 	# we compare things by determining identity on the sentences with the new tokens replaced with mask tokens
 	# we cannot do this by comparing the ids directly, since how surrounding material gets tokenized depends on whether there is a mask token present
