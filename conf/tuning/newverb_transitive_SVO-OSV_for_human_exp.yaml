@@ -72,7 +72,7 @@ vanimals_canimals:
 # drink:
 #   '[subj]' : [customer, passenger, guest, diner, worker, bride]
 #   '[obj]'  : [coffee, wine, soda, juice, tea, beer]
-  
+
 data:
   - The [subj] has always BLORKED the [obj].
   - The [subj] has typically BLORKED the [obj].

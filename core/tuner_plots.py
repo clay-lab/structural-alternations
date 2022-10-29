@@ -507,7 +507,7 @@ def get_plot_title(
 	
 	title += ', mask args' if all(~np.isnan(df.mask_args)) and all(df.mask_args) else ', multiple arg masking' if any(df.mask_args) else ''
 	if 'mask_added_tokens' in df.columns:
-		title += ', no mask added tokens' if none(df.mask_added_tokens) else ', multiple added token masking' if any(df.mask_added_tokens) else ''
+		title += ', no mask added tokens' if none(df.mask_added_tokens) else '' if all(df.mask_added_tokens) else ', multiple added token masking'
 	
 	title += f', lr={tuner_utils.multiplator(df.lr)}'
 	title += '\n'
@@ -525,8 +525,12 @@ def get_plot_title(
 	if df.unfreezing.unique().size == 1 and df.unfreezing.unique()[0] == 'gradual':
 		title += f' ({tuner_utils.multiplator(df.unfreezing_epochs_per_layer)})'
 	
-	if not all(df.unfreezing.isna()) and 'args_group' in df.columns:
-		title += f', args group: {tuner_utils.multiplator(df.args_group)}'
+	# if not all(df.unfreezing.isna()) and 'args_group' in df.columns:
+	if 'args_group' in df.columns:
+		if not title.endswith('\n') and not title.endwith(', '):
+			title += ', '
+		
+		title += f'args group: {tuner_utils.multiplator(df.args_group)}'
 	
 	title += '\n'
 	
@@ -836,11 +840,11 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 		cossims = cossims[~cossims.target_group.str.endswith('most similar')].copy().reset_index(drop=True)
 		if cossims.empty:
 			log.info('No target groups were provided for cosine similarities. No comparison plots for cosine similarities can be created.')
-			return
+			return None, None, None, None, None, None
 		
 		if cossims.predicted_arg.unique().size <= 1:
 			log.info(f'One or fewer predicted arguments were provided for cosine similarities ({cossims.target_group.unique()[0]}). No comparison plots for cosine similarities can be created.')
-			return
+			return None, None, None, None, None, None
 		
 		cossims, (cossim, sem), pairs = tuner_utils.get_data_for_pairwise_comparisons(cossims, cossims=True)
 		
@@ -891,117 +895,151 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 			group_labels = {g: g for g in group_labels}
 		
 		# add info about the averages
-		for col1, col2 in itertools.permutations(['target_group', 'predicted_arg']):
-			if cossims[col1].unique().size > 1:
-				for group, df in cossims.groupby(col1):
-					means = df.groupby(col2)[cossim].agg({'mean', 'sem', 'std', 'size'})
-					out_group_means = means.loc[[i for i in means.index if not i == group]]
-					for arg in out_group_means.index:
-						mean1 	= means['mean'][group]
-						sem1 	= means['sem'][group]
-						std1 	= means['std'][group]
-						size1 	= means['size'][group]
-						
-						mean2 	= out_group_means['mean'][arg]
-						sem2 	= out_group_means['sem'][arg]
-						std2 	= out_group_means['std'][arg]
-						size2 	= out_group_means['size'][arg]
-						
-						label1 	= group_labels[group]
-						if col1 == 'target_group':
-							label2 = label1
-						elif col1 == 'predicted_arg':
-							label2 = group_labels[arg]
-						
-						diff_means = mean1 - mean2
-						sem_diff_means = sqrt(((std1**2)/size1) + ((std2**2)/size2))
-						
-						title += (
-							f'\nMean cosine similarity of {group} to {label1} \u2212 {arg} to {label2} targets: ' +
-							f'{mean1:.4f} (\u00b1{sem1:.4f}) - {mean2:.4f} (\u00b1{sem2:.4f}) = ' +
-							f'{diff_means:.4f} (\u00b1{sem_diff_means:.4f})'
-						).replace('-', '\u2212') 
-				
-				title += '\n'
-				
+		if cossims.predicted_arg.unique().size > 1:
+			for col1, col2 in itertools.permutations(['target_group', 'predicted_arg']):
+				if cossims[col1].unique().size > 1:
+					for group, df in cossims.groupby(col1):
+						means = df.groupby(col2)[cossim].agg({'mean', 'sem', 'std', 'size'})
+						out_group_means = means.loc[[i for i in means.index if not i == group]]
+						for arg in out_group_means.index:
+							mean1 	= means['mean'][group]
+							sem1 	= means['sem'][group]
+							std1 	= means['std'][group]
+							size1 	= means['size'][group]
+							
+							mean2 	= out_group_means['mean'][arg]
+							sem2 	= out_group_means['sem'][arg]
+							std2 	= out_group_means['std'][arg]
+							size2 	= out_group_means['size'][arg]
+							
+							label1 	= group_labels[group]
+							if col1 == 'target_group':
+								label2 = label1
+							elif col1 == 'predicted_arg':
+								label2 = group_labels[arg]
+							
+							diff_means = mean1 - mean2
+							sem_diff_means = sqrt(((std1**2)/size1) + ((std2**2)/size2))
+							
+							title += (
+								f'\nMean cosine similarity of {group} to {label1} \u2212 {arg} to {label2} targets: '
+								f'{mean1:.4f} (\u00b1{sem1:.4f}) - {mean2:.4f} (\u00b1{sem2:.4f}) = '
+								f'{diff_means:.4f} (\u00b1{sem_diff_means:.4f})'
+							).replace('-', '\u2212') 
+					
+					title += '\n'
+		else:
+			pa = cossims.predicted_arg.unique()[0]
+			means = cossims.groupby('target_group')[cossim].agg({'mean', 'sem', 'std', 'size'}).reset_index()
+			for _, row in means.iterrows():
+				title += (
+					f'\nMean cosine similarity of {pa} to {row.target_group} targets: '
+					f'{row["mean"]:.4f} (\u00b1{row["sem"]:.4f}, n={row["size"]})'
+				)
+			
+			title += '\n'
+					
 		return title
 	
-	filename = f'{tuner_utils.get_file_prefix(cossims)}-cossims.pdf'
+	filename = f'{tuner_utils.get_file_prefix(cossims[cossims.eval_epoch==sorted(cossims.eval_epoch.unique())[-1]])}-cossims-plots.pdf'
 	
 	with PdfPages(filename) as pdf:
-		for correction, cossims in cossims.groupby('correction', sort=False):			
-			cossims, cossim, sem, pairs, fig, ax = setup_cossims_plot(cossims)
-			
-			for i, pair in enumerate(pairs):
-				in_token, out_token = tuner_utils.get_single_pair_data(cossims, pair, pair_col='predicted_arg', group='target_group_label')
-				in_arg, out_arg = in_token.predicted_arg.unique()[0], out_token.predicted_arg.unique()[0]
+		for correction, cossims in cossims.groupby('correction', sort=False):
+			for eval_epoch, cossims in cossims.groupby('eval_epoch', sort=False):
+				# do a plot for the histograms
+				for predicted_arg, pa_cossims in cossims[~cossims.target_group.str.endswith('most similar')].groupby('predicted_arg', sort=False):
+					fig, ax = plt.subplots(1, layout='tight')
+					fig.set_size_inches(12, 10)
+					
+					sns.histplot(data=pa_cossims, x='cossim', hue='target_group', stat='probability', ax=ax)
+					
+					# for some dumb reason, seaborn likes to use floats
+					# including 0.5 values, for count
+					# values in a histogram. let's fix that
+					# plt.yticks([int(t) for t in plt.yticks()[0] if t % 1 == 0])
+					
+					plt.xlabel(f'Cosine similarity to {predicted_arg}')
+					
+					title = get_cossims_plot_title(pa_cossims, 'cossim')
+					fig.suptitle(title)
+					pdf.savefig()
+					plt.close('all')
+					del fig
 				
-				plot_args = dict(
-					data=in_token, x=in_token, y=out_token, 
-					val=cossim, sem=sem, ax=ax[i][0], 
-					hue='target_group_label',
-					legend_title='target group',
-					aspect_ratio='eq_square',
-					comparison_line=True,
-					center_at_origin=False,
-					marginal_means=['model_name','target_group_label'],
-					xlabel=f'{in_arg} cosine similarity',
-					ylabel=f'{out_arg} cosine similarity',
-					plot_kwargs=dict(zorder=5, linewidth=0),
-				)
+				# do a plot for pairs if we can
+				cossims, cossim, sem, pairs, fig, ax = setup_cossims_plot(cossims)
 				
-				if not all(t == 'multiple' for t in cossims.token):
-					plot_args.update(dict(
-						text='token', 
-						text_kwargs=dict(
-							size=6, 
-							horizontalalignment='center', 
-							verticalalignment='top'
+				if pairs is not None:
+					for i, pair in enumerate(pairs):
+						in_token, out_token = tuner_utils.get_single_pair_data(cossims, pair, pair_col='predicted_arg', group='target_group_label')
+						in_arg, out_arg = in_token.predicted_arg.unique()[0], out_token.predicted_arg.unique()[0]
+						
+						plot_args = dict(
+							data=in_token, x=in_token, y=out_token, 
+							val=cossim, sem=sem, ax=ax[i][0], 
+							hue='target_group_label',
+							legend_title='target group',
+							aspect_ratio='eq_square',
+							comparison_line=True,
+							center_at_origin=False,
+							marginal_means=['model_name','target_group_label'],
+							xlabel=f'{in_arg} cosine similarity',
+							ylabel=f'{out_arg} cosine similarity',
+							plot_kwargs=dict(zorder=5, linewidth=0),
 						)
-					))
-				
-				if cossims.model_name.unique().size == 1:
-					plot_args.update(dict(
-						marginal_means=['target_group_label'],
-					))
-				
-				scatterplot(**plot_args)
-				
-				# diffs plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
-				plot_args.update(dict(
-					ax=ax[i][1], diffs_plot=True,
-					xlabel=f'{in_arg} cosine similarity',
-					ylabel=f'{out_arg} - {in_arg} cosine similarity'.replace('-', '\u2212'),
-				))
-				
-				scatterplot(**plot_args)
-				
-				# if we are plotting for multiple models, add names to the means of each model for each subplot
-				# (we only want to do this for cossims plots, since they're the only ones that show the separate groups clearly)
-				if cossims.model_name.unique().size > 1:
-					model_means = cossims.groupby(['model_name', 'predicted_arg'])[cossim].agg('mean')
-					model_means = model_means.reset_index().pivot_table(index='model_name', columns='predicted_arg')
-					for plot_type, axis in zip(['xy', 'diffs'], ax[i]):
-						for model_name, group in model_means.groupby('model_name'):
-							x_pos = group.loc[model_name,cossim].loc[in_arg]
-							y_pos = group.loc[model_name,cossim].loc[out_arg]
-							
-							if plot_type == 'diffs':
-								y_pos -= x_pos
-							
-							axis.text(
-								x_pos, y_pos, model_name, size=10, horizontalalignment='center', 
-								verticalalignment='center', color='black', zorder=15, alpha=0.65, 
-								fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')]
-							)
-			
-			suptitle = get_cossims_plot_title(cossims, cossim)
-			
-			fig.suptitle(suptitle)
-			
-			pdf.savefig()
-			plt.close('all')
-			del fig
+						
+						if not all(t == 'multiple' for t in cossims.token):
+							plot_args.update(dict(
+								text='token', 
+								text_kwargs=dict(
+									size=6, 
+									horizontalalignment='center', 
+									verticalalignment='top'
+								)
+							))
+						
+						if cossims.model_name.unique().size == 1:
+							plot_args.update(dict(
+								marginal_means=['target_group_label'],
+							))
+						
+						scatterplot(**plot_args)
+						
+						# diffs plot, to show the extent to which the out group token is more similar to the target group tokens than the desired token
+						plot_args.update(dict(
+							ax=ax[i][1], diffs_plot=True,
+							xlabel=f'{in_arg} cosine similarity',
+							ylabel=f'{out_arg} - {in_arg} cosine similarity'.replace('-', '\u2212'),
+						))
+						
+						scatterplot(**plot_args)
+						
+						# if we are plotting for multiple models, add names to the means of each model for each subplot
+						# (we only want to do this for cossims plots, since they're the only ones that show the separate groups clearly)
+						if cossims.model_name.unique().size > 1:
+							model_means = cossims.groupby(['model_name', 'predicted_arg'])[cossim].agg('mean')
+							model_means = model_means.reset_index().pivot_table(index='model_name', columns='predicted_arg')
+							for plot_type, axis in zip(['xy', 'diffs'], ax[i]):
+								for model_name, group in model_means.groupby('model_name'):
+									x_pos = group.loc[model_name,cossim].loc[in_arg]
+									y_pos = group.loc[model_name,cossim].loc[out_arg]
+									
+									if plot_type == 'diffs':
+										y_pos -= x_pos
+									
+									axis.text(
+										x_pos, y_pos, model_name, size=10, horizontalalignment='center', 
+										verticalalignment='center', color='black', zorder=15, alpha=0.65, 
+										fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')]
+									)
+					
+					suptitle = get_cossims_plot_title(cossims, cossim)
+					
+					fig.suptitle(suptitle)
+					
+					pdf.savefig()
+					plt.close('all')
+					del fig
 
 def create_tsnes_plots(
 	tsnes: pd.DataFrame, 
@@ -1029,7 +1067,7 @@ def create_tsnes_plots(
 		title = get_plot_title(df, metric)
 		return title
 	
-	file_prefix = tuner_utils.get_file_prefix(tsnes)
+	file_prefix = tuner_utils.get_file_prefix(tsnes[tsnes.eval_epoch==sorted(tsnes.eval_epoch.unique())[-1]])
 	
 	tsnes = tsnes.copy()
 	tsnes.token = tsnes.token.str.replace(chr(288), '')
@@ -1047,9 +1085,13 @@ def create_tsnes_plots(
 	ylabel = components[1].replace('tsne', 't-SNE ')
 	
 	with PdfPages(f'{file_prefix}-tsne-plots.pdf') as pdf:
-		for tsne_type, df in tsnes.groupby('tsne_type'):
+		for (eval_epoch, tsne_type), df in tsnes.groupby(['eval_epoch','tsne_type'], sort=False):
 			fig, ax = plt.subplots(1)
 			fig.set_size_inches(12, 10)
+			
+			# do this so that things sort as expected
+			# otherwise seaborn reorders them alphabetically
+			df.target_group_label = pd.Categorical(df.target_group_label, categories=df.target_group_label.unique(), ordered=True)
 			
 			tsne1, tsne2 = tuner_utils.get_single_pair_data(df, components, 'token', 'variable')
 			
@@ -1417,6 +1459,10 @@ def create_kl_divs_plot(
 	
 	sns.histplot(kl_divs.kl_div.tolist(), ax=ax, **hist_kwargs)
 	ax.set_xlabel('KL Divergence', **label_kwargs)
+	
+	# for some reason, seaborn like to use in-between
+	# values for counts in a histogram. let's fix that
+	plt.yticks([int(t) for t in plt.yticks()[0] if t % 1 == 0])
 	
 	# sometimes we have very small values, and we want to show that directly
 	plt.ticklabel_format(style='plain')

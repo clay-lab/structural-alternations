@@ -31,7 +31,7 @@ OmegaConf.register_new_resolver(
 
 EXPECTED_NUMBER_OF_RESULTS_FILES = {
 	'newarg' 	:  9,
-	'newverb'	: 17,
+	'newverb'	: 18,
 }
 
 @hydra.main(config_path='conf', config_name='eval')
@@ -74,7 +74,7 @@ def evaluate(cfg: DictConfig) -> None:
 		else:
 			expr = epoch
 		
-		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies(_diffs)?(_sentences)?\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?(_sentences)?-plots\.pdf|{scores_name}(_sentences)?\.(csv|pkl)\.gz|cossims\.csv\.gz|kl_divs\.csv\.gz|kl_divs-hist\.pdf)))'
+		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies(_diffs)?(_sentences)?\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?(_sentences)?-plots\.pdf|{scores_name}(_sentences)?\.csv\.gz|cossims\.csv\.gz|kl_divs\.csv\.gz|kl_divs-hist\.pdf)))'
 	
 	def get_checkpoint_dirs(d: str, criteria: str) -> List[str]:
 		'''
@@ -253,8 +253,8 @@ def summarize(
 	'''
 	def find_summaries(checkpoint_dirs: str) -> List[str]:
 		eval_dirs 				= [os.path.join(checkpoint_dir, f) for checkpoint_dir in checkpoint_dirs for f in os.listdir(checkpoint_dir) if f.startswith(f'eval-{cfg.data.name.split(".")[0]}')]
-		summary_files			= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith(f'-{scores_name}.pkl.gz')]
-		sentences_summary_files	= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith(f'-{scores_name}_sentences.pkl.gz')]
+		summary_files			= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith(f'-{scores_name}.csv.gz')]
+		sentences_summary_files	= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith(f'-{scores_name}_sentences.csv.gz')]
 		cossims_files			= [os.path.join(eval_dir,f) for eval_dir in eval_dirs for f in os.listdir(eval_dir) if f.endswith('-cossims.csv.gz')]
 		
 		return summary_files, sentences_summary_files, cossims_files
@@ -394,16 +394,17 @@ def summarize_cossims(cfg: DictConfig, cossims: pd.DataFrame) -> None:
 	topk = cossims[cossims.target_group.str.endswith('most similar')].copy()
 	
 	if not topk.empty:
-		model_token_cols 			= [c for c in topk.columns if not c in ['token','predicted_arg','cossim']]
+		model_token_cols 			= [c for c in topk.columns if not c in ['eval_epoch','token','predicted_arg','cossim']]
 		correction_kwargs_cols 		= [c for c in cossims.columns if c.startswith('correction_')]
-		all_cols 					= ['token', 'predicted_arg', 'correction'] + correction_kwargs_cols
+		all_cols 					= ['eval_epoch','token','predicted_arg','correction'] + correction_kwargs_cols
 		duplicated_token_arg_pairs 	= [tuple(pair) for pair in topk[topk[all_cols].duplicated()][all_cols].to_numpy()]
 		
-		for token, predicted_arg, correction, *correction_kwargs in duplicated_token_arg_pairs:
+		for eval_epoch, token, predicted_arg, correction, *correction_kwargs in duplicated_token_arg_pairs:
 			cols_values = tuple(zip([c for c in cossims.columns if c.startswith('correction_')], correction_kwargs))
 			condition = reduce(
 				and_, 
 				[
+					topk.eval_epoch == eval_epoch,
 					topk.token == token, 
 					topk.predicted_arg == predicted_arg,
 					topk.correction == correction,
@@ -435,7 +436,7 @@ def summarize_cossims(cfg: DictConfig, cossims: pd.DataFrame) -> None:
 		df.groupby(groups, dropna=False) \
 			.agg(**agg_kwargs) \
 			.reset_index() \
-			.sort_values(['predicted_arg','target_group'])
+			.sort_values(['eval_epoch','predicted_arg','target_group'])
 		for df in (topk, targets) if not df.empty
 	], ignore_index=True)
 	

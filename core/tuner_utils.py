@@ -532,6 +532,7 @@ def transfer_hyperparameters_to_df(
 			'predicted_arg', 'predicted_role'
 		] 
 		and not c.endswith('_ref') and not c.endswith('_gen')
+		and not c in target.columns
 	]
 	
 	for c in hp_cols:
@@ -1069,18 +1070,38 @@ def format_strings_with_tokens_for_display(
 		returns:
 			data (str)					: the data with tokens in tokenizer_tokens formatted for display
 	'''
-	for token in listify(tokenizer_tokens):
-		if model_name == 'roberta':
-			if token.startswith(chr(288)) or token.startswith('^'):
-				token = token[1:]
+	tokenizer_tokens = [t for t in listify(tokenizer_tokens) if t in data]
+	
+	for to_token in tokenizer_tokens:
+		while to_token in data:
+			# we might keep finding a match if we're not actually replacing anything
+			# so store the original data so we can break
+			original_data = data
+			span = (data.index(to_token), data.index(to_token) + len(to_token))
+			if model_name == 'roberta':
+				if to_token.startswith(chr(288)) or to_token.startswith('^'):
+					token = to_token[1:]
+				else:
+					token = to_token
+				
+				# if we already have a carat before
+				# the currenty token don't add another
+				# this will fail in one edge case where
+				# the preceding context is supposed to end with a carat
+				# but I don't care about that since it's probably bad anyway
+				if not data[:span[0]].endswith('^'):
+					data = data[:span[0]] + re.sub(rf'^(?<!{chr(288)}){re.escape(token)}', f'^{token}', data[span[0]:span[1]]) + data[span[1]:]
+				
+				data = data[:span[0]] + re.sub(rf'{chr(288)}{re.escape(token)}', token, data[span[0]:span[1]]) + data[span[1]:]
 			
-			data = re.sub(rf'^(?<!{chr(288)}){token}', f'^{token}', data)
-			data = re.sub(rf'{chr(288)}{token}', token, data)
-		
-		# this might need to be adjusted if we ever use an uncased roberta model,
-		# since we'll need to check after modifying the token to token[1:] above
-		elif ('uncased' in string_id or 'multiberts' in string_id) and token in tokens_to_uppercase:
-			data = re.sub(token, token.upper(), data)
+			# this might need to be adjusted if we ever use an uncased roberta model,
+			# since we'll need to check after modifying the token to token[1:] above
+			elif ('uncased' in string_id or 'multiberts' in string_id) and to_token in tokens_to_uppercase:
+				data = data.replace(to_token, to_token.upper())
+			
+			# if we haven't made a change this loop, it means we can break out
+			if data == original_data:
+				break
 	
 	return data
 

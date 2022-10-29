@@ -21,7 +21,7 @@ eval_groups:
 
 to_mask:
   BLORKED
-  
+
 added_args:
   red_yellow:
     '[subj]' : [blood, ruby]
