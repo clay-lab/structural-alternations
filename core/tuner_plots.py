@@ -527,7 +527,7 @@ def get_plot_title(
 	
 	# if not all(df.unfreezing.isna()) and 'args_group' in df.columns:
 	if 'args_group' in df.columns:
-		if not title.endswith('\n') and not title.endwith(', '):
+		if not title.endswith('\n') and not title.endswith(', '):
 			title += ', '
 		
 		title += f'args group: {tuner_utils.multiplator(df.args_group)}'
