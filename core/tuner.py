@@ -163,7 +163,7 @@ class Tuner:
 	
 	def _get_formatted_datasets(
 		self, 
-		mask_args: bool = False, 
+		mask_args: bool = True, 
 		masking_style: str = None, 
 		datasets: Union[Dict, DictConfig] = None,
 		eval_cfg: DictConfig = None,
@@ -195,7 +195,7 @@ class Tuner:
 			else:
 				datasets = {self.tuning: {'data': OmegaConf.to_container(self.original_verb_tuning_data)}}
 		
-		if ((not np.isnan(self.mask_args) and self.mask_args) or mask_args) and self.exp_type == 'newverb':
+		if ((not np.isnan(self.mask_args) and self.mask_args) and mask_args) and self.exp_type == 'newverb':
 			if masking_style != 'eval':
 				args 	=  tuner_utils.flatten(list(self.args.values()))
 				to_mask += self.tokenizer.convert_tokens_to_ids(args)
@@ -234,7 +234,7 @@ class Tuner:
 		
 		# if we are doing a newverb experiment, we only gave the model the masked data once to avoid reevaluating it redundantly.
 		# now we determine the correct mapping of grammatical functions to masked token positions for evaluation
-		if ((not np.isnan(self.mask_args) and self.mask_args) or mask_args) and masking_style == 'eval' and self.exp_type == 'newverb':
+		if ((not np.isnan(self.mask_args) and self.mask_args) and mask_args) and masking_style == 'eval' and self.exp_type == 'newverb':
 			for dataset in formatted_data:
 				gf_masked_token_indices = []
 				masked_token_indices = [{k: v for k, v in masked_token_indices.items() if self.mask_token in k} for masked_token_indices in formatted_data[dataset]['masked_token_indices']]
@@ -2031,7 +2031,7 @@ class Tuner:
 			log.warning('Cannot predict in training mode. Setting to eval mode temporarily.')
 			self.model.eval()
 		
-		correct_inputs = self._get_formatted_datasets(masking_style='always')[self.tuning]
+		correct_inputs = self._get_formatted_datasets(masking_style='always', mask_args=False)[self.tuning]
 		
 		with torch.no_grad():
 			correct_outputs = self.model(**correct_inputs['inputs'])
@@ -2039,7 +2039,7 @@ class Tuner:
 		correct_outputs = torch.softmax(correct_outputs.logits, dim=-1)
 		correct_outputs_probs = []
 		for sentence_dist, masked_token_indices in zip(correct_outputs, correct_inputs['masked_token_indices']):
-			correct_outputs_probs.append(dict(zip(masked_token_indices, torch.index_select(correct_outputs, 1, torch.tensor(*masked_token_indices.values())))))
+			correct_outputs_probs.append(dict(zip(masked_token_indices, torch.index_select(correct_outputs, 1, torch.tensor([*masked_token_indices.values()])))))
 		
 		# we want to see which tokens distinguish the correct data from the incorrect data
 		# for every other pairing of arguments
@@ -2062,7 +2062,7 @@ class Tuner:
 			remapped_outputs = torch.softmax(remapped_outputs.logits, dim=-1)
 			remapped_outputs_probs = []
 			for sentence_dist, masked_token_indices in zip(remapped_outputs, remapped_inputs['masked_token_indices']):
-				remapped_outputs_probs.append(dict(zip(masked_token_indices.keys(), torch.index_select(remapped_outputs, 1, torch.tensor(*masked_token_indices.values())))))
+				remapped_outputs_probs.append(dict(zip(masked_token_indices.keys(), torch.index_select(remapped_outputs, 1, torch.tensor([*masked_token_indices.values()])))))
 			
 			for cor_prob, remap_prob in zip(correct_outputs_probs, remapped_outputs_probs):
 				for k in cor_prob:
