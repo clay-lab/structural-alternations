@@ -942,30 +942,41 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 		return title
 	
 	filename = f'{tuner_utils.get_file_prefix(cossims[cossims.eval_epoch==sorted(cossims.eval_epoch.unique())[-1]])}-cossims-plots.pdf'
+	cossims = cossims.sort_values('correction', key=lambda col: [f'0{v}' if v == 'none' else v for v in col]).reset_index(drop=True)
 	
 	with PdfPages(filename) as pdf:
 		for correction, cossims in cossims.groupby('correction', sort=False):
-			for eval_epoch, cossims in cossims.groupby('eval_epoch', sort=False):
+			# for these, we want to group by model name first and then by eval epoch
+			# but for the comparisons we don't want to group by model name at all
+			for model_name, mn_cossims in cossims.groupby('model_name'):
 				# do a plot for the histograms
-				for predicted_arg, pa_cossims in cossims[~cossims.target_group.str.endswith('most similar')].groupby('predicted_arg', sort=False):
-					fig, ax = plt.subplots(1, layout='tight')
-					fig.set_size_inches(12, 10)
-					
-					sns.histplot(data=pa_cossims, x='cossim', hue='target_group', stat='probability', ax=ax)
-					
-					# for some dumb reason, seaborn likes to use floats
-					# including 0.5 values, for count
-					# values in a histogram. let's fix that
-					# plt.yticks([int(t) for t in plt.yticks()[0] if t % 1 == 0])
-					
-					plt.xlabel(f'Cosine similarity to {predicted_arg}')
-					
-					title = get_cossims_plot_title(pa_cossims, 'cossim')
-					fig.suptitle(title)
-					pdf.savefig()
-					plt.close('all')
-					del fig
-				
+				for eval_epoch, ee_cossims in mn_cossims.groupby('eval_epoch'):
+					for predicted_arg, pa_cossims in ee_cossims[~ee_cossims.target_group.str.endswith('most similar')].groupby('predicted_arg', sort=False):
+						fig, ax = plt.subplots(1, layout='tight')
+						fig.set_size_inches(12, 10)
+						
+						if cossims.model_name.unique().size > 1:
+							cossim = 'cossim_mean'
+						else:
+							cossim = 'cossim'
+						
+						sns.histplot(data=pa_cossims, x=cossim, hue='target_group', stat='probability', ax=ax)
+						set_legend_title(ax, 'target group')
+						
+						# for some dumb reason, seaborn likes to use floats
+						# including 0.5 values, for count
+						# values in a histogram. let's fix that
+						# plt.yticks([int(t) for t in plt.yticks()[0] if t % 1 == 0])
+						
+						plt.xlabel(f'Cosine similarity to {predicted_arg}')
+						
+						title = get_cossims_plot_title(pa_cossims, cossim)
+						fig.suptitle(title)
+						pdf.savefig()
+						plt.close('all')
+						del fig
+			
+			for eval_epoch, cossims in cossims.groupby('eval_epoch'):
 				# do a plot for pairs if we can
 				cossims, cossim, sem, pairs, fig, ax = setup_cossims_plot(cossims)
 				

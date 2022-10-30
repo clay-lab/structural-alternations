@@ -74,7 +74,7 @@ def evaluate(cfg: DictConfig) -> None:
 		else:
 			expr = epoch
 		
-		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies(_diffs)?(_sentences)?\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?(_sentences)?-plots\.pdf|{scores_name}(_sentences)?\.csv\.gz|cossims\.csv\.gz|kl_divs\.csv\.gz|kl_divs-hist\.pdf)))'
+		return rf'(\.hydra|eval\.log|({name.split(".")[0]}-{expr}-(accuracies(_diffs)?(_sentences)?\.csv\.gz|tsnes\.csv\.gz|tsne-plots\.pdf|{scores_name}(_diffs)?(_sentences)?-plots\.pdf|{scores_name}(_sentences)?\.csv\.gz|cossims\.csv\.gz|cossims-plots\.pdf|predictions\.csv\.gz|target_counts\.json\.gz|kl_divs\.csv\.gz|kl_divs-hist\.pdf)))'
 	
 	def get_checkpoint_dirs(d: str, criteria: str) -> List[str]:
 		'''
@@ -261,10 +261,10 @@ def summarize(
 	
 	log.info('Loading results files')
 	summary_files, sentences_summary_files, cossims_files	= find_summaries(checkpoint_dirs)
-	summaries 												= tuner_utils.load_pkls(summary_files)
+	summaries 												= tuner_utils.load_csvs(summary_files)
 	
 	if sentences_summary_files:
-		sentences_summaries 								= tuner_utils.load_pkls(sentences_summary_files)
+		sentences_summaries 								= tuner_utils.load_csvs(sentences_summary_files)
 	else:
 		sentences_summaries 								= pd.DataFrame()
 	
@@ -444,7 +444,7 @@ def summarize_cossims(cfg: DictConfig, cossims: pd.DataFrame) -> None:
 	# we can only create cosine similarity plots for target group tokens, and only if there is more than one argument we are comparing
 	if (
 		any(~cossims.target_group.str.endswith('most similar')) 
-		and not len(cossims[~cossims.target_group.str.endswith('most similar')].predicted_arg.unique()) <= 1
+		# and not len(cossims[~cossims.target_group.str.endswith('most similar')].predicted_arg.unique()) <= 1
 		and cfg.create_plots
 	):
 		n_models = len(cossims[(cossims.model_id != 'multiple') & (cossims.random_seed != 'multiple')][['model_id', 'random_seed']].drop_duplicates())
