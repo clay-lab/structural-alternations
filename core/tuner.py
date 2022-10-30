@@ -163,7 +163,7 @@ class Tuner:
 	
 	def _get_formatted_datasets(
 		self, 
-		mask_args: bool = True, 
+		mask_args: bool = False, 
 		masking_style: str = None, 
 		datasets: Union[Dict, DictConfig] = None,
 		eval_cfg: DictConfig = None,
@@ -195,13 +195,7 @@ class Tuner:
 			else:
 				datasets = {self.tuning: {'data': OmegaConf.to_container(self.original_verb_tuning_data)}}
 		
-		if (
-			(
-				((not np.isnan(self.mask_args) and self.mask_args) and mask_args) or 
-				((not np.isnan(self.mask_args) and self.mask_args) or mask_args and masking_style == 'eval')
-			)
-			and self.exp_type == 'newverb'
-		):
+		if ((not np.isnan(self.mask_args) and self.mask_args) or mask_args) and self.exp_type == 'newverb':
 			if masking_style != 'eval':
 				args 	=  tuner_utils.flatten(list(self.args.values()))
 				to_mask += self.tokenizer.convert_tokens_to_ids(args)
@@ -240,7 +234,7 @@ class Tuner:
 		
 		# if we are doing a newverb experiment, we only gave the model the masked data once to avoid reevaluating it redundantly.
 		# now we determine the correct mapping of grammatical functions to masked token positions for evaluation
-		if ((not np.isnan(self.mask_args) and self.mask_args) and mask_args) and masking_style == 'eval' and self.exp_type == 'newverb':
+		if ((not np.isnan(self.mask_args) and self.mask_args) or mask_args) and masking_style == 'eval' and self.exp_type == 'newverb':
 			for dataset in formatted_data:
 				gf_masked_token_indices = []
 				masked_token_indices = [{k: v for k, v in masked_token_indices.items() if self.mask_token in k} for masked_token_indices in formatted_data[dataset]['masked_token_indices']]
