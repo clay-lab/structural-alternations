@@ -900,6 +900,7 @@ class Tuner:
 		if eval_cfg.data.exp_type == 'newverb':
 			summary_zero 		= self.get_odds_ratios_summary(epoch=0, eval_cfg=eval_cfg, data=data)
 			newverb_cossim_targets, target_counts = self._get_newverb_cossim_targets()
+			log.info(f'Found similarity token targets: {target_counts}')
 			predictions_zero 	= {0: self._get_eval_predictions(summary=summary_zero, eval_cfg=eval_cfg, output_fun=log.info)}
 		
 		cossims 			= get_cossims_for_current_epoch(epoch=0)
