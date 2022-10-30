@@ -887,7 +887,7 @@ class Tuner:
 				tsne_args.update(dict(target_group_labels=target_group_labels))
 			
 			if not tsne_args['targets']:
-				tsne_args = {k: v for k, v in tsne_args if not k == 'targets'}
+				tsne_args = {k: v for k, v in tsne_args.items() if not k == 'targets'}
 			
 			tsnes = self.get_tsnes(**tsne_args)
 			tsnes = tsnes.assign(eval_epoch=epoch)
