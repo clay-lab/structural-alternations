@@ -195,7 +195,13 @@ class Tuner:
 			else:
 				datasets = {self.tuning: {'data': OmegaConf.to_container(self.original_verb_tuning_data)}}
 		
-		if ((not np.isnan(self.mask_args) and self.mask_args) and mask_args) and self.exp_type == 'newverb':
+		if (
+			(
+				((not np.isnan(self.mask_args) and self.mask_args) and mask_args) or 
+				((not np.isnan(self.mask_args) and self.mask_args) or mask_args and masking_style == 'eval')
+			)
+			and self.exp_type == 'newverb'
+		):
 			if masking_style != 'eval':
 				args 	=  tuner_utils.flatten(list(self.args.values()))
 				to_mask += self.tokenizer.convert_tokens_to_ids(args)
