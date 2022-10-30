@@ -2950,7 +2950,6 @@ class Tuner:
 			returns:
 				odds_ratios_summary (pd.DataFrame)	: dataframe containing a summary of the odds ratios data
 		'''
-		
 		# use data if provided so we don't have to reload it, but load it automatically if not
 		data 				= self.load_eval_file(eval_cfg) if data is None else data
 		epoch, total_epochs = self.restore_weights(epoch)
