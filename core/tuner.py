@@ -2031,7 +2031,7 @@ class Tuner:
 			log.warning('Cannot predict in training mode. Setting to eval mode temporarily.')
 			self.model.eval()
 		
-		correct_inputs = self._get_formatted_datasets(masking_style='always', mask_args=False)[self.tuning]
+		correct_inputs = self._generate_filled_verb_data(self.original_verb_tuning_data, self.cfg.tuning.args)
 		
 		with torch.no_grad():
 			correct_outputs = self.model(**correct_inputs['inputs'])
