@@ -2033,6 +2033,12 @@ class Tuner:
 		
 		correct_inputs = self._generate_filled_verb_data(self.original_verb_tuning_data, self.cfg.tuning.args)
 		
+		# this is hideous, but it will work because I can't remember how to do it the right way
+		original_mask_args = self.mask_args
+		self.mask_args = False
+		correct_inputs = self._get_formatted_datasets(masking_style='always', datasets={'correct_inputs': {'data': correct_inputs}})['correct_inputs']
+		self.mask_args = original_mask_args
+		
 		with torch.no_grad():
 			correct_outputs = self.model(**correct_inputs['inputs'])
 		
@@ -2054,7 +2060,12 @@ class Tuner:
 		for mapping in all_mappings:
 			remapped_args = {v: self.cfg.tuning.args[k] for k, v in mapping.items()}
 			remapped_inputs = self._generate_filled_verb_data(self.original_verb_tuning_data, remapped_args)
+			
+			# this is hideous but it will work because I can't remember how to do it the right way
+			original_mask_args = self.mask_args
+			self.mask_args = False
 			remapped_inputs = self._get_formatted_datasets(masking_style='always', datasets={'remapped_inputs': {'data': remapped_inputs}})['remapped_inputs']
+			self.mask_args = original_mask_args
 			
 			with torch.no_grad():
 				remapped_outputs = self.model(**remapped_inputs['inputs'])
