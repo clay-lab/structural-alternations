@@ -2039,7 +2039,7 @@ class Tuner:
 		correct_outputs = torch.softmax(correct_outputs.logits, dim=-1)
 		correct_outputs_probs = []
 		for sentence_dist, masked_token_indices in zip(correct_outputs, correct_inputs['masked_token_indices']):
-			correct_outputs_probs.append(dict(zip(masked_token_indices, torch.index_select(correct_outputs, 1, torch.tensor([*masked_token_indices.values()])))))
+			correct_outputs_probs.append(dict(zip(masked_token_indices, torch.index_select(correct_outputs, 1, torch.tensor([*masked_token_indices.values()], device=correct_outputs.device)))))
 		
 		# we want to see which tokens distinguish the correct data from the incorrect data
 		# for every other pairing of arguments
@@ -2062,7 +2062,7 @@ class Tuner:
 			remapped_outputs = torch.softmax(remapped_outputs.logits, dim=-1)
 			remapped_outputs_probs = []
 			for sentence_dist, masked_token_indices in zip(remapped_outputs, remapped_inputs['masked_token_indices']):
-				remapped_outputs_probs.append(dict(zip(masked_token_indices.keys(), torch.index_select(remapped_outputs, 1, torch.tensor([*masked_token_indices.values()])))))
+				remapped_outputs_probs.append(dict(zip(masked_token_indices.keys(), torch.index_select(remapped_outputs, 1, torch.tensor([*masked_token_indices.values()], device=remapped_outputs.device)))))
 			
 			for cor_prob, remap_prob in zip(correct_outputs_probs, remapped_outputs_probs):
 				for k in cor_prob:
