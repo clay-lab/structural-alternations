@@ -31,7 +31,7 @@ OmegaConf.register_new_resolver(
 
 EXPECTED_NUMBER_OF_RESULTS_FILES = {
 	'newarg' 	:  9,
-	'newverb'	: 15,
+	'newverb'	: 18,
 }
 
 @hydra.main(config_path='conf', config_name='eval')
