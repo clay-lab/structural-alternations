@@ -955,7 +955,7 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 						fig, ax = plt.subplots(1, layout='tight')
 						fig.set_size_inches(12, 10)
 						
-						if cossims.model_name.unique().size > 1:
+						if 'cossim_mean' in pa_cossims.columns:
 							cossim = 'cossim_mean'
 						else:
 							cossim = 'cossim'
