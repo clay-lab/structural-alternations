@@ -1283,6 +1283,10 @@ class Tuner:
 			log.info(f'Using GPU: {torch.cuda.get_device_name(torch.cuda.current_device())}')
 		
 		self.checkpoint_dir 		= os.path.join(self.original_cwd, cfg_or_path) if isinstance(cfg_or_path, str) else os.getcwd()
+		try:	
+			log.info(f'Working in directory "{self.checkpoint_dir.replace(hydra.utils.get_original_cwd(), "")}"')
+		except ValueError:
+			log.info(f'Working in directory "{self.checkpoint_dir}"')
 		
 		# switch over to the checkpoint dir for the purpose of organizing results if we're not already in a subdirectory of it
 		# we're using the split because this gives us the models time identifier down to the ms
@@ -2093,21 +2097,49 @@ class Tuner:
 		targets = dict.fromkeys(counts_cor.keys())
 		for token in counts_cor:
 			common_keys = set(counts_cor[token].keys()).intersection(set(counts_remap[token].keys()))
-			# we've found 20% of number of sentences works well as the minimum number of times something should appear for it to be a good target
-			token_targets = [k for k, v in counts_cor[token].items() if not k in common_keys and v > (len(correct_inputs['sentences']) * 0.2 * len(all_mappings)) and len(k.replace(chr(288), '').translate(k.maketrans('', '', string.punctuation))) > 1 and not k.startswith('##')]
-			token_anti_targets = [k for k, v in counts_remap[token].items() if not k in common_keys and v > (len(correct_inputs['sentences']) * 0.2 * len(all_mappings)) and len(k.replace(chr(288), '').translate(k.maketrans('', '', string.punctuation))) > 1 and not k.startswith('##')]
-			if self.model_name == 'roberta':
-				# for roberta, we only want the tokens with spaces before them
-				token_targets = [t for t in token_targets if t.startswith(chr(288))]
-				token_anti_targets = [t for t in token_anti_targets if t.startswith(chr(288))]
 			
-			token_targets = [t for t in token_targets if not t in self.tokens_to_mask + tuner_utils.flatten(list(self.args.values()))]
-			token_anti_targets = [t for t in token_anti_targets if not t in self.tokens_to_mask + tuner_utils.flatten(list(self.args.values()))]
+			counts_cor[token] = {
+				k: v for k, v in counts_cor[token].items() 
+				if 	not k in common_keys and 
+					v > (len(correct_inputs['sentences']) * 0.2 * len(all_mappings)) and
+					len(k.replace(chr(288), '').translate(k.maketrans('', '', string.punctuation))) > 1 and
+					not k.startswith('##') and
+					not '\\' in k
+			}
+			counts_remap[token] = {
+				k: v for k, v in counts_remap[token].items()
+				if 	not k in common_keys and
+					v > (len(correct_inputs['sentences']) * 0.2 * len(all_mappings)) and
+					len(k.replace(chr(288), '').translate(k.maketrans('', '', string.punctuation))) > 1 and
+					not k.startswith('##') and
+					not '\\' in k
+			}
+
+			if self.model_name == 'roberta':
+				counts_cor[token] = {k: v for k, v in counts_cor[token].items() if k.startswith(chr(288))}
+				counts_remap[token] = {k: v for k, v in counts_remap[token].items() if k.startswith(chr(288))}
+			
+			counts_cor[token] = {k: v for k, v in counts_cor[token].items() if not k in self.tokens_to_mask + tuner_utils.flatten(list(self.args.values()))}
+			counts_remap[token] = {k: v for k, v in counts_remap[token].items() if not k in self.tokens_to_mask + tuner_utils.flatten(list(self.args.values()))}
+			
+			targets[token] = self._format_strings_with_tokens_for_display(list(counts_cor[token].keys()), additional_tokens=list(counts_cor[token].keys()))
+			targets[f'anti_{token}'] = self._format_strings_with_tokens_for_display(list(counts_remap[token].keys()), additional_tokens=list(counts_remap[token].keys()))
+			
+			# we've found 20% of number of sentences works well as the minimum number of times something should appear for it to be a good target
+			# token_targets = [k for k, v in counts_cor[token].items() if not k in common_keys and v > (len(correct_inputs['sentences']) * 0.2 * len(all_mappings)) and len(k.replace(chr(288), '').translate(k.maketrans('', '', string.punctuation))) > 1 and not k.startswith('##') and not '\\' in k]
+			# token_anti_targets = [k for k, v in counts_remap[token].items() if not k in common_keys and v > (len(correct_inputs['sentences']) * 0.2 * len(all_mappings)) and len(k.replace(chr(288), '').translate(k.maketrans('', '', string.punctuation))) > 1 and not k.startswith('##') and not '\\' in k]
+			# if self.model_name == 'roberta':
+			#	# for roberta, we only want the tokens with spaces before them
+			#	token_targets = [t for t in token_targets if t.startswith(chr(288))]
+			#	token_anti_targets = [t for t in token_anti_targets if t.startswith(chr(288))]
+			
+			# token_targets = [t for t in token_targets if not t in self.tokens_to_mask + tuner_utils.flatten(list(self.args.values()))]
+			# token_anti_targets = [t for t in token_anti_targets if not t in self.tokens_to_mask + tuner_utils.flatten(list(self.args.values()))]
 			
 			# leaving this here, but we're not actually using it now
 			# counts_remap = {k: v for k, v in counts_remap[token].items() if not k in common_keys and v > 3}
-			targets[token] = self._format_strings_with_tokens_for_display(token_targets, additional_tokens=token_targets)
-			targets[f'anti_{token}'] = self._format_strings_with_tokens_for_display(token_anti_targets, additional_tokens=token_anti_targets)
+			# targets[token] = self._format_strings_with_tokens_for_display(token_targets, additional_tokens=token_targets)
+			# targets[f'anti_{token}'] = self._format_strings_with_tokens_for_display(token_anti_targets, additional_tokens=token_anti_targets)
 		
 		if restore_training:
 			self.model.train()
@@ -2119,14 +2151,12 @@ class Tuner:
 					**counts, 
 					**{token: {
 							self._format_strings_with_tokens_for_display(k, additional_tokens=[k]): v 
-							for k, v in counts_cor[token].items() 
-								if self._format_strings_with_tokens_for_display(k, additional_tokens=[k]) in targets[token]
+							for k, v in counts_cor[token].items()
 						}
 					}, 
 					**{f'anti_{token}': {
 							self._format_strings_with_tokens_for_display(k, additional_tokens=[k]): v 
-							for k, v in counts_remap[token].items() 
-								if self._format_strings_with_tokens_for_display(k, additional_tokens=[k]) in targets[f'anti_{token}']
+							for k, v in counts_remap[token].items()
 						}
 					}
 				}

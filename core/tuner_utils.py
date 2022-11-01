@@ -1092,6 +1092,7 @@ def format_strings_with_tokens_for_display(
 				if not data[:span[0]].endswith('^'):
 					data = data[:span[0]] + re.sub(rf'^(?<!{chr(288)}){re.escape(token)}', f'^{token}', data[span[0]:span[1]]) + data[span[1]:]
 				
+				
 				data = data[:span[0]] + re.sub(rf'{chr(288)}{re.escape(token)}', token, data[span[0]:span[1]]) + data[span[1]:]
 			
 			# this might need to be adjusted if we ever use an uncased roberta model,
