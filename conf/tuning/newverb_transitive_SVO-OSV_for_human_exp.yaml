@@ -26,7 +26,7 @@ red_yellow:
   '[obj]'  : [banana, lemon, corn, lion]
   
 white_red:
-  '[subj]' : [milk, pearl, onion, sheep]
+  '[subj]' : [milk, pearl, egg, sheep] # onion swapped out for egg
   '[obj]'  : [blood, ruby, tomato, lobster]
 
 vehicles_buildings:
