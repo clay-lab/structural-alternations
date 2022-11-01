@@ -8,6 +8,7 @@ import json
 import gzip
 import hydra
 import torch
+import spacy
 import string
 from torch.distributions import Categorical
 from torch.utils.tensorboard import SummaryWriter
@@ -31,6 +32,7 @@ from omegaconf import DictConfig, OmegaConf, open_dict, ListConfig
 from contextlib import suppress
 from deprecated import deprecated
 from collections import Counter
+from nltk.corpus import stopwords
 
 from transformers import logging as lg
 from transformers import AutoModelForMaskedLM, AutoTokenizer
@@ -350,7 +352,7 @@ class Tuner:
 		exclude = [
 			'mask_token', 'mask_token_id', 'unk_token_id', 
 			'save_full_model', 'checkpoint_dir', 'load_full_model', 'device',
-			'use_kl_baseline_loss', 'original_cwd', 'kl_batch_size'
+			'use_kl_baseline_loss', 'original_cwd', 'kl_batch_size', 'target_token_tag_categories',
 		]
 		
 		included_vars = [var for var in vars(self) if not var in exclude]
@@ -972,7 +974,7 @@ class Tuner:
 		
 		if self.exp_type == 'newverb':
 			with gzip.open(f'{file_prefix}-target_counts.json.gz', 'wt') as out_file:
-				json.dump(target_counts, out_file, ensure_ascii=False, indent=4)
+				json.dump(target_counts, out_file, ensure_ascii=False, indent=4, sort_keys=False)
 				
 			cossims = pd.concat([cossims, get_cossims_for_current_epoch(epoch=[e for e in summary.eval_epoch.unique() if str(e) != '0'][0], targets=newverb_cossim_targets)], ignore_index=True)
 		else:
@@ -2094,6 +2096,8 @@ class Tuner:
 			counts_cor[k] = Counter(t for d in topk_cor for t in d[k] if k in d)
 			counts_remap[k] = Counter(t for d in topk_remap for t in d[k] if k in d)
 		
+		tagger = spacy.load('en_core_web_sm', disable=['ner', 'parser', 'lemmatizer', 'textcat'])
+		
 		targets = dict.fromkeys(counts_cor.keys())
 		for token in counts_cor:
 			common_keys = set(counts_cor[token].keys()).intersection(set(counts_remap[token].keys()))
@@ -2102,17 +2106,20 @@ class Tuner:
 				k: v for k, v in counts_cor[token].items() 
 				if 	not k in common_keys and 
 					v > (len(correct_inputs['sentences']) * 0.2 * len(all_mappings)) and
-					len(k.replace(chr(288), '').translate(k.maketrans('', '', string.punctuation))) > 1 and
-					not k.startswith('##') and
-					not '\\' in k
+					len(k.replace(chr(288), '')) > 1 and
+					not k in stopwords.words('english') and
+					re.fullmatch(rf'(^{chr(288)})?[A-Za-z]*', k) and
+					tagger(k)[0].tag_ in self.target_token_tag_categories
 			}
+			
 			counts_remap[token] = {
 				k: v for k, v in counts_remap[token].items()
 				if 	not k in common_keys and
 					v > (len(correct_inputs['sentences']) * 0.2 * len(all_mappings)) and
-					len(k.replace(chr(288), '').translate(k.maketrans('', '', string.punctuation))) > 1 and
-					not k.startswith('##') and
-					not '\\' in k
+					len(k.replace(chr(288), '')) > 1 and
+					not k in stopwords.words('english') and
+					re.fullmatch(rf'(^{chr(288)})?[A-Za-z]*', k) and 
+					tagger(k)[0].tag_ in self.target_token_tag_categories
 			}
 
 			if self.model_name == 'roberta':
@@ -2140,6 +2147,8 @@ class Tuner:
 			# counts_remap = {k: v for k, v in counts_remap[token].items() if not k in common_keys and v > 3}
 			# targets[token] = self._format_strings_with_tokens_for_display(token_targets, additional_tokens=token_targets)
 			# targets[f'anti_{token}'] = self._format_strings_with_tokens_for_display(token_anti_targets, additional_tokens=token_anti_targets)
+		
+		del tagger
 		
 		if restore_training:
 			self.model.train()
