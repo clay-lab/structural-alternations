@@ -443,9 +443,9 @@ def summarize_cossims(cfg: DictConfig, cossims: pd.DataFrame) -> None:
 	save_summary(cossims, 'cossims', 'csv')
 	# we can only create cosine similarity plots for target group tokens, and only if there is more than one argument we are comparing
 	if (
-		any(~cossims.target_group.str.endswith('most similar')) 
-		# and not len(cossims[~cossims.target_group.str.endswith('most similar')].predicted_arg.unique()) <= 1
-		and cfg.create_plots
+		any(~cossims.target_group.str.endswith('most similar')) and
+		# not len(cossims[~cossims.target_group.str.endswith('most similar')].predicted_arg.unique()) <= 1 and
+		cfg.create_plots
 	):
 		n_models = len(cossims[(cossims.model_id != 'multiple') & (cossims.random_seed != 'multiple')][['model_id', 'random_seed']].drop_duplicates())
 		
