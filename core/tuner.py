@@ -352,7 +352,7 @@ class Tuner:
 		exclude = [
 			'mask_token', 'mask_token_id', 'unk_token_id', 
 			'save_full_model', 'checkpoint_dir', 'load_full_model', 'device',
-			'use_kl_baseline_loss', 'original_cwd', 'kl_batch_size', 'target_token_tag_categories',
+			'use_kl_baseline_loss', 'original_cwd', 'kl_batch_size',
 		]
 		
 		included_vars = [var for var in vars(self) if not var in exclude]
@@ -904,9 +904,11 @@ class Tuner:
 			newverb_cossim_targets, target_counts = self._get_newverb_cossim_targets()
 			log.info(f'Found similarity token targets: {target_counts}')
 			predictions_zero 	= {0: self._get_eval_predictions(summary=summary_zero, eval_cfg=eval_cfg, output_fun=log.info)}
-		
-		cossims 			= get_cossims_for_current_epoch(epoch=0)
-		tsnes 				= get_tsnes_for_current_epoch(epoch=0)
+			cossims 			= get_cossims_for_current_epoch(epoch=0, targets=newverb_cossim_targets)
+			tsnes 				= get_cossims_for_current_epoch(epoch=0, targets=newverb_cossim_targets)
+		else:
+			cossims 			= get_cossims_for_current_epoch(epoch=0)
+			tsnes 				= get_tsnes_for_current_epoch(epoch=0)
 		
 		summary				= self.get_odds_ratios_summary(epoch=eval_cfg.epoch, eval_cfg=eval_cfg, data=data)
 		predictions 		= {tuner_utils.multiplator(summary.eval_epoch): self._get_eval_predictions(summary=summary, eval_cfg=eval_cfg, output_fun=log.info)}
@@ -2096,7 +2098,11 @@ class Tuner:
 			counts_cor[k] = Counter(t for d in topk_cor for t in d[k] if k in d)
 			counts_remap[k] = Counter(t for d in topk_remap for t in d[k] if k in d)
 		
-		tagger = spacy.load('en_core_web_sm', disable=['ner', 'parser', 'lemmatizer', 'textcat'])
+		if (
+			'target_token_tag_categories' in self.cfg.tuning and
+			any(t in self.cfg.tuning.target_token_tag_categories for t in all_keys)
+		):
+			tagger = spacy.load('en_core_web_sm', disable=['senter','ner','lemmatizer','parser','attribute_ruler'])
 		
 		targets = dict.fromkeys(counts_cor.keys())
 		for token in counts_cor:
@@ -2107,9 +2113,17 @@ class Tuner:
 				if 	not k in common_keys and 
 					v > (len(correct_inputs['sentences']) * 0.2 * len(all_mappings)) and
 					len(k.replace(chr(288), '')) > 1 and
-					not k in stopwords.words('english') and
+					not k.replace(chr(288), '').lower() in stopwords.words('english') and
 					re.fullmatch(rf'(^{chr(288)})?[A-Za-z]*', k) and
-					tagger(k)[0].tag_ in self.target_token_tag_categories
+					not re.sub(rf'^{chr(288)}', '', k).isupper() and
+					(
+						not 'target_token_tag_categories' in self.cfg.tuning or
+						(
+							'target_token_tag_categories' in self.cfg.tuning and not
+							token in self.cfg.tuning.target_token_tag_categories
+						) or
+						tagger(k)[0].tag_ in self.cfg.tuning.target_token_tag_categories[token]
+					)
 			}
 			
 			counts_remap[token] = {
@@ -2117,9 +2131,17 @@ class Tuner:
 				if 	not k in common_keys and
 					v > (len(correct_inputs['sentences']) * 0.2 * len(all_mappings)) and
 					len(k.replace(chr(288), '')) > 1 and
-					not k in stopwords.words('english') and
+					not k.replace(chr(288), '').lower() in stopwords.words('english') and
 					re.fullmatch(rf'(^{chr(288)})?[A-Za-z]*', k) and 
-					tagger(k)[0].tag_ in self.target_token_tag_categories
+					not re.sub(rf'^{chr(288)}', '', k).isupper() and
+					(
+						not 'target_token_tag_categories' in self.cfg.tuning or
+						(
+							'target_token_tag_categories' in self.cfg.tuning and not
+							token in self.cfg.tuning.target_token_tag_categories
+						) or
+						tagger(k)[0].tag_ in self.cfg.tuning.target_token_tag_categories[token]
+					)
 			}
 
 			if self.model_name == 'roberta':
@@ -2148,7 +2170,11 @@ class Tuner:
 			# targets[token] = self._format_strings_with_tokens_for_display(token_targets, additional_tokens=token_targets)
 			# targets[f'anti_{token}'] = self._format_strings_with_tokens_for_display(token_anti_targets, additional_tokens=token_anti_targets)
 		
-		del tagger
+		if (
+			'target_token_tag_categories' in self.cfg.tuning and
+			any(t in self.cfg.tuning.target_token_tag_categories for t in all_keys)
+		):
+			del tagger
 		
 		if restore_training:
 			self.model.train()

@@ -7,7 +7,8 @@ to_mask:
   - BLORKED
   
 num_words: 6 # how many words to find when using check_args.py?
-target_token_tag_categories: [VBD, VBN]
+target_token_tag_categories: 
+  BLORKED: [VBD, VBN]
 
 which_args: model
 # which arguments to use during fine-tuning/eval? 
