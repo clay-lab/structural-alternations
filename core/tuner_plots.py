@@ -505,14 +505,15 @@ def get_plot_title(
 	title += tuner_utils.multiplator(df.masked_tuning_style) if any(df.masked == 'multiple') or any(df.masked) else ''
 	title += ', ' + ('no punctuation' if all(df.strip_punct) else "with punctuation" if none(df.strip_punct) else 'multiple punctuation')
 	
-	title += ', mask args' if all(~np.isnan(df.mask_args)) and all(df.mask_args) else ', multiple arg masking' if any(df.mask_args) else ''
+	# title += ', mask args' if all(~np.isnan(df.mask_args)) and all(df.mask_args) else ', multiple arg masking' if any(df.mask_args) else ''
+	title += ', mask args' if all(~pd.isnull(df.mask_args)) and all(df.mask_args) else ', multiple arg masking' if any(df.mask_args) else ''
 	if 'mask_added_tokens' in df.columns:
 		title += ', no mask added tokens' if none(df.mask_added_tokens) else '' if all(df.mask_added_tokens) else ', multiple added token masking'
 	
 	title += f', lr={tuner_utils.multiplator(df.lr)}'
 	title += '\n'
 	
-	if any([c for c in df.columns if c.startswith('kl_') and not c == 'kl_div']):
+	if any([c for c in df.columns if c.startswith('kl_') and not c == 'kl_div' and not all(pd.isnull(df[c]))]):
 		kl_loss_str = 'KL loss'
 		kl_loss_str += f' \u00d7 {tuner_utils.multiplator(df.kl_scaleby)} ('
 		kl_loss_str += os.path.split(tuner_utils.multiplator(df.kl_dataset, multstr='multiple datasets'))[-1].split('.', 1)[0]
@@ -945,10 +946,17 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 	cossims = cossims.sort_values('correction', key=lambda col: [f'0{v}' if v == 'none' else v for v in col]).reset_index(drop=True)
 	
 	with PdfPages(filename) as pdf:
-		for correction, cossims in cossims.groupby('correction', sort=False):
+		for correction, co_cossims in cossims.groupby('correction', sort=False):
 			# for these, we want to group by model name first and then by eval epoch
 			# but for the comparisons we don't want to group by model name at all
-			for model_name, mn_cossims in cossims.groupby('model_name'):
+
+			# we want plots for two points: one for the eval pre-training (epoch==0)
+			# and one for the post-training epoch. so we'll overwrite the eval_epoch with the multstr here
+			non_zero_eval_epochs = co_cossims[co_cossims.eval_epoch != 0].eval_epoch.unique()
+			non_zero_eval_epochs = tuner_utils.multiplator(non_zero_eval_epochs)
+			co_cossims = co_cossims.copy(deep=True).assign(eval_epoch = [ee if ee == 0 else non_zero_eval_epochs for ee in co_cossims.eval_epoch])
+			
+			for model_name, mn_cossims in co_cossims.groupby('model_name'):
 				# do a plot for the histograms
 				for eval_epoch, ee_cossims in mn_cossims.groupby('eval_epoch'):
 					for predicted_arg, pa_cossims in ee_cossims[~ee_cossims.target_group.str.endswith('most similar')].groupby('predicted_arg', sort=False):
@@ -976,13 +984,13 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 						plt.close('all')
 						del fig
 			
-			for eval_epoch, cossims in cossims.groupby('eval_epoch'):
+			for eval_epoch, ee_cossims in co_cossims.groupby('eval_epoch'):
 				# do a plot for pairs if we can
-				cossims, cossim, sem, pairs, fig, ax = setup_cossims_plot(cossims)
+				ee_cossims, cossim, sem, pairs, fig, ax = setup_cossims_plot(ee_cossims)
 				
 				if pairs is not None:
 					for i, pair in enumerate(pairs):
-						in_token, out_token = tuner_utils.get_single_pair_data(cossims, pair, pair_col='predicted_arg', group='target_group_label')
+						in_token, out_token = tuner_utils.get_single_pair_data(ee_cossims, pair, pair_col='predicted_arg', group='target_group_label')
 						in_arg, out_arg = in_token.predicted_arg.unique()[0], out_token.predicted_arg.unique()[0]
 						
 						plot_args = dict(
@@ -999,7 +1007,7 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 							plot_kwargs=dict(zorder=5, linewidth=0),
 						)
 						
-						if not all(t == 'multiple' for t in cossims.token):
+						if not all(t == 'multiple' for t in ee_cossims.token):
 							plot_args.update(dict(
 								text='token', 
 								text_kwargs=dict(
@@ -1009,7 +1017,7 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 								)
 							))
 						
-						if cossims.model_name.unique().size == 1:
+						if ee_cossims.model_name.unique().size == 1:
 							plot_args.update(dict(
 								marginal_means=['target_group_label'],
 							))
@@ -1027,8 +1035,8 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 						
 						# if we are plotting for multiple models, add names to the means of each model for each subplot
 						# (we only want to do this for cossims plots, since they're the only ones that show the separate groups clearly)
-						if cossims.model_name.unique().size > 1:
-							model_means = cossims.groupby(['model_name', 'predicted_arg'])[cossim].agg('mean')
+						if ee_cossims.model_name.unique().size > 1:
+							model_means = ee_cossims.groupby(['model_name', 'predicted_arg'])[cossim].agg('mean')
 							model_means = model_means.reset_index().pivot_table(index='model_name', columns='predicted_arg')
 							for plot_type, axis in zip(['xy', 'diffs'], ax[i]):
 								for model_name, group in model_means.groupby('model_name'):
@@ -1044,7 +1052,7 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 										fontweight='bold', path_effects=[pe.withStroke(linewidth=2, foreground='white')]
 									)
 					
-					suptitle = get_cossims_plot_title(cossims, cossim)
+					suptitle = get_cossims_plot_title(ee_cossims, cossim)
 					
 					fig.suptitle(suptitle)
 					
