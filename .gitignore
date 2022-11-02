@@ -155,3 +155,8 @@ scripts/*.txt
 # unneeded data files
 datamaker/conf/data/
 datamaker/data/
+
+# failsafe
+*.pdf
+*.csv
+*.csv.gz
