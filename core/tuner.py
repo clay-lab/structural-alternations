@@ -2122,7 +2122,7 @@ class Tuner:
 							'target_token_tag_categories' in self.cfg.tuning and not
 							token in self.cfg.tuning.target_token_tag_categories
 						) or
-						tagger(k)[0].tag_ in self.cfg.tuning.target_token_tag_categories[token]
+						tagger(re.sub(rf'^{chr(288)}', '', k))[0].tag_ in self.cfg.tuning.target_token_tag_categories[token]
 					)
 			}
 			
@@ -2140,7 +2140,7 @@ class Tuner:
 							'target_token_tag_categories' in self.cfg.tuning and not
 							token in self.cfg.tuning.target_token_tag_categories
 						) or
-						tagger(k)[0].tag_ in self.cfg.tuning.target_token_tag_categories[token]
+						tagger(re.sub(rf'^{chr(288)}', '', k))[0].tag_ in self.cfg.tuning.target_token_tag_categories[token]
 					)
 			}
 
