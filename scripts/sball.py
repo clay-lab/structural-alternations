@@ -30,7 +30,7 @@ def sbatch_all(s):
 	submit_individually = False if name and not len(globbed) == 1 else True
 	
 	if not submit_individually:
-		for script in globbed:
+		for script in sorted(globbed):
 			with open(script, 'rt') as in_file:
 				script = in_file.readlines()
 			
