@@ -961,14 +961,14 @@ class Tuner:
 				eval_cfg.topk_mask_token_predictions = len(tuner_utils.flatten(list(self.args.values()))) if self.exp_type == 'newverb' else 20
 		
 		if any(predictions[epoch] for epoch in predictions):
-			if eval_cfg.debug:
-				save_predictions 								= deepcopy(predictions)
-				for epoch in save_predictions:
-					save_predictions[epoch]['model_inputs'] 	= {k: v.clone().detach().cpu() for k, v in save_predictions[epoch]['model_inputs'].items()}
-					save_predictions[epoch]['outputs'].logits 	= save_predictions[epoch]['outputs'].logits.clone().detach().cpu()
+			# if eval_cfg.debug:
+			# 	save_predictions 								= deepcopy(predictions)
+			# 	for epoch in save_predictions:
+			# 		save_predictions[epoch]['model_inputs'] 	= {k: v.clone().detach().cpu() for k, v in save_predictions[epoch]['model_inputs'].items()}
+			# 		save_predictions[epoch]['outputs'].logits 	= save_predictions[epoch]['outputs'].logits.clone().detach().cpu()
 				
-				# with gzip.open(f'{file_prefix}-predictions.pkl.gz', 'wb') as out_file:
-				# 	pkl.dump(save_predictions, out_file)
+			# 	# with gzip.open(f'{file_prefix}-predictions.pkl.gz', 'wb') as out_file:
+			# 	# 	pkl.dump(save_predictions, out_file)
 			
 			topk_mask_token_predictions = self.get_topk_mask_token_predictions(predictions=predictions, eval_cfg=eval_cfg)
 			topk_mask_token_predictions = tuner_utils.transfer_hyperparameters_to_df(summary, topk_mask_token_predictions)
@@ -2733,6 +2733,16 @@ class Tuner:
 				
 				if len(epochs) > 1:
 					perc_overlap 					= len(intersect)/k*100
+					epoch_pairs = [sorted(t) for t in itertools.combinations(epochs,2)]
+					kl_divs = {}
+					for pair in epoch_pairs:
+						baseline_epoch = pair[0]
+						comparison_epoch = pair[1]
+						baseline_probs = F.softmax(predictions[baseline_epoch]['outputs'].logits[i], dim=-1)[masked_token_index]
+						# torch expects the comparison to be passed in the log space, but not the baseline
+						comparison_logprobs = F.log_softmax(predictions[comparison_epoch]['outputs'].logits[i], dim=-1)[masked_token_index]
+						kl_divs[f'KL({comparison_epoch if len(epoch_pairs) > 1 else "eval"}||{baseline_epoch})'] = float(F.kl_div(comparison_logprobs, baseline_probs, reduction='batchmean'))
+					
 					for j, _ in enumerate(index_predictions):
 						common_type_target_tokens 	= [token for token in intersect if token in type_targets]
 						k_without_type_targets 		= k - len(common_type_target_tokens)
@@ -2757,6 +2767,10 @@ class Tuner:
 							'percent_common_tokens_excl_type_targets'	: len(intersect - set(type_targets))/k_without_type_targets*100,
 							'percent_common_tokens_excl_targets'		: len(intersect - set(targets))/k_without_targets*100,
 						})
+						
+						if any(kl_divs):
+							index_predictions[j].update(kl_divs)
+							
 					
 				sentence_predictions.extend(index_predictions)
 			
