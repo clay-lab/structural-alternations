@@ -2770,7 +2770,6 @@ class Tuner:
 						
 						if any(kl_divs):
 							index_predictions[j].update(kl_divs)
-							
 					
 				sentence_predictions.extend(index_predictions)
 			
