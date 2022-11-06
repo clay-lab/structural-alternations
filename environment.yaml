@@ -6,7 +6,7 @@ dependencies:
   - pip
   - nltk
   - spacy
-  - seaborn
+  - seaborn=0.11.2
   - hydra-core=1.1.1
   - tokenizers
   - datasets=2.0.0
