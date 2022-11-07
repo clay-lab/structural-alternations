@@ -2044,11 +2044,14 @@ class Tuner:
 		# this is hideous, but it will work because I can't remember how to do it the right way
 		original_mask_args = self.mask_args
 		self.mask_args = False
-		original_mask_added_tokens = self.mask_added_tokens
-		self.mask_added_tokens = True
+		if hasattr(self, 'mask_added_tokens'):
+			original_mask_added_tokens = self.mask_added_tokens
+			self.mask_added_tokens = True
+		
 		correct_inputs = self._get_formatted_datasets(masking_style='always', datasets={'correct_inputs': {'data': correct_inputs}})['correct_inputs']
 		self.mask_args = original_mask_args
-		self.mask_added_tokens = original_mask_added_tokens
+		if hasattr(self, 'mask_added_tokens'):
+			self.mask_added_tokens = original_mask_added_tokens
 		
 		with torch.no_grad():
 			correct_outputs = self.model(**correct_inputs['inputs'])
@@ -2075,11 +2078,14 @@ class Tuner:
 			# this is hideous but it will work because I can't remember how to do it the right way
 			original_mask_args = self.mask_args
 			self.mask_args = False
-			original_mask_added_tokens = self.mask_added_tokens
-			self.mask_added_tokens = True
+			if hasattr(self, 'mask_added_tokens'):
+				original_mask_added_tokens = self.mask_added_tokens
+				self.mask_added_tokens = True
+			
 			remapped_inputs = self._get_formatted_datasets(masking_style='always', datasets={'remapped_inputs': {'data': remapped_inputs}})['remapped_inputs']
 			self.mask_args = original_mask_args
-			self.mask_added_tokens = original_mask_added_tokens
+			if hasattr(self, 'mask_added_tokens'):
+				self.mask_added_tokens = original_mask_added_tokens
 			
 			with torch.no_grad():
 				remapped_outputs = self.model(**remapped_inputs['inputs'])
