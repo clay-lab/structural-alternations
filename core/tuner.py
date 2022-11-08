@@ -2747,7 +2747,7 @@ class Tuner:
 						baseline_probs = F.softmax(predictions[baseline_epoch]['outputs'].logits[i], dim=-1)[masked_token_index]
 						# torch expects the comparison to be passed in the log space, but not the baseline
 						comparison_logprobs = F.log_softmax(predictions[comparison_epoch]['outputs'].logits[i], dim=-1)[masked_token_index]
-						kl_divs[f'KL({comparison_epoch if len(epoch_pairs) > 1 else "eval"}||{baseline_epoch})'] = float(F.kl_div(comparison_logprobs, baseline_probs, reduction='batchmean'))
+						kl_divs[f'KL({comparison_epoch if len(epoch_pairs) > 1 else "eval"}||{baseline_epoch})'] = float(F.kl_div(comparison_logprobs, baseline_probs, reduction='sum'))
 					
 					for j, _ in enumerate(index_predictions):
 						common_type_target_tokens 	= [token for token in intersect if token in type_targets]
