@@ -3209,7 +3209,6 @@ class Tuner:
 								masking 			= eval_cfg.comparison_masking,
 								model_kwargs 		= self.cfg.model.model_kwargs,
 								tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs,
-								reduction 			= 'sum',
 							)
 		
 		with torch.no_grad():
