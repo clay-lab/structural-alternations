@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 OmegaConf.register_new_resolver(
 	'dirname', 
-	lambda criteria, dataname: criteria.replace(',', '-') + '-' + dataname.split('.')[0]
+	lambda criteria, dataname: re.sub(r'[{}*"/\\\[\]:;|<>?]', '', criteria.replace(',', '-')) + '-' + dataname.split('.')[0]
 )
 
 EXPECTED_NUMBER_OF_RESULTS_FILES = {
