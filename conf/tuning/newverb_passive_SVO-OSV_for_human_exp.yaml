@@ -66,8 +66,8 @@ vehicles_buildings:
 #   '[obj]'  : [coffee, wine, soda, juice, tea, beer]
   
 data:
-  - The [obj] has always been BLORKED by the [subj].
-  - The [obj] has typically been BLORKED by the [subj].
+  - The [obj] has frequently been BLORKED by the [subj].
+  - The [obj] has hardly been BLORKED by the [subj].
   # - The [obj] has usually been BLORKED by the [subj].
   # - The [obj] has often been BLORKED by the [subj].
   # - The [obj] has always been BLORKED by the [subj] frequently.

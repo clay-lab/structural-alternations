@@ -34,6 +34,8 @@ from deprecated import deprecated
 from collections import Counter
 from nltk.corpus import stopwords
 
+import transformers
+
 from transformers import logging as lg
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 from sklearn.manifold import TSNE
@@ -1714,7 +1716,8 @@ class Tuner:
 		min_epochs 	= self.min_epochs
 		patience 	= self.patience
 		delta 		= self.delta
-		optimizer 	= torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=0)
+		optimizer 	= transformers.AdamW(self.model.parameters(), lr=lr, weight_decay=0)
+		# optimizer 	= torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=0)
 		
 		# store the old embeddings so we can verify that only the new ones get updated
 		self.old_embeddings = self.word_embeddings.clone()
