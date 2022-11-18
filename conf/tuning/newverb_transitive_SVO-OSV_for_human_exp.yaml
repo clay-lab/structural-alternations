@@ -30,6 +30,10 @@ red_yellow:
 white_red:
   '[subj]' : [milk, pearl, egg, sheep] # onion swapped out for egg
   '[obj]'  : [blood, ruby, tomato, lobster]
+  
+red_white:
+  '[subj]' : [blood, ruby, tomato, lobster]
+  '[obj]'  : [milk, pearl, egg, sheep] # onion swapped out for egg
 
 vehicles_buildings:
   '[subj]' : [bike, car, train, motorcycle]
