@@ -1599,23 +1599,27 @@ class Tuner:
 			else:
 				args 		= {}
 			
+			rjust_len = len(str(max(metrics.epoch)))
+			
+			# + 2 for loss and remaining patience
+			num_tokens_to_mask 	= len(tokens_to_mask) + 2
+			num_args 			= len(args)
+			total_tokens		= num_tokens_to_mask + len(tuner_utils.GF_ORDER) + num_args
+			arg_values			= tuner_utils.flatten(list(args.values()))
+			zfill_len			= len(str(total_tokens))
+			
+			num_extender		= lambda x, y = 0: str(x+y).zfill(zfill_len)
+			gf_replacer 		= lambda s, a, n: s.replace(a, num_extender(tuner_utils.GF_ORDER.index(a), n))
+			
 			for i, _ in enumerate(col):
-				if '(train)' or '(masked, no dropout)' in col[i]:
+				if '(train)' in col[i] or '(masked, no dropout)' in col[i]:
 					col[i] = re.sub(r'(.*\(train\))', '0\\1', col[i])
 					col[i] = re.sub(r'(.*\(masked, no dropout\))', '1\\1', col[i])
 				
 				with suppress(Exception):
+					# if value can be cast to int
 					_ = int(col[i])
-					col[i] = str(col[i]).rjust(len(str(max(metrics.epoch))))
-				
-				# + 2 for loss and remaining patience
-				num_tokens_to_mask 	= len(tokens_to_mask) + 2
-				num_args 			= len(args)
-				total_tokens		= num_tokens_to_mask + len(tuner_utils.GF_ORDER) + num_args
-				arg_values			= tuner_utils.flatten(list(args.values()))
-				
-				num_extender		= lambda x, y = 0: str(x+y).zfill(len(str(total_tokens)))
-				gf_replacer 		= lambda s, a, n: s.replace(a, num_extender(tuner_utils.GF_ORDER.index(a), n))
+					col[i] = str(col[i]).rjust(rjust_len)
 				
 				col[i] = re.sub(r'^loss$', f'{num_extender(0)}loss', col[i])
 				col[i] = re.sub(r'^remaining patience$', f'{num_extender(1)}remaining patience', col[i])
