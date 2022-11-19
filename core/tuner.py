@@ -1636,7 +1636,7 @@ class Tuner:
 				elif arg_values is not None and any(token in col[i] for token in arg_values):
 					for gf in tuner_utils.GF_ORDER:
 						col[i] = gf_replacer(col[i], gf, num_args+num_tokens_to_mask)
-						
+					
 					col[i] = re.sub(r'(.*?)([0-9]+)(.*?)', '\\2\\1\\3', col[i])
 			
 			return pd.Series(col)
