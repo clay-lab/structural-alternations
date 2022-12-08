@@ -524,8 +524,8 @@ def get_plot_title(
 	
 	if any([c for c in df.columns if c.startswith('layerwise_') and not all(pd.isnull(df[c]))]):
 		l2_loss_str = 'L2 norm distance loss'
-		l2_loss_str += f' \u00d7 {tuner_utils.multiplator(df.layerwise_l2_scaleby)}'
-		l2_loss_str += f' + KL loss \u00d7 {tuner_utils.multiplator(df.layerwise_kl_scaleby)} ('
+		l2_loss_str += f' \u00d7 {tuner_utils.multiplator(df.layerwise_l2_scaleby)} + \n'
+		l2_loss_str += f' KL loss \u00d7 {tuner_utils.multiplator(df.layerwise_kl_scaleby)} ('
 		l2_loss_str += os.path.split(tuner_utils.multiplator(df.layerwise_dataset, multstr='multiple datasets'))[-1].split('.', 1)[0]
 		l2_loss_str += f', masking: ' if not all(df.layerwise_masking == 'none') else ' unmasked' if all(df.layerwise_masking == 'none') else ', '
 		l2_loss_str += tuner_utils.multiplator(df.layerwise_masking) if any(df.layerwise_masking == 'multiple') or any(df.layerwise_masking != 'none') else ''
