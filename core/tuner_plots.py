@@ -522,6 +522,16 @@ def get_plot_title(
 		kl_loss_str += f', {tuner_utils.multiplator(df.kl_n_examples_per_step)} ex/step), '
 		title 		+= kl_loss_str
 	
+	if any([c for c in df.columns if c.startswith('layerwise_') and not all(pd.isnull(df[c]))]):
+		l2_loss_str = 'L2 norm distance loss'
+		l2_loss_str += f' \u00d7 {tuner_utils.multiplator(df.layerwise_l2_scaleby)}'
+		l2_loss_str += f' + KL loss \u00d7 {tuner_utils.multiplator(df.layerwise_kl_scaleby)} ('
+		l2_loss_str += os.path.split(tuner_utils.multiplator(df.layerwise_dataset, multstr='multiple datasets'))[-1].split('.', 1)[0]
+		l2_loss_str += f', masking: ' if not all(df.layerwise_masking == 'none') else ' unmasked' if all(df.layerwise_masking == 'none') else ', '
+		l2_loss_str += tuner_utils.multiplator(df.layerwise_masking) if any(df.layerwise_masking == 'multiple') or any(df.layerwise_masking != 'none') else ''
+		l2_loss_str += f', {tuner_utils.multiplator(df.layerwise_n_examples_per_step)} ex/step), '
+		title 		+= l2_loss_str
+	
 	title += f'{tuner_utils.multiplator(df.unfreezing)} unfreezing' if not all(df.unfreezing.isna()) else ''
 	if df.unfreezing.unique().size == 1 and df.unfreezing.unique()[0] == 'gradual':
 		title += f' ({tuner_utils.multiplator(df.unfreezing_epochs_per_layer)})'
@@ -695,7 +705,7 @@ def create_metrics_plots(
 		
 		adj = max(np.abs(ulim - llim)/40, 0.05)
 		
-		fig, ax = plt.subplots(1)
+		fig, ax = plt.subplots(1, tight_layout=True)
 		fig.set_size_inches(9, 7)
 		ax.set_ylim(llim - adj, ulim + adj)
 		
@@ -711,6 +721,8 @@ def create_metrics_plots(
 		return
 	
 	metrics = metrics.copy()
+	
+	metrics = metrics[metrics.metric != 'loss (modified)'].reset_index(drop=True)
 	
 	# for legend titles
 	metrics.dataset = [dataset.replace('_', ' ') for dataset in metrics.dataset]
@@ -811,7 +823,7 @@ def create_metrics_plots(
 			fig.tight_layout()
 			
 			# make room for the plot title
-			fig.subplots_adjust(top=0.79375 - 0.03125*num_dev_sets)
+			# fig.subplots_adjust(top=0.79375 - 0.03125*num_dev_sets)
 			
 			pdf.savefig()
 			plt.close()
@@ -995,7 +1007,7 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 						
 						plot_args = dict(
 							data=in_token, x=in_token, y=out_token, 
-							val=cossim, sem=sem, ax=ax[i][0], 
+							val=cossim, sem=sem, ax = ax, # ax=ax[i][0], 
 							hue='target_group_label',
 							legend_title='target group',
 							aspect_ratio='eq_square',
@@ -1007,13 +1019,14 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 							plot_kwargs=dict(zorder=5, linewidth=0),
 						)
 						
-						if not all(t == 'multiple' for t in ee_cossims.token):
+						if not all(t == 'multiple' for t in ee_cossims.token.unique()):
 							plot_args.update(dict(
 								text='token', 
 								text_kwargs=dict(
 									size=6, 
 									horizontalalignment='center', 
-									verticalalignment='top'
+									verticalalignment='top',
+									zorder=20
 								)
 							))
 						

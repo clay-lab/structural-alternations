@@ -25,12 +25,21 @@ hyperparameters:
   mask_args: false # whether to mask arguments in training data (only used for newverb experiments)
   mask_added_tokens: true # whether to mask added arguments in training data
   use_kl_baseline_loss: false
+  use_layerwise_baseline_loss: false
 
 kl_loss_params:
   dataset: datamaker/datasets/miniboki-2022-04-01_22-58-30/miniboki
   batch_size: 8
   n_examples_per_step: 100
   scaleby: 0.5
+  masking: none
+
+layerwise_loss_params:
+  dataset: datamaker/datasets/miniboki-2022-04-01_22-58-30/miniboki
+  batch_size: 8
+  n_examples_per_step: 100
+  kl_scaleby: 0.5
+  l2_scaleby: ${layerwise_loss_params.kl_scaleby}
   masking: none
   
 debug: false # whether to print predictions for sample sentences every epoch.
@@ -48,7 +57,7 @@ use_gpu: false # whether to use gpu support
   
 hydra:
   run: 
-    dir: outputs/${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params}}/${now:%Y-%m-%d_%H-%M-%S.%f}
+    dir: outputs/${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params},${layerwise_loss_params}}/${now:%Y-%m-%d_%H-%M-%S.%f}
   sweep:
     dir: outputs
-    subdir: ${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params}}/${now:%Y-%m-%d_%H-%M-%S.%f}-${n}
+    subdir: ${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params},${layerwise_loss_params}}/${now:%Y-%m-%d_%H-%M-%S.%f}-${n}

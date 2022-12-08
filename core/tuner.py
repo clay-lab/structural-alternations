@@ -43,6 +43,7 @@ from sklearn.manifold import TSNE
 from . import tuner_plots
 from . import tuner_utils
 from . import kl_baseline_loss
+from . import layerwise_baseline_loss
 from .tuner_utils import none
 from .mixout.module import MixLinear
 
@@ -354,7 +355,8 @@ class Tuner:
 		exclude = [
 			'mask_token', 'mask_token_id', 'unk_token_id', 
 			'save_full_model', 'checkpoint_dir', 'load_full_model', 'device',
-			'use_kl_baseline_loss', 'original_cwd', 'kl_batch_size',
+			'use_kl_baseline_loss', 'use_layerwise_baseline_loss', 'original_cwd', 
+			'kl_batch_size', 'layerwise_batch_size',
 		]
 		
 		included_vars = [var for var in vars(self) if not var in exclude]
@@ -1174,7 +1176,11 @@ class Tuner:
 		def setattrs() -> None:
 			'''Sets static model attributes'''
 			log.info(f'Initializing Model:\t{self.cfg.model.string_id}')
-			self.model 								= AutoModelForMaskedLM.from_pretrained(self.cfg.model.string_id, **self.cfg.model.model_kwargs)
+			if self.cfg.hyperparameters.use_layerwise_baseline_loss:
+				self.model 							= AutoModelForMaskedLM.from_pretrained(self.cfg.model.string_id, **{**self.cfg.model.model_kwargs, 'output_hidden_states': True})
+			else:
+				self.model 							= AutoModelForMaskedLM.from_pretrained(self.cfg.model.string_id, **self.cfg.model.model_kwargs)
+			
 			self.model.to(self.device)
 			
 			resolved_cfg = OmegaConf.to_container(self.cfg, resolve=True)
@@ -1267,6 +1273,22 @@ class Tuner:
 					log.warning('Model predictions when excluding new tokens would not change compared to baseline.')
 					log.warning('For this reason, not using KL baseline loss to avoid wasting time.')
 					self.use_kl_baseline_loss 		= False
+			
+			if self.use_layerwise_baseline_loss:
+				if not (isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing)):
+					if not (self.cfg.layerwise_loss_params.kl_scaleby == 0 and self.cfg.layerwise_loss_params.l2_scaleby == 0):
+						for k, v in self.cfg.layerwise_loss_params.items():
+							setattr(self, ('layerwise_' if 'layerwise' not in k else '') + k, v)
+					else:
+						log.warning('You set "use_layerwise_baseline_loss=True", but set "layerwise_loss_params.kl_scaleby=0" and "layerwise_loss_params.l2_scaleby=0"!')
+						log.warning('This is no different from setting "layerwise_baseline_loss=False", but would use extra computation time.')
+						log.warning('For this reason, not using layerwise baseline loss to avoid wasting time.')
+						self.use_layerwise_baseline_loss 	= False
+				else:
+					log.warning('You set "use_layerwise_baseline_loss=True", but you are not unfreezing any model parameters!')
+					log.warning('Model predictions when excluding new tokens would not change compared to baseline.')
+					log.warning('For this reason, not using layerwise baseline loss to avoid wasting time.')
+					self.use_layerwise_baseline_loss 		= False
 		
 		# this lets us load a tuner without having to go through hydra.main first.
 		# it's more convenient when we want to evaluate the model interactively
@@ -1472,6 +1494,9 @@ class Tuner:
 			
 			metrics_dict = {'epoch': epoch + 1, 'dataset': dataset_name, 'dataset_type': dataset_type}
 			metrics.append({**metrics_dict, 'metric': 'loss', 'value': outputs.loss.item()})
+			
+			if (self.use_kl_baseline_loss or self.use_layerwise_baseline_loss) and hasattr(outputs, 'compute_loss'):
+				metrics.append({**metrics_dict, 'metric': 'loss (modified)', 'value': outputs.compute_loss.item()})
 			
 			tb_loss_dict.update({dataset_name: outputs.loss})
 			if outputs.loss.item() < best_losses[dataset_name] - delta:
@@ -1679,8 +1704,11 @@ class Tuner:
 											  otherwise, return the original model loss
 			'''
 			if self.use_kl_baseline_loss and not eval:
-				outputs.loss += self.KL_baseline_loss()
-				return outputs.loss
+				setattr(outputs, 'compute_loss', outputs.loss + self.KL_baseline_loss())
+				return outputs.compute_loss
+			elif self.use_layerwise_baseline_loss and not eval:
+				setattr(outputs, 'compute_loss', outputs.loss + self.layerwise_baseline_loss())
+				return outputs.compute_loss
 			else:
 				return outputs.loss
 		
@@ -1703,6 +1731,26 @@ class Tuner:
 										tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs
 									)
 		
+		if self.use_layerwise_baseline_loss:
+			self.layerwise_baseline_loss 	= layerwise_baseline_loss.LayerwiseBaselineLoss(
+										model 				= self.model, 
+										tokenizer 			= self.tokenizer, 
+										dataset 			= self._load_format_dataset(
+																dataset_loc = os.path.join(
+																	self.original_cwd,
+																	self.layerwise_dataset
+																),
+																split = 'train'
+															),
+										batch_size 			= self.layerwise_batch_size,
+										kl_scaleby 			= self.layerwise_kl_scaleby,
+										l2_scaleby 			= self.layerwise_l2_scaleby,
+										n_examples_per_step	= self.layerwise_n_examples_per_step,
+										masking 			= self.layerwise_masking,
+										model_kwargs 		= self.cfg.model.model_kwargs, 
+										tokenizer_kwargs 	= self.cfg.model.tokenizer_kwargs
+									)
+		
 		initialize_added_token_weights()
 		
 		# store weights pre-training so we can inspect the initial status later
@@ -1720,8 +1768,8 @@ class Tuner:
 		min_epochs 	= self.min_epochs
 		patience 	= self.patience
 		delta 		= self.delta
-		optimizer 	= transformers.AdamW(self.model.parameters(), lr=lr, weight_decay=0)
-		# optimizer 	= torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=0)
+		# optimizer 	= transformers.AdamW(self.model.parameters(), lr=lr, weight_decay=0)
+		optimizer 	= torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=0)
 		
 		# store the old embeddings so we can verify that only the new ones get updated
 		self.old_embeddings = self.word_embeddings.clone()
@@ -1842,7 +1890,11 @@ class Tuner:
 						
 					metrics.append({'epoch': epoch + 1, 'dataset': 'overall', 'dataset_type': 'overall', 'metric': 'remaining patience overall', 'value': patience - patience_counter})
 					writer.add_scalars('remaining patience', {**patience_counters, 'overall': patience - patience_counter}, epoch)
-					t.set_postfix(pat=patience - patience_counter, avg_dev_loss='{0:5.2f}'.format(np.mean(dev_losses)), train_loss='{0:5.2f}'.format(train_loss.item()))
+					
+					if self.use_kl_baseline_loss or self.use_layerwise_baseline_loss:
+						t.set_postfix(pat=patience - patience_counter, avg_dev_loss=f'{np.mean(dev_losses):5.2f}', train_loss_only=f'{train_outputs.loss.item():5.2f}', train_loss_total=f'{train_loss:5.2f}')
+					else:
+						t.set_postfix(pat=patience - patience_counter, avg_dev_loss=f'{np.mean(dev_losses):5.2f}', train_loss=f'{train_outputs.loss.item():5.2f}')
 					
 					if patience_counter >= patience and epoch + 1 >= min_epochs:
 						log.info(f'Mean dev loss has not improved by {delta} in {patience_counter} epochs (min_epochs={min_epochs}). Halting training at epoch {epoch}.')
