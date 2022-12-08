@@ -1,8 +1,7 @@
 string_id: google/multiberts-seed_4-step_1100k
 friendly_name: multiberts_04-1100k
 
-model_kwargs:
-  local_files_only: true
+model_kwargs: {}
+
 tokenizer_kwargs:
   do_basic_tokenize: false
-  local_files_only: true

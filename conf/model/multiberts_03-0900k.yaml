@@ -1,8 +1,7 @@
 string_id: google/multiberts-seed_3-step_900k
 friendly_name: multiberts_03-0900k
 
-model_kwargs:
-  local_files_only: true
+model_kwargs: {}
+
 tokenizer_kwargs:
   do_basic_tokenize: false
-  local_files_only: true
