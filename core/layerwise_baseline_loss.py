@@ -23,7 +23,7 @@ from datasets.utils import disable_progress_bar
 disable_progress_bar()
 dataset_utils_logging.set_verbosity_error()
 
-from . import tuner_utils
+import tuner_utils
 
 log = logging.getLogger(__name__)
 
