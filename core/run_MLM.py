@@ -458,6 +458,11 @@ def get_eval_token_ids(
 	'''
 	bos_index = 1 if tokenizer.bos_token is not None or tokenizer.cls_token is not None else 0
 	
+	if 'uncased' in tokenizer.name_or_path:
+		preprocess_function = lambda s: s.lower()
+	else:
+		preprocess_function = lambda s: s
+	
 	eval_token_ids = []
 	for token_indices, tokens in zip(pred_token_indices, eval_tokens):
 		for token_index in token_indices:
@@ -465,7 +470,7 @@ def get_eval_token_ids(
 				eval_token_ids.append([
 					t for tokens in 
 						tokenizer(
-							[t for t in tokens], 
+							[preprocess_function(t) for t in tokens], 
 							add_special_tokens=False, 
 							return_attention_mask=False
 						)['input_ids']
@@ -475,7 +480,7 @@ def get_eval_token_ids(
 				eval_token_ids.append([
 					t for tokens in 
 						tokenizer(
-							[f' {t}' for t in tokens], 
+							[preprocess_function(f' {t}') for t in tokens], 
 							add_special_tokens=False, 
 							return_attention_mask=False
 						)['input_ids']
