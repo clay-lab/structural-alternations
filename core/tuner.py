@@ -40,12 +40,12 @@ from transformers import logging as lg
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 from sklearn.manifold import TSNE
 
-from . import tuner_plots
-from . import tuner_utils
-from . import kl_baseline_loss
-from . import layerwise_baseline_loss
-from .tuner_utils import none
-from .mixout.module import MixLinear
+import tuner_plots
+import tuner_utils
+import kl_baseline_loss
+import layerwise_baseline_loss
+from tuner_utils import none
+from mixout.module import MixLinear
 
 lg.set_verbosity_error()
 
