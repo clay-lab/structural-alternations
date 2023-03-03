@@ -273,6 +273,7 @@ def preprocess_dataset(
 
 def check_ids(
 	tokenizer: AutoTokenizer,
+	eval_tokens: List[List[str]],
 	eval_token_ids: List[List[int]],
 ) -> None:
 	# check that eval tokens make sense
@@ -482,7 +483,7 @@ def get_eval_token_ids(
 				])
 		
 	# check that the eval tokens are single tokens
-	check_ids(tokenizer=tokenizer, eval_token_ids=eval_token_ids)
+	check_ids(tokenizer=tokenizer, eval_tokens=eval_tokens, eval_token_ids=eval_token_ids)
 	
 	return eval_token_ids
 
