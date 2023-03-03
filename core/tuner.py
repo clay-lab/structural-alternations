@@ -1176,7 +1176,10 @@ class Tuner:
 		def setattrs() -> None:
 			'''Sets static model attributes'''
 			log.info(f'Initializing Model:\t{self.cfg.model.string_id}')
-			if self.cfg.hyperparameters.use_layerwise_baseline_loss:
+			if (
+				'use_layerwise_baseline_loss' in self.cfg.hyperparameters and 
+				self.cfg.hyperparameters.use_layerwise_baseline_loss
+			):
 				self.model 							= AutoModelForMaskedLM.from_pretrained(self.cfg.model.string_id, **{**self.cfg.model.model_kwargs, 'output_hidden_states': True})
 			else:
 				self.model 							= AutoModelForMaskedLM.from_pretrained(self.cfg.model.string_id, **self.cfg.model.model_kwargs)
