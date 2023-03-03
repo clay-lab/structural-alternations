@@ -1277,6 +1277,9 @@ class Tuner:
 					log.warning('For this reason, not using KL baseline loss to avoid wasting time.')
 					self.use_kl_baseline_loss 		= False
 			
+			if not hasattr(self, 'use_layerwise_baseline_loss'):
+				self.use_layerwise_baseline_loss = False
+			
 			if self.use_layerwise_baseline_loss:
 				if not (isinstance(self.unfreezing,(int,float)) and np.isnan(self.unfreezing)):
 					if not (self.cfg.layerwise_loss_params.kl_scaleby == 0 and self.cfg.layerwise_loss_params.l2_scaleby == 0):
