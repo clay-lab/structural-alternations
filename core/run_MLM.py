@@ -281,13 +281,17 @@ def check_ids(
 	eval_token_ids: List[List[int]],
 ) -> None:
 	# check that eval tokens make sense
-	if any(token_id == tokenizer.unk_token_id for token_ids in eval_token_ids for token_id in token_ids):
-		raise ValueError(
-			f'Some tokens used for evaluation are not tokenized as single words!:\n\n' +
-			"\n".join(
-				[str(t) for t in list(zip(eval_tokens, eval_token_ids)) if any(token_id == tokenizer.unk_token_id for token_id in t[-1])]
+	for tokens, token_ids in zip(eval_tokens, eval_token_ids):
+		if (
+			any(token_id == tokenizer.unk_token_id for token_ids in eval_token_ids for token_id in token_ids) or 
+			any(len(token_id) > 1 for token_id in token_ids)
+		):
+			raise ValueError(
+				f'Some tokens used for evaluation are not tokenized as single words!:\n\n' +
+				"\n".join(
+					[str(t) for t in zip(tokens, token_ids) if any(token_id == tokenizer.unk_token_id for token_id in t[-1]) or len(t[-1]) > 1]
+				)
 			)
-		)
 
 def evaluate_model(
 	model: AutoModelForMaskedLM,
@@ -471,28 +475,26 @@ def get_eval_token_ids(
 	for token_indices, tokens in zip(pred_token_indices, eval_tokens):
 		for token_index in token_indices:
 			if token_index == bos_index:
-				eval_token_ids.append([
-					t for tokens in 
-						tokenizer(
-							[preprocess_function(t) for t in tokens], 
-							add_special_tokens=False, 
-							return_attention_mask=False
-						)['input_ids']
-					for t in tokens 
-				])
+				eval_token_ids.append(
+					tokenizer(
+						[preprocess_function(t) for t in tokens], 
+						add_special_tokens=False, 
+						return_attention_mask=False
+					)['input_ids']
+				)
 			else:
-				eval_token_ids.append([
-					t for tokens in 
-						tokenizer(
-							[preprocess_function(f' {t}') for t in tokens], 
-							add_special_tokens=False, 
-							return_attention_mask=False
-						)['input_ids']
-					for t in tokens
-				])
-		
+				eval_token_ids.append(
+					tokenizer(
+						[preprocess_function(f' {t}') for t in tokens], 
+						add_special_tokens=False, 
+						return_attention_mask=False
+					)['input_ids']
+				)
+	
 	# check that the eval tokens are single tokens
 	check_ids(tokenizer=tokenizer, eval_tokens=eval_tokens, eval_token_ids=eval_token_ids)
+	
+	eval_token_ids = [[id for t in token_ids for id in t] for token_ids in eval_token_ids]
 	
 	return eval_token_ids
 
