@@ -24,8 +24,8 @@ from omegaconf import DictConfig
 from contextlib import suppress
 from deprecated import deprecated
 
-from . import tuner_utils
-from .tuner_utils import none
+import tuner_utils
+from tuner_utils import none
 
 log = logging.getLogger(__name__)
 
