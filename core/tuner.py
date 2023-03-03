@@ -27,7 +27,7 @@ from copy import deepcopy
 from tqdm import trange, tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from typing import *
-from .mixout.module import MixLinear
+from mixout.module import MixLinear
 from omegaconf import DictConfig, OmegaConf, open_dict, ListConfig
 from contextlib import suppress
 from deprecated import deprecated
