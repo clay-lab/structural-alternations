@@ -40,7 +40,13 @@ from transformers import (
 	AutoModelForMaskedLM,
 )
 
+from transformers import logging as lg
+
 from tuner import Tuner
+
+lg.set_verbosity_error()
+
+log = logging.getLogger(__name__)
 
 def model_load_functions(model_name_or_path: str) -> Callable:
 	'''
