@@ -514,7 +514,7 @@ def evaluate_MLM_batch(
 	as a prediction for the mask token.
 	'''
 	with torch.no_grad():
-		batch_outputs = model(inputs['input_ids'])
+		batch_outputs = model(**inputs)
 	
 	# get the logprobs for the indices where the predictions are to be found
 	batch_scores = torch.stack([t[i][:len(tokenizer.get_vocab())] for t, i in zip(batch_outputs.logits, pred_token_indices)])
