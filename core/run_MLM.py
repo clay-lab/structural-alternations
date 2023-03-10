@@ -301,6 +301,7 @@ def check_ids(
 			)
 
 def evaluate_model(
+	model_args: ModelArguments,
 	model: AutoModelForMaskedLM,
 	tokenizer: AutoTokenizer,
 	test_dataset: Dataset,
@@ -312,6 +313,8 @@ def evaluate_model(
 	Saves results in data_args.output_dir as a csv.gz.
 	
 	params:
+		model_args (ModelArguments)			: used to assign a unique identifier for the directory
+											  the model is in
 		model (AutoModelForMaskedLM)		: the model to evaluate
 		tokenizer (AutoTokenizer)			: the tokenizer for the model
 		test_dataset (Dataset)				: the dataset to evaluate on
@@ -406,6 +409,7 @@ def evaluate_model(
 	
 	metrics = metrics.assign(
 		model_name=re.sub('["\']', '', model.config.name_or_path),
+		model_path=model_args.model_name_or_path,
 		test_dataset=os.path.basename(data_args.test_file).replace('.txt.gz', ''),
 	)
 	
@@ -568,7 +572,7 @@ def _run_MLM(model_args: ModelArguments, data_args: DataArguments) -> None:
 	dataset = load_dataset('text', data_files={'test': data_args.test_file})
 	test_dataset = preprocess_dataset(dataset, data_args, tokenizer)
 	
-	evaluate_model(model, tokenizer, test_dataset, data_args, added_args)
+	evaluate_model(model_args, model, tokenizer, test_dataset, data_args, added_args)
 
 def run_MLM() -> None:
 	logger = setup_logging()
