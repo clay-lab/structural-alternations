@@ -150,6 +150,7 @@ joblogs/
 
 # scripts
 # scripts/*/
+scripts/test/
 scripts/*.txt
 
 # unneeded data files
