@@ -184,9 +184,11 @@ def parse_cl_arguments(*args: Tuple) -> Tuple:
 	
 	return model_args, data_args
 
-def load_tokenizer_and_model(model_args: ModelArguments) -> Tuple:
+def load_tokenizer_model_and_added_args(model_args: ModelArguments) -> Tuple:
 	'''Loads the tokenizer and model as specified in model_args.'''
 	# If we're loading from the hub
+	added_args = []
+	
 	if not os.path.exists(model_args.model_name_or_path):
 		config = AutoConfig.from_pretrained(
 			model_args.config_name if model_args.config_name else model_args.model_name_or_path,
@@ -215,10 +217,13 @@ def load_tokenizer_and_model(model_args: ModelArguments) -> Tuple:
 		tuner._restore_original_random_seed()
 		_, _ = tuner.restore_weights()
 		
+		if hasattr(tuner, 'args'):
+			added_args = tuner._format_strings_with_tokens_for_display(list(tuner.args.values()))
+		
 		tokenizer = tuner.tokenizer
 		model = tuner.model
 	
-	return tokenizer, model
+	return tokenizer, model, added_args
 
 def preprocess_dataset(
 	dataset: 'Dataset', 
@@ -297,7 +302,8 @@ def evaluate_model(
 	model: AutoModelForMaskedLM,
 	tokenizer: AutoTokenizer,
 	test_dataset: Dataset,
-	data_args: DataArguments
+	data_args: DataArguments,
+	added_args: List[str],
 ) -> None:
 	'''
 	Evaluates a model on the test dataset using masked language modeling.
@@ -314,6 +320,11 @@ def evaluate_model(
 											  not supported.
 		data_args (DataArguments)			: the arguments containing information about the data.
 											  see the DataArguments class for more details.
+		added_args (List[str])				: additional tokens to evaluate for each example
+											  not specified in the metadata file.
+											  this is used for newverb experiments to allow the addition
+											  of the individually chosen subject+object tokens
+											  for each model
 	raises:
 		ValueError 							: if eval_tokens for any sentence are not tokenized
 											  as single tokens, predictions are hard to interpret,
@@ -353,7 +364,10 @@ def evaluate_model(
 		return batch
 
 	with open(data_args.test_file.replace('.data', '_metadata.json'), 'rt', encoding='utf-8') as in_file:
-		metadata = [json.loads(l) for l in in_file.readlines()]	
+		metadata = [json.loads(l) for l in in_file.readlines()]
+	
+	for d in metadata:
+		d["eval_tokens"] += added_args
 	
 	os.makedirs(data_args.output_dir, exist_ok=True)
 	
@@ -553,11 +567,11 @@ def run_MLM() -> None:
 	model_args, data_args = parse_cl_arguments(ModelArguments, DataArguments)
 	logger.info(f'Evaluation parameters: {data_args}')
 	
-	tokenizer, model = load_tokenizer_and_model(model_args)
+	tokenizer, model, added_args = load_tokenizer_and_model(model_args)
 	dataset = load_dataset('text', data_files={'test': data_args.test_file})
 	test_dataset = preprocess_dataset(dataset, data_args, tokenizer)
 	
-	evaluate_model(model, tokenizer, test_dataset, data_args)
+	evaluate_model(model, tokenizer, test_dataset, data_args, added_args)
 
 if __name__ == '__main__':
 	run_MLM()
