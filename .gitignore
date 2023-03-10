@@ -149,7 +149,7 @@ joblogs/
 
 
 # scripts
-scripts/*/
+# scripts/*/
 scripts/*.txt
 
 # unneeded data files
