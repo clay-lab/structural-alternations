@@ -27,7 +27,9 @@ import transformers
 import pandas as pd
 import torch.nn.functional as F
 
+from glob import glob
 from tqdm import tqdm
+from copy import deepcopy
 from typing import *
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
@@ -561,17 +563,33 @@ def evaluate_MLM_batch(
 	
 	return metrics
 
+def _run_MLM(model_args: ModelArguments, data_args: DataArguments) -> None:
+	tokenizer, model, added_args = load_tokenizer_and_model(model_args)
+	dataset = load_dataset('text', data_files={'test': data_args.test_file})
+	test_dataset = preprocess_dataset(dataset, data_args, tokenizer)
+	
+	evaluate_model(model, tokenizer, test_dataset, data_args, added_args)
+
 def run_MLM() -> None:
 	logger = setup_logging()
 	
 	model_args, data_args = parse_cl_arguments(ModelArguments, DataArguments)
 	logger.info(f'Evaluation parameters: {data_args}')
 	
-	tokenizer, model, added_args = load_tokenizer_and_model(model_args)
-	dataset = load_dataset('text', data_files={'test': data_args.test_file})
-	test_dataset = preprocess_dataset(dataset, data_args, tokenizer)
-	
-	evaluate_model(model, tokenizer, test_dataset, data_args, added_args)
+	if model_args.model_name_or_path.startswith('glob('):
+		# strip off the glob function to get the expression
+		model_args.model_name_or_path = model_args.model_name_or_path[len('glob('):-len(')')]
+		all_paths = sorted(glob(model_args.model_name_or_path, recursive=True))
+		start_dir = os.getcwd()
+		
+		for path in all_paths:
+			model_args_new = deepcopy(model_args)
+			model_args_new.model_name_or_path = path
+			
+			_run_MLM(model_args_new, data_args)
+			os.chdir(start_dir)
+	else:
+		_run_MLM(model_args, data_args)
 
 if __name__ == '__main__':
 	run_MLM()
