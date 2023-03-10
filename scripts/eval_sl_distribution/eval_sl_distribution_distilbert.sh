@@ -12,5 +12,5 @@ source activate salts
 
 python core/run_MLM.py \
 	--model_name_or_path distilbert-base-uncased \
-	--output_dir eval-syn_sl_distribution/distilbert-base-uncased \ 
+	--output_dir eval-syn_sl_distribution/distilbert-base-uncased \
 	--test_file data/syn_sl_distribution_baseline.data

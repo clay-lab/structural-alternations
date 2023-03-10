@@ -22,6 +22,7 @@ import re
 import json
 import torch
 import logging
+import itertools
 import transformers
 
 import pandas as pd
@@ -342,7 +343,8 @@ def evaluate_model(
 	
 	# do not reevaluate if the output file already exists
 	if os.path.exists(output_pred_file):
-		return
+		# return
+		pass
 	
 	def pad_tensor(t: torch.Tensor, pad: int, dim: int = -1) -> torch.Tensor:
 		'''
@@ -371,8 +373,15 @@ def evaluate_model(
 	with open(data_args.test_file.replace('.data', '_metadata.json'), 'rt', encoding='utf-8') as in_file:
 		metadata = [json.loads(l) for l in in_file.readlines()]
 	
+	warned = False
 	for d in metadata:
-		d["eval_tokens"] += added_args
+		d["eval_tokens"] += list(itertools.chain(*added_args))
+		if not "added_tokens" in d:
+			d["added_tokens"] = ','.join(list(itertools.chain(*added_args)))
+		elif not warned:
+			warned = True
+			print('Warning: additional arguments were added, but the key "added_args" already exists in the metadata.')
+			print('Which arguments were added programmatically will not be recorded in the results.')
 	
 	os.makedirs(data_args.output_dir, exist_ok=True)
 	
@@ -567,9 +576,8 @@ def evaluate_MLM_batch(
 	
 	return metrics
 
-def _run_MLM(model_args: ModelArguments, data_args: DataArguments) -> None:
-	tokenizer, model, added_args = load_tokenizer_and_model(model_args)
-	dataset = load_dataset('text', data_files={'test': data_args.test_file})
+def _run_MLM(dataset: Dataset, model_args: ModelArguments, data_args: DataArguments) -> None:
+	tokenizer, model, added_args = load_tokenizer_model_and_added_args(model_args)
 	test_dataset = preprocess_dataset(dataset, data_args, tokenizer)
 	
 	evaluate_model(model_args, model, tokenizer, test_dataset, data_args, added_args)
@@ -580,17 +588,25 @@ def run_MLM() -> None:
 	model_args, data_args = parse_cl_arguments(ModelArguments, DataArguments)
 	logger.info(f'Evaluation parameters: {data_args}')
 	
+	dataset = load_dataset('text', data_files={'test': data_args.test_file})
+	
 	if model_args.model_name_or_path.startswith('glob('):
 		# strip off the glob function to get the expression
 		model_args.model_name_or_path = model_args.model_name_or_path[len('glob('):-len(')')]
 		all_paths = sorted(glob(model_args.model_name_or_path, recursive=True))
 		start_dir = os.getcwd()
 		
+		# convert relative path to absolute path since loading a tuner changes
+		# the working directory. we've already loaded the dataset, but this
+		# will need to be set for the metadata to be located correctly
+		if not data_args.test_file.startswith('/'):
+			data_args.test_file = os.path.join(start_dir, data_args.test_file)
+		
 		for path in all_paths:
 			model_args_new = deepcopy(model_args)
 			model_args_new.model_name_or_path = path
 			
-			_run_MLM(model_args_new, data_args)
+			_run_MLM(dataset, model_args_new, data_args)
 			os.chdir(start_dir)
 	else:
 		_run_MLM(model_args, data_args)

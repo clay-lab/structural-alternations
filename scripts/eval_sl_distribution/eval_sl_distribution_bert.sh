@@ -12,5 +12,5 @@ source activate salts
 
 python core/run_MLM.py \
 	--model_name_or_path bert-base-uncased \
-	--output_dir eval-syn_sl_distribution/bert-base-uncased \ 
+	--output_dir eval-syn_sl_distribution/bert-base-uncased \
 	--test_file data/syn_sl_distribution_baseline.data

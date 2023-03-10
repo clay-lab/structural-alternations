@@ -12,5 +12,5 @@ source activate salts
 
 python core/run_MLM.py \
 	--model_name_or_path roberta-base \
-	--output_dir eval-syn_unpassivizable_distribution/roberta-base \ 
+	--output_dir eval-syn_unpassivizable_distribution/roberta-base \
 	--test_file data/syn_unpassivizable_distribution.data
