@@ -451,12 +451,10 @@ def evaluate_batch(
 	if batch_metadata is None:
 		batch_metadata = {}
 	
-	pred_token_indices = torch.stack(
-		[
-			(sequence == tokenizer.mask_token_id).nonzero(as_tuple=True)[0]
-			for sequence in inputs['input_ids']
-		]
-	)
+	pred_token_indices = [[
+		(sequence == tokenizer.mask_token_id).nonzero(as_tuple=True)[0]
+		for sequence in inputs['input_ids']
+	]]
 	
 	eval_token_ids = get_eval_token_ids(
 		tokenizer=tokenizer, 
@@ -609,7 +607,7 @@ def run_MLM() -> None:
 			_run_MLM(dataset, model_args_new, data_args)
 			os.chdir(start_dir)
 	else:
-		_run_MLM(model_args, data_args)
+		_run_MLM(dataset, model_args, data_args)
 
 if __name__ == '__main__':
 	run_MLM()
