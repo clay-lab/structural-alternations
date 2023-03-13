@@ -451,10 +451,10 @@ def evaluate_batch(
 	if batch_metadata is None:
 		batch_metadata = {}
 	
-	pred_token_indices = [[
+	pred_token_indices = [
 		(sequence == tokenizer.mask_token_id).nonzero(as_tuple=True)[0]
 		for sequence in inputs['input_ids']
-	]]
+	]
 	
 	eval_token_ids = get_eval_token_ids(
 		tokenizer=tokenizer, 
