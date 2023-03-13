@@ -456,7 +456,7 @@ def evaluate_batch(
 		for sequence in inputs['input_ids']
 	]
 	
-	eval_token_ids = get_eval_token_ids(
+	eval_tokens, eval_token_ids = get_eval_token_ids(
 		tokenizer=tokenizer, 
 		pred_token_indices=pred_token_indices, 
 		eval_tokens=eval_tokens
@@ -498,32 +498,42 @@ def get_eval_token_ids(
 	else:
 		preprocess_function = lambda s: s
 	
+	# we might need multiple version
+	# of a requested eval token depending
+	# on where in the sentence it goes
+	# so we need to return the actual ones to be
+	# able to line them up
+	actual_eval_tokens = []
 	eval_token_ids = []
-	for token_indices, tokens in zip(pred_token_indices, eval_tokens):
+	
+	for i, (token_indices, tokens) in enumerate(zip(pred_token_indices, eval_tokens)):
+		actual_eval_tokens.append([])
+		eval_token_ids.append([])
 		for token_index in token_indices:
 			if token_index == bos_index:
-				eval_token_ids.append(
-					tokenizer(
-						[preprocess_function(t) for t in tokens], 
-						add_special_tokens=False, 
-						return_attention_mask=False
-					)['input_ids']
-				)
+				actual_words = [preprocess_function(t) for t in tokens]
 			else:
-				eval_token_ids.append(
-					tokenizer(
-						[preprocess_function(f' {t}') for t in tokens], 
-						add_special_tokens=False, 
-						return_attention_mask=False
-					)['input_ids']
-				)
+				actual_words = [preprocess_function(f' {t}') for t in tokens]
+				
+			tokenized = tokenizer(
+				actual_words,
+				add_special_tokens=False,
+				return_attention_mask=False,
+			)['input_ids']
+			
+			actual_eval_tokens[i].extend(actual_words)
+			eval_token_ids[i].extend(tokenized)
+	
+	no_duplicates = [dict(zip(words, token_ids)) for words, token_ids in zip(actual_eval_tokens, eval_token_ids)]
+	actual_eval_tokens = [list(d.keys()) for d in no_duplicates]
+	eval_token_ids = [list(d.values()) for d in no_duplicates]
 	
 	# check that the eval tokens are single tokens
-	check_ids(tokenizer=tokenizer, eval_tokens=eval_tokens, eval_token_ids=eval_token_ids)
+	check_ids(tokenizer=tokenizer, eval_tokens=actual_eval_tokens, eval_token_ids=eval_token_ids)
 	
 	eval_token_ids = [[id for t in token_ids for id in t] for token_ids in eval_token_ids]
 	
-	return eval_token_ids
+	return actual_eval_tokens, eval_token_ids
 
 def evaluate_MLM_batch(
 	model: AutoModelForMaskedLM,
