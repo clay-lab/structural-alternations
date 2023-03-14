@@ -12,5 +12,5 @@ source activate salts
 
 python core/run_MLM.py \
 	--model_name_or_path 'glob(outputs/Archive/Archive-sl-backup/Archive-sl/*/*-always_masked-with_punctuation/*)' \
-	--output_dir eval-syn_sl_distribution/distilbert-base-uncased \
+	--output_dir outputs/eval-syn_sl_distribution \
 	--test_file data/syn_sl_distribution.data
