@@ -253,7 +253,7 @@ def preprocess_dataset(
 		if tokenizer.mask_token != '[MASK]':
 			examples['text'] = [text.replace('[MASK]', tokenizer.mask_token) for text in examples['text']]
 		
-		if 'uncased' in tokenizer.name_or_path:
+		if 'uncased' in tokenizer.name_or_path or 'multiberts' in tokenizer.name_or_path:
 			examples['text'] = [text.lower() for text in examples['text']]
 			examples['text'] = [text.replace(tokenizer.mask_token.lower(), tokenizer.mask_token) for text in examples['text']]
 		
