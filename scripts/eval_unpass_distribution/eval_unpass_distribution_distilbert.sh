@@ -3,7 +3,7 @@
 #SBATCH --job-name=eval-unpass-distribution-distilbert
 #SBATCH --output=joblogs/%x_%j.txt
 #SBATCH --mem=32G
-#SBATCH --time=01-00:00:00
+#SBATCH --time=01:00:00
 #SBATCH --mail-type=END,FAIL,INVALID_DEPEND
 
 module load miniconda
