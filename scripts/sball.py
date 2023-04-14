@@ -97,7 +97,7 @@ def submit_batched_jobs(name, args, batches):
 		time.sleep(1)
 		x.kill()
 		
-		os.remove(joblist_file)
+		# os.remove(joblist_file)
 		os.remove(os.path.join(dirname, name + formatter + '.sh'))
 
 def sbatch_all(s):
