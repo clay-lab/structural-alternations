@@ -1,0 +1,7 @@
+string_id: answerdotai/ModernBERT-base
+friendly_name: ModernBERT Base
+
+model_kwargs: {}
+
+tokenizer_kwargs:
+  do_basic_tokenize: false

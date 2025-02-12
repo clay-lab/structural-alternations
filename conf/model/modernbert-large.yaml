@@ -1,0 +1,7 @@
+string_id: answerdotai/ModernBERT-large
+friendly_name: ModernBERT Large
+
+model_kwargs: {}
+
+tokenizer_kwargs:
+  do_basic_tokenize: false
