@@ -24,8 +24,8 @@ from omegaconf import DictConfig
 from contextlib import suppress
 from deprecated import deprecated
 
-import tuner_utils
-from tuner_utils import none
+from . import tuner_utils
+from .tuner_utils import none
 
 log = logging.getLogger(__name__)
 
@@ -1347,8 +1347,8 @@ def create_odds_ratios_plots(
 				perc_correct_str 	+= f' (\u00B1{se:.2f})'
 			
 			perc_correct_str += (
-				f', $\it{{r}}$: {acc["r"]:.2f}' + 						# pearson's r
-				f' ($\it{{p}}$={acc["p_r"]:.2f})'						# p-value of r
+				fr', $\it{{r}}$: {acc["r"]:.2f}' + 						# pearson's r
+				fr' ($\it{{p}}$={acc["p_r"]:.2f})'						# p-value of r
 			)
 			
 			subtitle += perc_correct_str

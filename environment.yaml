@@ -17,9 +17,9 @@ dependencies:
   - tensorboard
   - pandas
   - setuptools
-  - pytorch
-  - cudatoolkit
   - scikit-learn
   - Deprecated
+  - tiktoken
+  - blobfile
   - pip:
     - -r requirements.txt

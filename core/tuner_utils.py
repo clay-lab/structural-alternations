@@ -34,6 +34,8 @@ from datasets.utils import disable_progress_bar
 disable_progress_bar()
 dataset_utils_logging.set_verbosity_error()
 
+from hydra.core.hydra_config import HydraConfig
+
 log = logging.getLogger(__name__)
 
 # grammatical functions in order of prominence for sorting things
@@ -808,9 +810,9 @@ def create_tokenizer_with_added_tokens(
 	'''
 	kwargs.update(dict(use_fast=False))
 	
-	if re.search(r'(^(distil)?bert-)|(multiberts-)|(ModernBERT-)', model_id):
+	if re.search(r'(^(distil)?bert-)|(multiberts-)', model_id):
 		return create_bert_tokenizer_with_added_tokens(model_id, tokens_to_mask, delete_tmp_vocab_files, **kwargs)
-	elif re.search(r'^roberta-', model_id):
+	elif re.search(r'^(roberta-)|(ModernBERT-)', model_id):
 		return create_roberta_tokenizer_with_added_tokens(model_id, tokens_to_mask, delete_tmp_vocab_files, **kwargs)	
 	else:
 		raise ValueError('Only BERT, DistilBERT, and RoBERTa tokenizers are currently supported.')
@@ -852,7 +854,7 @@ def create_bert_tokenizer_with_added_tokens(
 	
 	exec(f'from transformers import {bert_tokenizer.__class__.__name__}')
 	
-	tokenizer = eval(bert_tokenizer.__class__.__name__)(name_or_path=model_id, vocab_file='vocab.tmp', **kwargs)
+	tokenizer = eval(bert_tokenizer.__class__.__name__)(name_or_path=model_id, vocab_file='vocab.tmp', **{**kwargs, 'use_fast': False})
 	
 	# for some reason, we have to re-add the [MASK] token to bert to get this to work, otherwise
 	# it breaks it apart into separate tokens '[', 'mask', and ']' when loading the vocab locally (???)
@@ -898,38 +900,45 @@ def create_roberta_tokenizer_with_added_tokens(
 	
 	assert not verify_tokens_exist(roberta_tokenizer, tokens_to_mask), f'New token {token} already exists in {model_id} tokenizer!'
 	
-	vocab = roberta_tokenizer.get_vocab()
+	if 'roberta' in model_id:
+		vocab = roberta_tokenizer.get_vocab()
 	
-	for token in tokens_to_mask:
-		vocab.update({token: len(vocab)})
-	
-	with open('vocab.tmp', 'w', encoding = 'utf8') as tmp_vocab_file:
-		json.dump(vocab, tmp_vocab_file, ensure_ascii=False)
-	
-	merges = [' '.join(key) for key in roberta_tokenizer.bpe_ranks.keys()]
-	# we have to add a newline at the beginning of the file
-	# since it's expecting it to be a comment, so we add a blank string here
-	# that will get joined with a newline
-	merges = [''] + get_roberta_bpes_for_new_tokens(tokens_to_mask) + merges
-	merges = list(dict.fromkeys(merges)) # drops any duplicates we may have happened to add while preserving order
-	with open('merges.tmp', 'w', encoding = 'utf-8') as tmp_merges_file:
-		tmp_merges_file.write('\n'.join(merges))
-	
-	exec(f'from transformers import {roberta_tokenizer.__class__.__name__}')
-	
-	tokenizer = eval(roberta_tokenizer.__class__.__name__)(name_or_path=model_id, vocab_file='vocab.tmp', merges_file='merges.tmp', **kwargs)
-	
-	# for some reason, we have to re-add the <mask> token to roberta to get this to work, otherwise
-	# it breaks it apart into separate tokens '<', 'mask', and '>' when loading the vocab and merges locally (???)
-	# this does not affect the embeddings or the model's ability to recognize it
-	# as a mask token (e.g., if you create a filler object with this tokenizer, 
-	# it will identify the mask token position correctly)
-	tokenizer.add_tokens(tokenizer.mask_token, special_tokens=True)
-	tokenizer.model_max_length = roberta_tokenizer.model_max_length
-	
-	if delete_tmp_vocab_files:
-		os.remove('vocab.tmp')
-		os.remove('merges.tmp')
+		for token in tokens_to_mask:
+			vocab.update({token: len(vocab)})
+		
+		with open('vocab.tmp', 'w', encoding = 'utf8') as tmp_vocab_file:
+			json.dump(vocab, tmp_vocab_file, ensure_ascii=False)
+		
+		merges = [' '.join(key) for key in roberta_tokenizer.bpe_ranks.keys()]
+		merges = [''] + get_roberta_bpes_for_new_tokens(tokens_to_mask) + merges
+		# we have to add a newline at the beginning of the file
+		# since it's expecting it to be a comment, so we add a blank string here
+		# that will get joined with a newline
+		merges = list(dict.fromkeys(merges)) # drops any duplicates we may have happened to add while preserving order
+		with open('merges.tmp', 'w', encoding = 'utf-8') as tmp_merges_file:
+			tmp_merges_file.write('\n'.join(merges))
+		
+		exec(f'from transformers import {roberta_tokenizer.__class__.__name__}')
+		tokenizer = eval(roberta_tokenizer.__class__.__name__)(name_or_path=model_id, vocab_file='vocab.tmp', merges_file='merges.tmp', **kwargs)
+		
+		# for some reason, we have to re-add the <mask> token to roberta to get this to work, otherwise
+		# it breaks it apart into separate tokens '<', 'mask', and '>' when loading the vocab and merges locally (???)
+		# this does not affect the embeddings or the model's ability to recognize it
+		# as a mask token (e.g., if you create a filler object with this tokenizer, 
+		# it will identify the mask token position correctly)
+		tokenizer.add_tokens(tokenizer.mask_token, special_tokens=True)
+		tokenizer.model_max_length = roberta_tokenizer.model_max_length
+		
+		if delete_tmp_vocab_files:
+			os.remove('vocab.tmp')
+			os.remove('merges.tmp')
+	else:
+		# here we deal with the ModernBERT tokenizers. For these it appears that using
+		# the add tokens method works correctly (fortunately, since there doesn't seem
+		# to be another way to do this because the tiktoken stuff doesn't seem to permit
+		# recreating the tokenizer from scratch).
+		roberta_tokenizer.add_tokens(tokens_to_mask)
+		tokenizer = roberta_tokenizer
 	
 	assert verify_tokens_exist(tokenizer, tokens_to_mask), 'New tokens were not added correctly!'
 	
@@ -1028,6 +1037,26 @@ def format_roberta_tokens_for_tokenizer(data: str) -> str:
 	return data
 
 @recursor(str)
+def format_modernbert_tokens_for_tokenizer(data: str) -> str:
+	'''
+	Format a modernbert token for use with a tokenizer given an input in display formatting
+	Recursor means that this applies recursively to any nested data structure, formatting all tokens for use with modernbert,
+	and outputs data in the same shape as the input
+		
+		params:
+			data (str)	: a token formatted for display to format for use with the tokenizer
+		
+		returns:
+			data (str)	: the token formatted for use with a roberta tokenizer
+	'''
+	if (not data.startswith(chr(288)) and not data.startswith(' ')) and not data.startswith('^'):
+		data = f' {data}'
+	elif data.startswith('^'):
+		data = re.sub(r'^\^', '', data)
+	
+	return data
+
+@recursor(str)
 def format_roberta_tokens_for_display(token: str) -> str:
 	'''
 	Format a roberta token for display purposes (summary files and plots)
@@ -1046,7 +1075,27 @@ def format_roberta_tokens_for_display(token: str) -> str:
 		token = f'^{token}'
 	
 	return token
+
+@recursor(str)
+def format_modernbert_tokens_for_display(token: str) -> str:
+	'''
+	Format a modernbert token for display purposes (summary files and plots)
+	Recursor means that this applies recursively to any nested data structure, formatting all tokens for use with roberta,
+	and outputs data in the same shape as the input
 	
+		params:
+			token (str): the token (in tokenizer format) to format for display
+		
+		returns:
+			token (str): the token formatted for display
+	'''
+	if token.startswith(chr(288)) or token.startswith(' '):
+		token = re.sub(rf'^{chr(288)}| ', '', token)
+	elif not token.startswith('^'):
+		token = f'^{token}'
+	
+	return token
+
 @recursor(str)
 def format_strings_with_tokens_for_display(
 	data: str, 
@@ -1085,7 +1134,7 @@ def format_strings_with_tokens_for_display(
 					token = to_token
 				
 				# if we already have a carat before
-				# the currenty token don't add another
+				# the current token don't add another
 				# this will fail in one edge case where
 				# the preceding context is supposed to end with a carat
 				# but I don't care about that since it's probably bad anyway
@@ -1094,6 +1143,22 @@ def format_strings_with_tokens_for_display(
 				
 				
 				data = data[:span[0]] + re.sub(rf'{chr(288)}{re.escape(token)}', token, data[span[0]:span[1]]) + data[span[1]:]
+			elif 'modernbert' in model_name.lower():
+				if to_token.startswith(chr(288)) or to_token.startswith('^') or to_token.startswith(' '):
+					token = to_token[1:]
+				else:
+					token = to_token
+				
+				# if we already have a carat before
+				# the current token don't add another
+				# this will fail in one edge case where
+				# the preceding context is supposed to end with a carat
+				# but I don't care about that since it's probably bad anyway
+				if not data[:span[0]].endswith('^'):
+					data = data[:span[0]] + re.sub(rf'^(?<!{chr(288)}){re.escape(token)}', f'^{token}', data[span[0]:span[1]]) + data[span[1]:]
+				
+				
+				data = data[:span[0]] + re.sub(rf'({chr(288)}| ){re.escape(token)}', token, data[span[0]:span[1]]) + data[span[1]:]
 			
 			# this might need to be adjusted if we ever use an uncased roberta model,
 			# since we'll need to check after modifying the token to token[1:] above
@@ -1190,6 +1255,8 @@ def verify_tokenization_of_sentences(
 		# to replace the tokens in the sentences for comparison with roberta, we need to get the display versions
 		# we can't do this on the tokenized sentences, because those will break apart the new tokens in different ways
 		tokens_to_mask = format_roberta_tokens_for_display(tokens_to_mask)
+	elif 'modernbert' in tokenizer.name_or_path.lower():
+		tokens_to_mask = format_modernbert_tokens_for_display(tokens_to_mask)
 	
 	if tokens_to_mask:
 		masked_sentences = []
@@ -1369,13 +1436,15 @@ def mask_input(
 			tokenizer (PreTrainedTokenizer)	: the tokenizer for the model for which the inputs are being prepared
 			indices (list[int])				: which positions to mask in the input
 											  if no indices are passed and masking is in ['bert', 'roberta', 'none'],
-											  a random 15% of tokens will be chosen to mask
+											  a random 15% of tokens will be chosen to mask.
+											  if maskng is 'modernbert', a random 30% of tokens will be chosen to mask.
 			masking_style (str)				: a string specifying which masked tuning style to use
 											  'always' means always replace the indices with the mask
 											  'none' means leave the original indices in place
 											  'bert/roberta' means replace the indices with the mask 80% of the time,
 											  	with the original token 10% of the time,
 											  	and with a random token id 10% of the time
+											  'modernbert' means do bert-roberta, too.
 			device (str)					: what device (cpu, cuda) to place any returned indices on
 		
 		returns:
@@ -1389,7 +1458,8 @@ def mask_input(
 		return_indices = True
 		# exclude the pad tokens
 		candidates 	= (inputs != tokenizer.convert_tokens_to_ids(tokenizer.pad_token)).nonzero(as_tuple=True)[0]
-		indices 	= torch.argsort(torch.rand(candidates.shape[0], device=device))[:round(candidates.shape[0]*.15)]
+		rate = 0.15 if masking_style in ['bert', 'roberta'] else 0.3
+		indices 	= torch.argsort(torch.rand(candidates.shape[0], device=device))[:round(candidates.shape[0]*rate)]
 		# this is just for presentational purposes really
 		indices 	= indices.sort().values
 	
@@ -1408,7 +1478,7 @@ def mask_input(
 		# do not use bert/roberta-style masking if we are always masking
 		# note that we DO want to allow collecting unmasked inputs even when using always masked tuning, since we need them for the labels
 		# setting this to 0 means we always mask if masking_style is none
-		r = np.random.random() if masking_style in ['bert', 'roberta'] else 0
+		r = np.random.random() if masking_style in ['bert', 'roberta', 'modernbert'] else 0
 			
 		# Roberta tuning regimen: 
 		# masked tokens are masked 80% of the time,

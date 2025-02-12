@@ -1,1 +1,4 @@
-torchtext==0.11.0
+-i https://download.pytorch.org/whl/cu126
+torch
+torchvision
+torchaudio

@@ -27,7 +27,7 @@ from copy import deepcopy
 from tqdm import trange, tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from typing import *
-from mixout.module import MixLinear
+from .mixout.module import MixLinear
 from omegaconf import DictConfig, OmegaConf, open_dict, ListConfig
 from contextlib import suppress
 from deprecated import deprecated
@@ -40,12 +40,11 @@ from transformers import logging as lg
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 from sklearn.manifold import TSNE
 
-import tuner_plots
-import tuner_utils
-import kl_baseline_loss
-import layerwise_baseline_loss
-from tuner_utils import none
-from mixout.module import MixLinear
+from . import tuner_plots
+from . import tuner_utils
+from . import kl_baseline_loss
+from . import layerwise_baseline_loss
+from .tuner_utils import none
 
 lg.set_verbosity_error()
 
@@ -63,7 +62,10 @@ class Tuner:
 	@property
 	def word_embeddings(self) -> nn.parameter.Parameter:
 		'''Returns the model's word embedding weights'''
-		return getattr(self.model, self.model_name).embeddings.word_embeddings.weight
+		if not 'modernbert' in self.model_name:
+			return getattr(self.model, self.model_name).embeddings.word_embeddings.weight
+		else:
+			return getattr(self.model, 'model').embeddings.tok_embeddings.weight
 	
 	@property
 	def added_token_weights(self) -> Dict[str,torch.Tensor]:
@@ -332,11 +334,13 @@ class Tuner:
 		'''
 		return tuner_utils.format_data_for_tokenizer(data=data, mask_token=self.mask_token, string_id=self.string_id, remove_punct=self.strip_punct)
 		
-	def _format_tokens_for_tokenizer(self, tokens: 'any') -> 'any':
+	def _format_tokens_for_tokenizer(self, tokens: 'any', format_override: str = None) -> 'any':
 		'''Pipelines formatting tokens for models'''
 		formatted_tokens	 = self._format_data_for_tokenizer(tokens)
-		if self.model_name == 'roberta':
+		if self.model_name == 'roberta' or format_override == 'roberta':
 			formatted_tokens = tuner_utils.format_roberta_tokens_for_tokenizer(formatted_tokens)
+		elif 'modernbert' in self.model_name.lower():
+			formatted_tokens = tuner_utils.format_modernbert_tokens_for_tokenizer(formatted_tokens)
 		else:
 			formatted_tokens = tuner_utils.apply_to_all_of_type(formatted_tokens, str, lambda x: x if not x.startswith('^') else None)
 		
@@ -1218,6 +1222,8 @@ class Tuner:
 			tokens 									= self._format_tokens_for_tokenizer(self.cfg.tuning.to_mask)
 			if self.model_name == 'roberta':
 				tokens 								= tuner_utils.format_roberta_tokens_for_tokenizer(tokens)
+			elif 'modernbert' in self.model_name:
+				tokens 								= tuner_utils.format_modernbert_tokens_for_tokenizer(tokens)
 			
 			self.tokens_to_mask						= tokens
 			
@@ -1246,7 +1252,10 @@ class Tuner:
 					for dataset in self.cfg.dev:
 						self.cfg.dev[dataset].data 	= self._generate_filled_verb_data(self.cfg.dev[dataset].data, self.cfg.tuning.args)
 				
-				self.args 							= {k: self._format_tokens_for_tokenizer(v) for k, v in self.cfg.tuning.args.items()}
+				# we need to do this because we need to treat the existing tokens differently from the new
+				# token in modernbert, and otherwise they will all be treated the same way.
+				format_override 				    = 'roberta' if 'modernbert' in self.model_name else None
+				self.args 							= {k: self._format_tokens_for_tokenizer(v, format_override=format_override) for k, v in self.cfg.tuning.args.items()}
 			
 			self.tuning_data 						= self._get_formatted_datasets(masking_style='none')[self.tuning]
 			self.masked_tuning_data 				= self._get_formatted_datasets(mask_args=mask_args, masking_style='always')[self.tuning]
@@ -1685,14 +1694,24 @@ class Tuner:
 			else:
 				self.random_seed 					= int(torch.randint(2**32-1, (1,)))
 			
-			getattr(self.model, self.model_name).embeddings.word_embeddings.weight = \
-				tuner_utils.reinitialize_token_weights(
-					word_embeddings=self.word_embeddings, 
-					tokens_to_initialize=self.tokens_to_mask,
-					tokenizer=self.tokenizer,
-					device=self.device, 
-					seed=self.random_seed,
-				)
+			if 'modernbert' not in self.model_name:
+				getattr(self.model, self.model_name).embeddings.word_embeddings.weight = \
+					tuner_utils.reinitialize_token_weights(
+						word_embeddings=self.word_embeddings, 
+						tokens_to_initialize=self.tokens_to_mask,
+						tokenizer=self.tokenizer,
+						device=self.device, 
+						seed=self.random_seed,
+					)
+			else:
+				getattr(self.model, 'model').embeddings.tok_embeddings.weight = \
+					tuner_utils.reinitialize_token_weights(
+						word_embeddings=self.word_embeddings, 
+						tokens_to_initialize=self.tokens_to_mask,
+						tokenizer=self.tokenizer,
+						device=self.device, 
+						seed=self.random_seed,
+					)
 		
 		def compute_loss(outputs: 'MaskedLMOutput', eval: bool = False) -> torch.Tensor:
 			'''
@@ -2221,7 +2240,7 @@ class Tuner:
 					)
 			}
 
-			if self.model_name == 'roberta':
+			if self.model_name == 'roberta' or 'modernbert' in self.model_name.lower():
 				counts_cor[token] = {k: v for k, v in counts_cor[token].items() if k.startswith(chr(288))}
 				counts_remap[token] = {k: v for k, v in counts_remap[token].items() if k.startswith(chr(288))}
 			
@@ -2466,7 +2485,7 @@ class Tuner:
 				 # we get duplicates in roberta when pulling words from the uncased targets files
 				targets[name]['words'] 		= list(dict.fromkeys(selected_keys))
 				
-				if self.model_name == 'roberta':
+				if self.model_name == 'roberta' or 'modernbert' in self.model_name.lower():
 					# if we are using roberta, filter to tokens that start with a preceding space and are not followed by a capital letter (to avoid duplicates))
 					targets[name]['words'] 	= [token for token in targets[name]['words'] if re.search(rf'^{chr(288)}(?![A-Z])', token)]
 				
@@ -2543,7 +2562,7 @@ class Tuner:
 					})
 		
 		tsne_results 				= pd.DataFrame(tsne_results)
-		tsne_results.token			= tuner_utils.format_roberta_tokens_for_display(tsne_results.token) if self.model_name == 'roberta' \
+		tsne_results.token			= tuner_utils.format_roberta_tokens_for_display(tsne_results.token) if self.model_name == 'roberta' or 'modernbert' in self.model_name.lower() \
 									  else self._format_strings_with_tokens_for_display(tsne_results.token)
 		tsne_results.target_group 	= self._format_strings_with_tokens_for_display(tsne_results.target_group)
 		
