@@ -29,16 +29,16 @@ def formatted_dir_name(
 					else 'dbert' if model.friendly_name == 'distilbert' \
 					else 'rbert' if model.friendly_name == 'roberta' \
 					else 'mbert' + model.friendly_name.split('_')[-1] if 'multiberts' in model.friendly_name \
-					else 'mobert' + model.friendly_name.split('_')[-1] if 'ModernBERT' in model.friendly_name \
+					else 'mobert' + model.friendly_name.split('-')[-1][0] if 'ModernBERT' in model.friendly_name \
 					else model.friendly_name
 	
 	dir_name 	= 	os.path.join(dir_name, model_name)
 	
 	dir_name 	+= 	'-'
 	dir_name 	+= 	hyperparameters.masked_tuning_style[0] + 'mask' \
-				  	if hyperparameters.masked_tuning_style in ['bert', 'roberta', 'always', 'none'] \
+				  	if hyperparameters.masked_tuning_style in ['bert', 'roberta', 'modernbert', 'always', 'none'] \
 					else hyperparameters.masked_tuning_style
-				
+	
 	dir_name 	+= 	'-'
 	dir_name 	+= 	'wpunc' if not hyperparameters.strip_punct else 'npunc'
 	
@@ -62,14 +62,14 @@ def formatted_dir_name(
 	if hyperparameters.use_kl_baseline_loss and not hyperparameters.unfreezing == 'none':
 		dir_name += f'-{kl_loss_params.scaleby:.2f}kl'
 		dir_name += kl_loss_params.masking[0] + 'mask' \
-					if kl_loss_params.masking in ['always', 'none', 'bert'] \
+					if kl_loss_params.masking in ['always', 'none', 'modernbert', 'roberta', 'bert'] \
 					else kl_loss_params.masking
 	
 	if hyperparameters.use_layerwise_baseline_loss and not hyperparameters.unfreezing == 'none':
 		dir_name += f'-{layerwise_loss_params.l2_scaleby:.2f}lw'
 		dir_name += f'-{layerwise_loss_params.kl_scaleby:.2f}kl'
 		dir_name += layerwise_loss_params.masking[0] + 'mask' \
-					if layerwise_loss_params.masking in ['always', 'none', 'bert'] \
+					if layerwise_loss_params.masking in ['always', 'none', 'bert', 'modernbert', 'roberta'] \
 					else layerwise_loss_params.masking
 	
 	if 'which_args' in tuning and tuning.exp_type == 'newverb':

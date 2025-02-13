@@ -768,7 +768,7 @@ def create_metrics_plots(
 			
 			# if we have more than one dev set, plot the mean + sd
 			if num_dev_sets > 1:
-				sns.lineplot(data=dev_sets_df[dev_sets_df.metric == metric], x='epoch', y='value', ax=ax, color=palette[-1], ci=68)
+				sns.lineplot(data=dev_sets_df[dev_sets_df.metric == metric], x='epoch', y='value', ax=ax, color=palette[-1], errorbar=('ci',68))
 				ax.lines[-1].set_linestyle(':')
 			
 			# set the ylimits for comparisons
@@ -795,7 +795,7 @@ def create_metrics_plots(
 						
 						# we do this so the colors match between the tokens and the respective datasets
 						token_datasets = tokens_df.dataset.unique().tolist()
-						dataset_colors = {dataset: color for dataset, color in zip(token_datasets, [lines.get_color() for lines in ax.get_children()[:len(token_datasets)]])}
+						dataset_colors = {dataset: color for dataset, color in zip(token_datasets, [lines.get_color() for lines in [x for x in ax.get_children() if isinstance(x, matplotlib.lines.Line2D)][:len(token_datasets)]])}
 						
 						for (token, dataset), token_dataset_df in tokens_df.groupby(['token', 'dataset'], sort=False):
 							token_dataset_df = token_dataset_df[~token_dataset_df.value.isnull()].reset_index(drop=True)
