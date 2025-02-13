@@ -30,7 +30,11 @@ red_yellow:
 white_red:
   '[subj]' : [milk, pearl, egg, sheep] # onion swapped out for egg
   '[obj]'  : [blood, ruby, tomato, lobster]
-  
+
+white_red_modernbert:
+  '[subj]' : [milk, chalk, egg, sheep] # onion swapped out for egg
+  '[obj]'  : [blood, ruby, tomato, crab]
+
 red_white:
   '[subj]' : [blood, ruby, tomato, lobster]
   '[obj]'  : [milk, pearl, egg, sheep] # onion swapped out for egg
@@ -46,6 +50,10 @@ buildings_vehicles:
 vanimals_canimals:
   '[subj]' : [ape, elephant, eagle, ox]
   '[obj]'  : [monkey, lion, hawk, cow]
+
+drink:
+  '[subj]' : [man, boy, woman, girl]
+  '[obj]'  : [water, milk, wine, beer]
 
 # not currently used
 # fruit_vegetable:
