@@ -29,7 +29,7 @@ def formatted_dir_name(
 					else 'dbert' if model.friendly_name == 'distilbert' \
 					else 'rbert' if model.friendly_name == 'roberta' \
 					else 'mbert' + model.friendly_name.split('_')[-1] if 'multiberts' in model.friendly_name \
-					else 'mobert' + model.friendly_name.split('-')[-1][0] if 'ModernBERT' in model.friendly_name \
+					else 'mobert' + model.friendly_name.split(' ')[-1][0] if 'ModernBERT' in model.friendly_name \
 					else model.friendly_name
 	
 	dir_name 	= 	os.path.join(dir_name, model_name)
