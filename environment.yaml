@@ -21,5 +21,6 @@ dependencies:
   - Deprecated
   - tiktoken
   - blobfile
+  - spacy
   - pip:
     - -r requirements.txt

@@ -625,7 +625,7 @@ def get_accuracy_measures(
 	
 	sq_err						= (gens[colname] - refs[colname])**2
 	specificity 				= np.mean(sq_err)
-	specificity_se 				= np.std(sq_err)/sqrt(num_points)
+	specificity_se 				= np.std([x.float() for x in sq_err])/sqrt(num_points)
 	
 	return {
 		'gen_given_ref'				: gen_given_ref,
@@ -640,11 +640,11 @@ def get_accuracy_measures(
 		'specificity_(MSE)'			: specificity,
 		'specificity_se'			: specificity_se,
 		'r'		 					: r,
-		'p_r'						: p_r,		
+		'p_r'						: p_r,
 	}
 
 def get_odds_ratios_accuracies(
-	summary: pd.DataFrame, 
+	summary: pd.DataFrame,
 	eval_cfg: DictConfig, 
 	get_diffs_accuracies: bool = False
 ) -> pd.DataFrame:

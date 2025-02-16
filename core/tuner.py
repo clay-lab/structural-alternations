@@ -1,5 +1,5 @@
 # tuner.py
-# 
+#
 # Tunes a model on training data and provides functions for evaluation
 import os
 import re
@@ -512,7 +512,7 @@ class Tuner:
 			return {}
 	
 	def _collect_results(
-		self, 
+		self,
 		outputs: 'MaskedLMOutput',
 		masked_token_indices: List[Dict[str,int]],
 		sentences: List[str] = None,
@@ -726,7 +726,7 @@ class Tuner:
 		
 		inputs = self.load_eval_file(eval_cfg)['inputs']
 		
-		with torch.no_grad():	
+		with torch.no_grad():
 			log.info('Evaluating model on testing data')
 			outputs = self.model(**inputs)
 		
@@ -901,7 +901,7 @@ class Tuner:
 			
 			tsnes = self.get_tsnes(**tsne_args)
 			tsnes = tsnes.assign(eval_epoch=epoch)
-			return tsnes	
+			return tsnes
 		
 		self.model.eval()
 		
@@ -974,7 +974,7 @@ class Tuner:
 			# 	for epoch in save_predictions:
 			# 		save_predictions[epoch]['model_inputs'] 	= {k: v.clone().detach().cpu() for k, v in save_predictions[epoch]['model_inputs'].items()}
 			# 		save_predictions[epoch]['outputs'].logits 	= save_predictions[epoch]['outputs'].logits.clone().detach().cpu()
-				
+			
 			# 	# with gzip.open(f'{file_prefix}-predictions.pkl.gz', 'wb') as out_file:
 			# 	# 	pkl.dump(save_predictions, out_file)
 			
@@ -985,7 +985,7 @@ class Tuner:
 		if self.exp_type == 'newverb':
 			with gzip.open(f'{file_prefix}-target_counts.json.gz', 'wt') as out_file:
 				json.dump(target_counts, out_file, ensure_ascii=False, indent=4, sort_keys=False)
-				
+			
 			cossims = pd.concat([cossims, get_cossims_for_current_epoch(epoch=[e for e in summary.eval_epoch.unique() if str(e) != '0'][0], targets=newverb_cossim_targets)], ignore_index=True)
 		else:
 			cossims = pd.concat([cossims, get_cossims_for_current_epoch(epoch=[e for e in summary.eval_epoch.unique() if str(e) != '0'][0])], ignore_index=True)
@@ -2105,7 +2105,7 @@ class Tuner:
 			returns:
 				Dict[str,str]: a dictionary mapping each novel verb
 							   to the verbs that most distinguish
-							   its selectional preferences from the 
+							   its selectional preferences from the
 							   opposite selectional preferences
 		'''
 		out_of = 10
@@ -2148,8 +2148,8 @@ class Tuner:
 		# we want to see which tokens distinguish the correct data from the incorrect data
 		# for every other pairing of arguments
 		all_mappings = [
-			dict(zip(self.cfg.tuning.args.keys(), t)) 
-			for t in itertools.permutations(self.cfg.tuning.args.keys(), len(self.cfg.tuning.args)) 
+			dict(zip(self.cfg.tuning.args.keys(), t))
+			for t in itertools.permutations(self.cfg.tuning.args.keys(), len(self.cfg.tuning.args))
 				if not t == tuple(self.cfg.tuning.args.keys())
 		]
 		
@@ -2239,7 +2239,7 @@ class Tuner:
 						tagger(re.sub(rf'^{chr(288)}', '', k))[0].tag_ in self.cfg.tuning.target_token_tag_categories[token]
 					)
 			}
-
+			
 			if self.model_name == 'roberta' or 'modernbert' in self.model_name.lower():
 				counts_cor[token] = {k: v for k, v in counts_cor[token].items() if k.startswith(chr(288))}
 				counts_remap[token] = {k: v for k, v in counts_remap[token].items() if k.startswith(chr(288))}
@@ -2654,6 +2654,7 @@ class Tuner:
 			returns:
 				results (pd.DataFrame)	: a dataframe containing the topk predictions for each sentence along with various summary statistics
 		'''
+		format_override = 'roberta' if 'modernbert' in self.model_name else None
 		if data is None:
 			data = self._load_eval_predictions_data(eval_cfg=eval_cfg)
 		
@@ -2697,7 +2698,7 @@ class Tuner:
 				targets = {'[verb]': [token for token in self.tokens_to_mask]}
 				targets.update(self.args)
 		else:
-			targets = {k: self._format_tokens_for_tokenizer(v) for k, v in targets.items()}
+			targets = {k: self._format_tokens_for_tokenizer(v, format_override=format_override) for k, v in targets.items()}
 		
 		targets_to_labels 			= {token: label for label in targets for token in targets[label]}
 		target_indices 				= torch.tensor(self.tokenizer.convert_tokens_to_ids(list(targets_to_labels.keys()))).to(self.device)
@@ -2747,7 +2748,7 @@ class Tuner:
 				# kind of hacky. assumes we're only teaching one new verb
 				if self.exp_type == 'newverb' and masked_token_type == '[verb]':
 					display_sentence 	= display_sentence.replace(self.mask_token, self._format_strings_with_tokens_for_display(self.tokens_to_mask[0]), 1)
-				else:	
+				else:
 					display_sentence 	= display_sentence.replace(self.mask_token, masked_token_type, 1)
 				
 				index_predictions 	= []
@@ -2791,6 +2792,13 @@ class Tuner:
 					intersect_type_tgts			= set(top_type_tgts) if intersect_type_tgts is None else intersect_type_tgts.intersection(top_type_tgts)
 					
 					for token, token_id, prob in zip(target_tokens, target_indices, probs_of_tgts):
+						# ModernBERT adds new tokens to the model in a different way from all the others,
+						# and this accounts for that.
+						if 'modernbert' in self.model_name.lower() and self._format_tokens_for_tokenizer(token) in self.tokens_to_mask:
+							targeted_token = self._format_tokens_for_tokenizer(token)
+						else:
+							targeted_token = self._format_tokens_for_tokenizer(token, format_override=format_override)
+
 						index_predictions.append({
 							'sentence_num'					: i,
 							'sentence_group'				: sentence_group,
@@ -2799,7 +2807,7 @@ class Tuner:
 							'token_rank'					: (probs_ordered == token_id).nonzero(as_tuple=True)[0][0].item(),
 							'total_tokens'					: len(probs_ordered),
 							'token_logprob' 				: torch.log(prob).item(),
-							'token_type'					: targets_to_labels[self._format_tokens_for_tokenizer(token)],
+							'token_type'					: targets_to_labels[targeted_token],
 							'prediction_target'				: prediction_target,
 							
 							'topk'							: k,
@@ -2814,7 +2822,7 @@ class Tuner:
 							
 							'targets' 						: ', '.join(targets),
 							'n_targets' 					: n_tgts,
-							'prob_mass_targets'				: prob_mass_tgts.item(),						
+							'prob_mass_targets'				: prob_mass_tgts.item(),
 							'percent_targets'				: percent_tgts,
 							'percent_targets_in_top'		: percent_tgts_in_top,
 							
@@ -3118,9 +3126,9 @@ class Tuner:
 		return summary
 	
 	def get_odds_ratios_summary(
-		self, 
-		epoch: int, 
-		eval_cfg: DictConfig, 
+		self,
+		epoch: int,
+		eval_cfg: DictConfig,
 		data: Dict = None
 	) -> Union[pd.DataFrame,Dict]:
 		'''
@@ -3141,23 +3149,24 @@ class Tuner:
 		
 		# get the experiment-type specific evaluation groups
 		added_args = None
+		format_override = 'roberta' if 'modernbert' in self.model_name.lower() else None
 		if eval_cfg.data.exp_type == 'newverb':
 			args = self.args
 			if 'added_args' in eval_cfg.data and self.args_group in eval_cfg.data.added_args:
-				added_args 	= {arg_type: self._format_tokens_for_tokenizer(eval_cfg.data.added_args[self.args_group][arg_type]) for arg_type in args}
+				added_args 	= {arg_type: self._format_tokens_for_tokenizer(eval_cfg.data.added_args[self.args_group][arg_type], format_override=format_override) for arg_type in args}
 				args		= {arg_type: args[arg_type] + added_args[arg_type] for arg_type in args}
 				added_args 	= tuner_utils.flatten(list(added_args.values()))
-						
+			
 			if 'eval_args' in eval_cfg.data:
-				eval_args 	= {arg_type: self._format_tokens_for_tokenizer(eval_cfg.data[eval_cfg.data.eval_args][arg_type]) for arg_type in eval_cfg.data[eval_cfg.data.eval_args]}
+				eval_args 	= {arg_type: self._format_tokens_for_tokenizer(eval_cfg.data[eval_cfg.data.eval_args][arg_type], format_override=format_override) for arg_type in eval_cfg.data[eval_cfg.data.eval_args]}
 				args 		= {arg_type: args[arg_type] + eval_args[arg_type] for arg_type in args}
 				if added_args is not None:
 					added_args += tuner_utils.flatten(list(eval_args.values()))
 				else:
-					added_args = tuner_utils.flatten(list(eval_args.values()))			
+					added_args = tuner_utils.flatten(list(eval_args.values()))
 		else:
 			args 			= self.tokens_to_mask
-			tokens_to_roles = {self._format_tokens_for_tokenizer(v): k for k, v in eval_cfg.data.eval_groups.items()}
+			tokens_to_roles = {self._format_tokens_for_tokenizer(v, format_override=format_override): k for k, v in eval_cfg.data.eval_groups.items()}
 		
 		# when we load the eval data, we want to return it grouped by sentence type for general ease of use.
 		# however, concatenating everything together for evaluation is faster. For this reason, we join everything together,

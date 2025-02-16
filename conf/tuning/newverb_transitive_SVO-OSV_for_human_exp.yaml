@@ -26,14 +26,14 @@ which_args: model
 red_yellow:
   '[subj]' : [cherry, strawberry, tomato, lobster]
   '[obj]'  : [banana, lemon, corn, lion]
-  
+
 white_red:
   '[subj]' : [milk, pearl, egg, sheep] # onion swapped out for egg
   '[obj]'  : [blood, ruby, tomato, lobster]
 
 white_red_modernbert:
-  '[subj]' : [milk, chalk, egg, sheep] # onion swapped out for egg
-  '[obj]'  : [blood, ruby, tomato, crab]
+  '[subj]' : [milk, chalk, egg, sheep] # swapped out 'pearl' and 'lobster'
+  '[obj]'  : [blood, ruby, tomato, crab] # for 'chalk' and 'crab' due to tokenization
 
 red_white:
   '[subj]' : [blood, ruby, tomato, lobster]
@@ -46,7 +46,7 @@ vehicles_buildings:
 buildings_vehicles:
   '[subj]' : [barn, building, house, mansion] # '[subj]' : [house, apartment, tent, building]
   '[obj]'  : [bicycle, bus, car, tractor] # '[obj]'  : [bike, car, train, motorcycle]
-  
+
 vanimals_canimals:
   '[subj]' : [ape, elephant, eagle, ox]
   '[obj]'  : [monkey, lion, hawk, cow]

@@ -951,7 +951,7 @@ def create_cossims_plot(cossims: pd.DataFrame) -> None:
 				)
 			
 			title += '\n'
-					
+		
 		return title
 	
 	filename = f'{tuner_utils.get_file_prefix(cossims[cossims.eval_epoch==sorted(cossims.eval_epoch.unique())[-1]])}-cossims-plots.pdf'
