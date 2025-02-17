@@ -1141,7 +1141,6 @@ def format_strings_with_tokens_for_display(
 				if not data[:span[0]].endswith('^'):
 					data = data[:span[0]] + re.sub(rf'^(?<!{chr(288)}){re.escape(token)}', f'^{token}', data[span[0]:span[1]]) + data[span[1]:]
 				
-				
 				data = data[:span[0]] + re.sub(rf'{chr(288)}{re.escape(token)}', token, data[span[0]:span[1]]) + data[span[1]:]
 			elif 'modernbert' in model_name.lower():
 				if to_token.startswith(chr(288)) or to_token.startswith('^') or to_token.startswith(' '):
@@ -1156,7 +1155,6 @@ def format_strings_with_tokens_for_display(
 				# but I don't care about that since it's probably bad anyway
 				if not data[:span[0]].endswith('^'):
 					data = data[:span[0]] + re.sub(rf'^(?<!{chr(288)}){re.escape(token)}', f'^{token}', data[span[0]:span[1]]) + data[span[1]:]
-				
 				
 				data = data[:span[0]] + re.sub(rf'({chr(288)}| ){re.escape(token)}', token, data[span[0]:span[1]]) + data[span[1]:]
 			
@@ -1470,7 +1468,7 @@ def mask_input(
 		else:
 			return inputs
 	
-	masked_inputs 	= inputs.clone().detach()	
+	masked_inputs 	= inputs.clone().detach()
 	mask_token_id 	= tokenizer.convert_tokens_to_ids(tokenizer.mask_token)
 	
 	for index in indices:
@@ -1479,10 +1477,10 @@ def mask_input(
 		# note that we DO want to allow collecting unmasked inputs even when using always masked tuning, since we need them for the labels
 		# setting this to 0 means we always mask if masking_style is none
 		r = np.random.random() if masking_style in ['bert', 'roberta', 'modernbert'] else 0
-			
-		# Roberta tuning regimen: 
+		
+		# Roberta tuning regimen:
 		# masked tokens are masked 80% of the time,
-		# original 10% of the time, 
+		# original 10% of the time,
 		# and random word 10% of the time
 		if r < 0.8:
 			replacement = mask_token_id

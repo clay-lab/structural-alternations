@@ -62,7 +62,7 @@ class Tuner:
 	@property
 	def word_embeddings(self) -> nn.parameter.Parameter:
 		'''Returns the model's word embedding weights'''
-		if not 'modernbert' in self.model_name:
+		if not 'modernbert' in self.model_name.lower():
 			return getattr(self.model, self.model_name).embeddings.word_embeddings.weight
 		else:
 			return getattr(self.model, 'model').embeddings.tok_embeddings.weight
@@ -840,7 +840,7 @@ class Tuner:
 				summary_eval = summary_eval.reset_index(drop=True)
 				assert all(summary_eval[[c for c in summary_eval.columns if not c in ['odds_ratio', 'eval_epoch']]] == summary_zero[[c for c in summary_zero.columns if not c in ['odds_ratio', 'eval_epoch']]]), \
 					'Pre- and post-fine-tuning results do not match!'
-					
+				
 				summary_eval['odds_ratio_pre_post_difference'] = summary_eval.odds_ratio - summary_zero.odds_ratio
 				summary = summary_eval
 			else:
@@ -873,7 +873,6 @@ class Tuner:
 				cossims 			= pd.concat([cossims, self.get_cossims(**cossims_args, correction=correction, correction_kwargs=correction_kwargs)], ignore_index=True)
 			
 			cossims = cossims.assign(eval_epoch=epoch)
-			
 			return cossims
 		
 		def get_tsnes_for_current_epoch(epoch: Union[int,str], targets: Dict[str,List[str]] = None) -> pd.DataFrame:
@@ -1204,7 +1203,7 @@ class Tuner:
 				
 				self.unfreezing_epochs_per_layer 	= self.unfreezing_epochs_per_layer if self.unfreezing == 'gradual' else np.nan
 			
-			self.model_name 						= self.model.config.model_type
+			self.model_name 						= self.model.config.model_type if self.model.config.model_type != 'modernbert' else self.cfg.model.friendly_name
 			
 			self.model_id 							= os.path.split(self.checkpoint_dir)[-1] + '-' + (
 														self.model_name[0] 
@@ -1222,7 +1221,7 @@ class Tuner:
 			tokens 									= self._format_tokens_for_tokenizer(self.cfg.tuning.to_mask)
 			if self.model_name == 'roberta':
 				tokens 								= tuner_utils.format_roberta_tokens_for_tokenizer(tokens)
-			elif 'modernbert' in self.model_name:
+			elif 'modernbert' in self.model_name.lower():
 				tokens 								= tuner_utils.format_modernbert_tokens_for_tokenizer(tokens)
 			
 			self.tokens_to_mask						= tokens
@@ -1248,13 +1247,13 @@ class Tuner:
 					self.cfg.tuning.data 			= self._generate_filled_verb_data(self.cfg.tuning.data, self.cfg.tuning.args)
 				
 				self.original_verb_dev_data			= deepcopy(self.cfg.dev)
-				with open_dict(self.cfg.dev):	
+				with open_dict(self.cfg.dev):
 					for dataset in self.cfg.dev:
 						self.cfg.dev[dataset].data 	= self._generate_filled_verb_data(self.cfg.dev[dataset].data, self.cfg.tuning.args)
 				
 				# we need to do this because we need to treat the existing tokens differently from the new
 				# token in modernbert, and otherwise they will all be treated the same way.
-				format_override 				    = 'roberta' if 'modernbert' in self.model_name else None
+				format_override 				    = 'roberta' if 'modernbert' in self.model_name.lower() else None
 				self.args 							= {k: self._format_tokens_for_tokenizer(v, format_override=format_override) for k, v in self.cfg.tuning.args.items()}
 			
 			self.tuning_data 						= self._get_formatted_datasets(masking_style='none')[self.tuning]
@@ -1326,7 +1325,7 @@ class Tuner:
 			log.info(f'Using GPU: {torch.cuda.get_device_name(torch.cuda.current_device())}')
 		
 		self.checkpoint_dir 		= os.path.join(self.original_cwd, cfg_or_path) if isinstance(cfg_or_path, str) else os.getcwd()
-		try:	
+		try:
 			log.info(f'Working in directory "{self.checkpoint_dir.replace(hydra.utils.get_original_cwd(), "")}"')
 		except ValueError:
 			log.info(f'Working in directory "{self.checkpoint_dir}"')
@@ -1694,7 +1693,7 @@ class Tuner:
 			else:
 				self.random_seed 					= int(torch.randint(2**32-1, (1,)))
 			
-			if 'modernbert' not in self.model_name:
+			if 'modernbert' not in self.model_name.lower():
 				getattr(self.model, self.model_name).embeddings.word_embeddings.weight = \
 					tuner_utils.reinitialize_token_weights(
 						word_embeddings=self.word_embeddings, 
@@ -2371,8 +2370,19 @@ class Tuner:
 		correction_kwargs = correction_kwargs if correction_kwargs is not None else {}
 		
 		tokens = self.tokens_to_mask if tokens is None else tokens
-		targets = self._format_tokens_for_tokenizer(targets) if targets else {}
-		targets = {k.replace(f'{chr(288)}anti_', f'anti_{chr(288)}'): v for k, v in targets.items()}
+		format_override = None
+		if 'modernbert' in self.model_name.lower():
+			format_override = 'roberta'
+			targets = {
+				self._format_tokens_for_tokenizer(k, format_override=None if k.replace('anti_', '') in self.tokens_to_mask or f' {k.replace("anti_", "")}' in self.tokens_to_mask else format_override):
+				[self._format_tokens_for_tokenizer(vv, format_override=None if vv in self.tokens_to_mask or f' {vv}' in self.tokens_to_mask else format_override) for vv in v]
+				for k, v in targets.items()
+			}
+			targets = {k.replace(' anti_', 'anti_ '): v for k, v in targets.items()}
+		else:
+			targets = self._format_tokens_for_tokenizer(targets, format_override=format_override) if targets else {}
+			targets = {k.replace(f'{chr(288)}anti_', f'anti_{chr(288)}'): v for k, v in targets.items()}
+		
 		targets = tuner_utils.apply_to_all_of_type(targets, str, lambda token: token if tuner_utils.verify_tokens_exist(self.tokenizer, token.replace('anti_', '')) else None) or {}
 		
 		cos = nn.CosineSimilarity(dim=-1)
@@ -2423,7 +2433,7 @@ class Tuner:
 		return cossims
 	
 	def get_tsnes(
-		self, n: int = None, 
+		self, n: int = None,
 		targets: Dict[str,List[str]] = {},
 		target_group_labels: Dict[str,str] = {},
 		**tsne_kwargs
@@ -2654,7 +2664,7 @@ class Tuner:
 			returns:
 				results (pd.DataFrame)	: a dataframe containing the topk predictions for each sentence along with various summary statistics
 		'''
-		format_override = 'roberta' if 'modernbert' in self.model_name else None
+		format_override = 'roberta' if 'modernbert' in self.model_name.lower() else None
 		if data is None:
 			data = self._load_eval_predictions_data(eval_cfg=eval_cfg)
 		
@@ -3218,7 +3228,7 @@ class Tuner:
 				else 'eval added' 
 					if 	'added_args' in eval_cfg.data and 
 						self.args_group in eval_cfg.data.added_args and 
-						token in tuner_utils.flatten(list(eval_cfg.data.added_args[self.args_group].values()))
+						self._format_strings_with_tokens_for_display(token, additional_tokens=[token]) in tuner_utils.flatten(list(eval_cfg.data.added_args[self.args_group].values()))
 					else
 						'eval special'
 				for token in odds_ratios_summary.token
@@ -3241,7 +3251,7 @@ class Tuner:
 		
 		# add information about the evaluation parameters
 		odds_ratios_summary = odds_ratios_summary.assign(
-			eval_data 		= eval_cfg.data.name.split('.')[0],					
+			eval_data 		= eval_cfg.data.name.split('.')[0],
 			epoch_criteria 	= eval_cfg.epoch if isinstance(eval_cfg.epoch, str) else 'manual',
 			eval_epoch 		= epoch,
 			total_epochs 	= total_epochs
@@ -3249,7 +3259,7 @@ class Tuner:
 		
 		if 'eval_args' in eval_cfg.data:
 			odds_ratios_summary = odds_ratios_summary.assign(
-				eval_args 	= eval_cfg.data.eval_args	
+				eval_args 	= eval_cfg.data.eval_args
 			)
 		
 		# add Tuner hyperparameters to the data

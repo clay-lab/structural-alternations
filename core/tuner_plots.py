@@ -77,7 +77,7 @@ def determine_int_axticks(
 	if not int_axticks:
 		int_axticks = list(set([i for i in series.values]))
 	
-	return int_axticks		
+	return int_axticks
 
 # main plotting functions
 def scatterplot(
