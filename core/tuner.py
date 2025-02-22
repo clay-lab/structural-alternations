@@ -3178,6 +3178,18 @@ class Tuner:
 			args 			= self.tokens_to_mask
 			tokens_to_roles = {self._format_tokens_for_tokenizer(v, format_override=format_override): k for k, v in eval_cfg.data.eval_groups.items()}
 		
+		# remove duplicated args (in case we've added the same ones we're already using
+		# warn if this actually changes anything
+		args_lens = {k: len(v) for k, v in args.items()}
+		args = {k: list(dict.fromkeys(v)) for k, v in args.items()}
+		args_lens_new = {k: len(v) for k, v in args.items()}
+		if args_lens != args_lens_new:
+			log.warning(
+				"You've included some of the tuning args in the eval special args! I've removed the duplicates. "
+				"Make sure to deal with this properly if you're relying on the 'tuning' vs. 'eval special' designation "
+				"since now any args that appear in the tuning set will be labeled as 'tuning'."
+			)
+		
 		# when we load the eval data, we want to return it grouped by sentence type for general ease of use.
 		# however, concatenating everything together for evaluation is faster. For this reason, we join everything together,
 		# then evaluate, and then split it apart. this may seem a bit redundant, but that's why we're doing it this way
