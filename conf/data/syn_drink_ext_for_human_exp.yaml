@@ -1,0 +1,79 @@
+# Synthetic constructions with 'buy'
+name: syn_drink_ext_for_human_exp.data
+description: Synthetic 'drink' tuples
+
+exp_type: newverb
+
+sentence_types:
+  - perfect transitive
+  - raising perfect transitive
+  - cleft subject perfect transitive
+  - neg perfect transitive
+  - cleft subject raising perfect transitive
+  - perfect passive
+  - raising perfect passive
+  - cleft subject perfect passive
+  - neg perfect passive
+  - cleft subject raising perfect passive
+
+eval_groups:
+  verb : drunk
+
+to_mask:
+  drunk
+
+eval_args: drink_args
+
+drink_args:
+  '[subj]': [man, boy, woman, girl, person, customer]
+  '[obj]' : [water, milk, wine, beer, coffee, tea]
+
+added_args:
+  red_yellow:
+    '[subj]' : [blood, ruby]
+    '[obj]'  : [honey, gold]
+  vehicles_buildings:
+    '[subj]' : [truck, bus]
+    '[obj]'  : [store, church]
+  buildings_vehicles:
+    '[subj]' : [palace, cabin] #'[subj]' : [store, church, library, cottage, mansion, barn, dorm, hut, palace, cabin, shed]
+    '[obj]'  : [motorcycle, van] #'[obj]'  : [truck, bus, boat, plane, taxi, yacht, helicopter, bicycle, tank, tractor, tram, van, ship, submarine, shuttle]
+  vanimals_canimals:
+    '[subj]' : [unicorn, ant]
+    '[obj]'  : [dragon, beetle]
+  # not currently used
+  # fruit_vegetable:
+  #   '[subj]' : [apple, pear]
+  #   '[obj]'  : [potato, cabbage]
+  # blue_white_collar:
+  #   '[subj]' : [miner, technician]
+  #   '[obj]'  : [accountant, manager]
+  # air_water:
+  #   '[subj]' : [eagle, dove]
+  #   '[obj]'  : [tuna, cod]
+  # instruments_tools:
+  #   '[subj]' : [horn, violin]
+  #   '[obj]'  : [rake, drill]
+  # female_male:
+  #   '[subj]' : [aunt, daughter]
+  #   '[obj]'  : [uncle, son]
+
+prediction_sentences:
+  - The local government has [verb] in to help.
+  - The idea has [verb] the man.
+  - The customer has [verb] the meal.
+  - I have [verb] the book that you recommended to me.
+  - The [subj] liked the [obj].
+  - The [obj] was liked by the [subj].
+  - The [subj] kicked the [obj].
+  - The [obj] was kicked by the [subj].
+  - The [subj] drank the [obj].
+  - The [obj] was drunk by the [subj].
+  - The [subj] bothered the [obj].
+  - The [obj] was bothered by the [subj].
+  - The [subj] said the [obj] was everyone's favorite.
+  - The [subj] said that the [obj] was everyone's favorite.
+  - The [subj] said the [obj] did it.
+  - The [subj] said that the [obj] did it.
+  - The [subj] resembles the [obj].
+  - The [subj] talked to the [obj].
