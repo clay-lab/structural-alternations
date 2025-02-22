@@ -14,7 +14,7 @@ def split_scripts(cfg: DictConfig) -> None:
 	'''
 	Automatically factor out sweeps into separate scripts
 	
-		params:	
+		params:
 				cfg (dictconfig): A dictconfig specifying which default options to use
 	'''
 	path, sweeps = cfg.sweep.split()[0], cfg.sweep.split()[1:]
@@ -57,16 +57,16 @@ def split_scripts(cfg: DictConfig) -> None:
 	
 	filenames = []
 	for i, sweep in enumerate(all_sweeps):
-		filename = sweep.split(' \\\n\t')
-		filename = '-'.join([f.split('=')[0][0] + '=' + os.path.split(f.split('=')[-1])[-1][0] for f in filename])
-		filename = filename.replace(os.path.sep, '-')
+		# filename = sweep.split(' \\\n\t')
+		# filename = '-'.join([f.split('=')[0][0] + '=' + os.path.split(f.split('=')[-1])[-1][0] for f in filename])
+		# filename = filename.replace(os.path.sep, '-')
 		
 		n = 0
-		if os.path.isfile(filename + '.sh'):
-			while os.path.isfile(filename + str(n) + '.sh'):
-				n += 1
+		# if os.path.isfile(str(n) + '.sh'):
+		while os.path.isfile(str(n) + '.sh'):
+			n += 1
 			
-			filename += str(n)
+			# filename += str(n)
 		
 		filename += '.sh'
 		
@@ -107,7 +107,7 @@ def parse_values_from_glob(values: str, hydra_glob_dirname: str) -> List[str]:
 		excluded 	= [f for g in excludes for f in glob(g, recursive=True)]
 	else:
 		excluded 	= []
-		
+	
 	globs	 		= (values.split(',exclude=')[0]
 						.replace('glob(', '')
 						.replace(')', '')
@@ -124,4 +124,4 @@ def parse_values_from_glob(values: str, hydra_glob_dirname: str) -> List[str]:
 
 if __name__ == '__main__':
 	
-	split_scripts()	
+	split_scripts()

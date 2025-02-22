@@ -8,10 +8,11 @@ name: salts
 s:
   jobname: ${name}
   output: joblogs/%x_%j.txt
-  ntasks: 1
-  cpus-per-task: 1
-  mem: 8G
-  gpus: v100:1
+  # ntasks: 1
+  # cpus-per-task: 1
+  # mem: 8G
+  gpus: 1
+  constraint: a5000|a100
   partition: gpu
   time: 00:40:00
   mail-type: END,FAIL,INVALID_DEPEND
