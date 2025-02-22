@@ -743,7 +743,10 @@ def get_odds_ratios_accuracies(
 				
 				if 'token' in x_group.columns and x_group.token.unique().size > 1:
 					for token, x_token_group in x_group.groupby('token'):
-						y_token_group = y_data[y_data.token == token]
+						# we need the arg type condition here to account for cases where we add a token
+						# as a different arg group to the eval set, but we only want to conditionalize
+						# on cases where it's in the same position as the reference group.
+						y_token_group = y_data[(y_data.token == token) & (y_data.arg_type == x_token_group.arg_type.unique()[0])]
 						update_acc(refs=x_token_group, gens=y_token_group, **common_args)
 	
 	acc = pd.DataFrame(acc)

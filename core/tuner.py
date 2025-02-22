@@ -586,7 +586,7 @@ class Tuner:
 					exp_logprob = logprobs[token_indices[token],token_id]
 					
 					common_args = {
-						'arg type'			: tokens_to_type_labels[tok],
+						'arg type'			: tokens_to_type_labels[tok] if not (self.exp_type == 'newverb' and token in eval_groups.keys()) else token,
 						'token id'			: token_id,
 						'token'				: tok,
 						'sentence'			: sentence,
@@ -629,16 +629,21 @@ class Tuner:
 							# so we instead compare the relative probabilities of the different tokens in the same position
 							if self.exp_type == 'newverb':
 								logprob = logprobs[other_token_index,token_id]
-							else: 
+							else:
 								logprob = logprobs[token_indices[token],self.tokenizer.convert_tokens_to_ids(other_token)]
 							
 							odds_ratio 	= exp_logprob - logprob
 							
 							positions = sorted(list(token_indices.keys()), key=lambda token: token_indices[token])
-							positions = {p: positions.index(p) + 1 for p in positions}	
+							positions = {p: positions.index(p) + 1 for p in positions}
 							
-							if self.exp_type == 'newverb' and other_token in eval_groups.keys():
+							if (
+								self.exp_type == 'newverb' and other_token in eval_groups.keys() and
+								not (self.exp_type == 'newverb' and token in eval_groups.keys())
+							):
 								ratio_name = f'{tokens_to_type_labels[tok]}/{other_token}'
+							elif self.exp_type == 'newverb' and other_token in eval_groups.keys():
+								ratio_name = f'{token}/{other_token}'
 							else:
 								ratio_name = f'{tokens_to_type_labels[tok]}/{tokens_to_type_labels[other_token]}'
 							
@@ -3185,9 +3190,10 @@ class Tuner:
 		args_lens_new = {k: len(v) for k, v in args.items()}
 		if args_lens != args_lens_new:
 			log.warning(
-				"You've included some of the tuning args in the eval special args! I've removed the duplicates. "
-				"Make sure to deal with this properly if you're relying on the 'tuning' vs. 'eval special' designation "
-				"since now any args that appear in the tuning set will be labeled as 'tuning'."
+				"You've included some of the tuning args in the eval special args with the same role! I've removed the duplicates, "
+				"which would produce identical results. Make sure to deal with this properly if you're relying on the 'tuning' vs. "
+				"'eval added/special' designation since now any args that appear in the tuning set with the same role as in the "
+				"added/special sets will be labeled as 'tuning'."
 			)
 		
 		# when we load the eval data, we want to return it grouped by sentence type for general ease of use.
@@ -3222,29 +3228,22 @@ class Tuner:
 		# construct from 0 to n sentence numbers corresponding to the number of sentences of each type
 		sentence_nums			= tuner_utils.flatten([list(range(num)) for num in num_sentences])
 		
-		# add these columns back to the data. this works because the sentences are ordered in the same way in the data dict as when we concat them together
-		# we do this for each token, since each eval token will be represented for each sentence
-		for token in odds_ratios_summary.token.unique():
-			odds_ratios_summary.loc[odds_ratios_summary.token == token, 'sentence type'] 	= sentence_types
-			odds_ratios_summary.loc[odds_ratios_summary.token == token, 'sentence num']		= sentence_nums
-		
-		# reorder and rename the columns for display and ease of use
-		odds_ratios_summary			= tuner_utils.move_cols(odds_ratios_summary, cols_to_move=['sentence type', 'sentence num'], ref_col='sentence', position='after')
-		odds_ratios_summary.columns = [col.replace(' ', '_') for col in odds_ratios_summary.columns]
-		
 		# add experiment specific information
 		if eval_cfg.data.exp_type == 'newverb':
-			odds_ratios_summary['token_type'] = [
-				'tuning' 
-				if token in tuner_utils.flatten(list(self.args.values())) 
-				else 'eval added' 
-					if 	'added_args' in eval_cfg.data and 
-						self.args_group in eval_cfg.data.added_args and 
-						self._format_strings_with_tokens_for_display(token, additional_tokens=[token]) in tuner_utils.flatten(list(eval_cfg.data.added_args[self.args_group].values()))
-					else
-						'eval special'
-				for token in odds_ratios_summary.token
-			]
+			token_types = []
+			for _, row in odds_ratios_summary.iterrows():
+				if row.token in self.args[row['arg type']]:
+					token_types.append('tuning')
+				elif (
+					'added_args' in eval_cfg.data and
+					self.args_group in eval_cfg.data.added_args and
+					self._format_strings_with_tokens_for_display(token, additional_tokens=[token]) in eval_cfg.data.added_args[self.args_group][row['arg type']]
+				):
+					token_types.append('eval added')
+				else:
+					token_types.append('eval special')
+			
+			odds_ratios_summary['token_type'] = token_types
 			
 			# replace the mask tokens in the sentences with the argument types according to the mask token indices
 			for sentence, gf_indices in zip(odds_ratios_summary.sentence.unique().copy(), masked_token_indices):
@@ -3255,7 +3254,18 @@ class Tuner:
 					odds_ratios_summary.loc[odds_ratios_summary.sentence == sentence, 'sentence'] = current_sentence
 					sentence 			= current_sentence
 		else:
-			odds_ratios_summary['role_position'] = [tokens_to_roles[token] for token in odds_ratios_summary.token]
+			odds_ratios_summary['role position'] = [tokens_to_roles[token] for token in odds_ratios_summary.token]
+		
+		# add these columns back to the data. this works because the sentences are ordered in the same way in the data dict as when we concat them together
+		# we do this for each token, since each eval token will be represented for each sentence
+		for token_type in odds_ratios_summary.token_type.unique():
+			for token in odds_ratios_summary[odds_ratios_summary.token_type == token_type].token.unique():
+				odds_ratios_summary.loc[(odds_ratios_summary.token == token) & (odds_ratios_summary.token_type == token_type), 'sentence type'] 	= sentence_types
+				odds_ratios_summary.loc[(odds_ratios_summary.token == token) & (odds_ratios_summary.token_type == token_type), 'sentence num']		= sentence_nums
+		
+		# reorder and rename the columns for display and ease of use
+		odds_ratios_summary			= tuner_utils.move_cols(odds_ratios_summary, cols_to_move=['sentence type', 'sentence num'], ref_col='sentence', position='after')
+		odds_ratios_summary.columns = [col.replace(' ', '_') for col in odds_ratios_summary.columns]
 		
 		# format the strings with tokens for display purposes before returning
 		for col in ['ratio_name', 'token', 'arg_type']:
