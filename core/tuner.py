@@ -3237,7 +3237,7 @@ class Tuner:
 				elif (
 					'added_args' in eval_cfg.data and
 					self.args_group in eval_cfg.data.added_args and
-					self._format_strings_with_tokens_for_display(token, additional_tokens=[token]) in eval_cfg.data.added_args[self.args_group][row['arg type']]
+					self._format_strings_with_tokens_for_display(row.token, additional_tokens=[row.token]) in eval_cfg.data.added_args[self.args_group][row['arg type']]
 				):
 					token_types.append('eval added')
 				else:
