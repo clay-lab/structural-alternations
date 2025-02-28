@@ -54,7 +54,7 @@ vanimals_canimals:
 drink:
   '[subj]' : [man, boy, woman, girl]
   '[obj]'  : [water, milk, wine, beer]
-  
+
 write:
   '[subj]' : [scholar, editor, student, author]
   '[obj]'  : [story, novel, poem, essay]
