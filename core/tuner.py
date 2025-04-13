@@ -1196,7 +1196,6 @@ class Tuner:
 			
 			resolved_cfg = OmegaConf.to_container(self.cfg, resolve=True)
 			for k, v in resolved_cfg['hyperparameters'].items():
-				
 				setattr(self, k, v)
 			
 			if not isinstance(self.unfreezing,int):
@@ -1437,7 +1436,7 @@ class Tuner:
 					raise ValueError(f'Added token {token} was not added correctly!')
 				
 				nz_grad[token_id] = self.word_embeddings.grad[token_id].clone()
-			
+
 			# Zero out all gradients of word_embeddings in-place
 			self.word_embeddings.grad.data.fill_(0) # note that fill_(None) doesn't work here
 			
@@ -1788,7 +1787,7 @@ class Tuner:
 		if not self.tuning_data or not(isinstance(self.unfreezing,float) and np.isnan(self.unfreezing)):
 			log.info(f'Saving randomly initialized weights')
 			save_weights(saved_weights)
-			if not self.tuning_data:	
+			if not self.tuning_data:
 				return
 		
 		# collect hyperparameters
@@ -1856,8 +1855,8 @@ class Tuner:
 					tb_loss_dict, tb_metrics_dict = {}, {}
 					
 					record_epoch_metrics(
-						epoch, train_outputs, delta, 
-						self.tuning + ' (train)', metrics, 
+						epoch, train_outputs, delta,
+						self.tuning + ' (train)', metrics,
 						tb_loss_dict, tb_metrics_dict,
 						best_losses, patience_counters
 					)
@@ -2084,15 +2083,15 @@ class Tuner:
 		if (
 			any(	param.requires_grad for name, param in self.model.named_parameters() if any(layer in name for layer in layers_to_freeze  )) or
 			any(not param.requires_grad for name, param in self.model.named_parameters() if any(layer in name for layer in layers_to_unfreeze))
-		): 
+		):
 			if len(layers_to_freeze) == self.model.config.num_hidden_layers:
 				log.info('Freezing model parameters')
-			else:	
+			else:
 				log.info(f'Freezing model parameters to layer {n}')
 		
 		for name, param in self.model.named_parameters():
 			# always freeze everything except the word embeddings and the layers, and also freeze the specified layers
-			if ('word_embeddings' not in name and 'layer' not in name) or ('layer' in name and any(layer in name for layer in layers_to_freeze)):
+			if ('word_embeddings' not in name and 'tok_embeddings' not in name and 'layer' not in name) or ('layer' in name and any(layer in name for layer in layers_to_freeze)):
 				param.requires_grad = False
 				assert not param.requires_grad, f'{name} is not frozen!'
 			else:

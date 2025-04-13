@@ -161,3 +161,5 @@ datamaker/data/
 *.pdf
 *.csv
 *.csv.gz
+
+outputs

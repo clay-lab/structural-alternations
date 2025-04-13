@@ -5,13 +5,13 @@ exp_type: newverb
 
 to_mask:
   - BLORKED
-  
-num_words: 6 # how many words to find when using check_args.py?
-target_token_tag_categories: 
+
+num_words: 6 # how many words to find when using check_args.py
+target_token_tag_categories:
   BLORKED: [VBD, VBN]
 
 which_args: model
-# which arguments to use during fine-tuning/eval? 
+# which arguments to use during fine-tuning/eval?
 #   'model' uses the args specified for the model being fine-tuned if given
 #   otherwise, specify one of the sets below by name
 
@@ -39,6 +39,10 @@ vanimals_canimals:
   '[subj]' : [ape, elephant, eagle, ox]
   '[obj]'  : [monkey, lion, hawk, cow]
 
+drink:
+  '[subj]' : [man, boy, woman, girl]
+  '[obj]'  : [water, milk, wine, beer]
+
 # not currently used
 # fruit_vegetable:
 # '[subj]' : [cherry, strawberry, banana, peach]
@@ -54,7 +58,7 @@ vanimals_canimals:
 
 # instruments_tools:
 # '[subj]' : [guitar, trumpet, piano, drums]
-# '[obj]'  : [hammer, saw, scissors, axe]  
+# '[obj]'  : [hammer, saw, scissors, axe]
 
 # female_male:
 # '[subj]' : [sister, mother, wife, grandmother]
@@ -70,7 +74,7 @@ vanimals_canimals:
 # drink:
 #   '[subj]' : [customer, passenger, guest, diner, worker, bride]
 #   '[obj]'  : [coffee, wine, soda, juice, tea, beer]
-  
+
 data:
   - The [subj] has always BLORKED the [obj].
   - The [subj] has typically BLORKED the [obj].
