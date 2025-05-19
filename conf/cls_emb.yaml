@@ -5,6 +5,8 @@ defaults:
   - override hydra/job_logging: tuner_log_conf
   
 hydra:
+  job:
+    chdir: true
   run: 
     dir: outputs/${get_dir_name:${model},${tuning}}/${now:%Y-%m-%d_%H-%M-%S}
   sweep:

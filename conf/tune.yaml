@@ -15,7 +15,7 @@ hyperparameters:
   min_epochs: ${hyperparameters.max_epochs} # how many epochs must the model tune for?
   patience: ${hyperparameters.max_epochs} # how many epochs to continue training without improving mean loss on the dev set(s)?
   delta: 0 # how much improvement counts as enough to continue? improvement on mean dev loss must be greater than this to reset the patience counter
-  masked_tuning_style: always # use the original style of bert tuning, roberta-style tuning, modernbert style, always used masked version, or don't mask
+  masked_tuning_style: always # (see note below)
   strip_punct: false # Strip punctuation from sentences (true), or leave it intact (false)
   unfreezing: none # what kind of unfreezing to use. 
                    # possible options are 'gradual{int}', 
@@ -27,6 +27,18 @@ hyperparameters:
   use_kl_baseline_loss: false
   use_layerwise_baseline_loss: false
 
+# Masked tuning style values are 'always,' 'bert,' 'roberta', or 'none'
+# 'always' always masks tokens
+# 'bert' masks tokens using the original bert method,
+# where 80% of the time the tokens are masked,
+# 10% of the time they are replaced by the original token,
+# and 10% of the time they are replaced by a random word from the vocubulary
+# it does this just once before fine-tuning
+# for 'roberta' style tuning, it does the bert style produces but rerolls every epoch
+# 'none' means no masking
+
+# more needed here to allow optimization of these(?), but we don't need that for now,
+# so deal with it later if we do
 kl_loss_params:
   dataset: datamaker/datasets/miniboki-2022-04-01_22-58-30/miniboki
   batch_size: 8
@@ -45,19 +57,40 @@ layerwise_loss_params:
 debug: false # whether to print predictions for sample sentences every epoch.
 use_gpu: false # whether to use gpu support
 
-# Masked tuning style values are 'always,' 'bert,' 'roberta', or 'none'
-# 'always' always masks tokens
-# 'bert' masks tokens using the original bert method,
-# where 80% of the time the tokens are masked,
-# 10% of the time they are replaced by the original token,
-# and 10% of the time they are replaced by a random word from the vocubulary
-# it does this just once before fine-tuning
-# for 'roberta' style tuning, it does the bert style produces but rerolls every epoch
-# 'none' means no masking
+do_optimize: false
+optimize_cfg:
+  params:
+    lr:
+      type: float
+      values: [0.00001, 0.0001] # min and max are used to determine low and high values
+      suggest_kwargs: {}
+  target: loss # "['[subj] mean odds ratio in expected position','[obj] mean odds ratio in expected position']""
+  target_label: ${optimize_cfg.target} # best_mean_odds_ratios
+  return_which: last # max
+  study_kwargs:
+    study_name: ${get_study_name:${optimize_cfg.params},${optimize_cfg.target_label}}
+    sampler: optuna.samplers.GPSampler
+    sampler_kwargs:
+      deterministic_objective: true
+    pruner: optuna.pruners.PatientPruner
+    pruner_kwargs:
+      wrapped_pruner: optuna.pruners.WilcoxonPruner
+      wrapped_pruner_kwargs:
+        p_threshold: 0.1
+        n_startup_steps: ${hyperparameters.min_epochs}
+      patience: ${hyperparameters.patience}
+      min_delta: ${hyperparameters.delta}
+    direction: minimize # maximize
+  optimize_kwargs:
+    n_trials: 2
+    gc_after_trial: true
+    show_progress_bar: false
 
 hydra:
+  job:
+    chdir: true
   run:
-    dir: outputs/${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params},${layerwise_loss_params}}/${now:%Y-%m-%d_%H-%M-%S.%f}
+    dir: outputs/${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params},${layerwise_loss_params},${do_optimize},${optimize_cfg}}/${now:%Y-%m-%d_%H-%M-%S.%f}
   sweep:
     dir: outputs
-    subdir: ${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params},${layerwise_loss_params}}/${now:%Y-%m-%d_%H-%M-%S.%f}-${n}
+    subdir: ${get_dir_name:${model},${tuning},${hyperparameters},${kl_loss_params},${layerwise_loss_params},${do_optimize},${optimize_cfg}}/${now:%Y-%m-%d_%H-%M-%S.%f}-${n}

@@ -15,5 +15,7 @@ patterns:
   '[obj]' : [1, 2, 5, 6, 8, 9]
 
 hydra:
+  job:
+    chdir: true
   run: 
     dir: outputs/check_args/${tuning_name:${tunings}}/${now:%Y-%m-%d_%H-%M-%S.%f}
