@@ -22,5 +22,6 @@ dependencies:
   - tiktoken
   - blobfile
   - spacy
+  - optuna
   - pip:
     - -r requirements.txt
